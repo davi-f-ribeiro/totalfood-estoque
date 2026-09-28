@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,4 +80,35 @@ func TestAllMigrationsForUI(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCount(t, db, `SELECT count(*) FROM permissions WHERE resource='stock' AND action='read'`, 1)
+}
+
+func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb, err := os.ReadFile(filepath.Join("templates", "movement.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(hb) + string(jsb)
+	checks := []string{
+		`id="scanProduct"`,
+		`📷 Ler código`,
+		`Fechar câmera`,
+		`Código de barras não cadastrado.`,
+		`cameraSupported()`,
+		`aria-expanded`,
+		`openItem===id`,
+		`stopPropagation`,
+		`warehouse_id`,
+		`Quantidade acima do saldo disponível.`,
+		`Destino deve ser diferente da origem.`,
+		`Saldo atualizado`,
+	}
+	for _, want := range checks {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("operational UI missing %q", want)
+		}
+	}
 }
