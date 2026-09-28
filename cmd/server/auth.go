@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -67,20 +68,46 @@ func (a *app) registerAuthHandlers(mux *http.ServeMux) {
 }
 
 func (a *app) bootstrapDirector(ctx context.Context) error {
-	login, pass := osGetenv("BOOTSTRAP_DIRECTOR_LOGIN"), osGetenv("BOOTSTRAP_DIRECTOR_PASSWORD")
-	if login == "" || pass == "" {
+	if osGetenv("BOOTSTRAP_ADMIN_ENABLED") != "true" {
 		return nil
 	}
+	login, pass := strings.TrimSpace(osGetenv("BOOTSTRAP_ADMIN_USER")), osGetenv("BOOTSTRAP_ADMIN_PASSWORD")
+	if login == "" || pass == "" {
+		return fmt.Errorf("BOOTSTRAP_ADMIN_USER and BOOTSTRAP_ADMIN_PASSWORD are required when BOOTSTRAP_ADMIN_ENABLED=true")
+	}
+	if login != "diretor" {
+		return fmt.Errorf("BOOTSTRAP_ADMIN_USER must be diretor")
+	}
+	tx, err := a.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var profileID int64
-	if err := a.db.QueryRowContext(ctx, `SELECT id FROM profiles WHERE name='Diretor'`).Scan(&profileID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM profiles WHERE name='Diretor'`).Scan(&profileID); err != nil {
+		return err
+	}
+	var permissionsTotal int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM permissions`).Scan(&permissionsTotal); err != nil {
+		return err
+	}
+	if permissionsTotal == 0 {
+		return fmt.Errorf("Diretor bootstrap requires existing permissions")
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO profile_permissions (profile_id, permission_id) SELECT $1,id FROM permissions ON CONFLICT DO NOTHING`, profileID); err != nil {
 		return err
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(pass), bcryptCost)
 	if err != nil {
 		return err
 	}
-	_, err = a.db.ExecContext(ctx, `INSERT INTO users (login,password_hash,profile_id,active) VALUES ($1,$2,$3,true) ON CONFLICT (login) DO NOTHING`, login, string(h), profileID)
-	return err
+	if _, err := tx.ExecContext(ctx, `INSERT INTO users (login,password_hash,profile_id,active,must_change_password) VALUES ($1,$2,$3,true,true) ON CONFLICT (login) DO UPDATE SET password_hash=EXCLUDED.password_hash, profile_id=EXCLUDED.profile_id, active=true, must_change_password=true`, login, string(h), profileID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET revoked_at=now() WHERE user_id=(SELECT id FROM users WHERE login=$1) AND revoked_at IS NULL`, login); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {

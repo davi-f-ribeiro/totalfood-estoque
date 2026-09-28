@@ -97,15 +97,30 @@ func TestBootstrapDirectorIsIdempotent(t *testing.T) {
 	if err := runMigrations(context.Background(), db, filepath.Join("..", "..", "migrations")); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("BOOTSTRAP_DIRECTOR_LOGIN", "boot")
-	t.Setenv("BOOTSTRAP_DIRECTOR_PASSWORD", "secret")
+	t.Setenv("BOOTSTRAP_ADMIN_ENABLED", "true")
+	t.Setenv("BOOTSTRAP_ADMIN_USER", "diretor")
+	t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", "secret")
 	if err := a.bootstrapDirector(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.bootstrapDirector(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	assertCount(t, db, `SELECT count(*) FROM users WHERE login=$1`, 1, "boot")
+	assertCount(t, db, `SELECT count(*) FROM users WHERE login=$1`, 1, "diretor")
+	var active, mustChange bool
+	var profile string
+	var hash string
+	if err := db.QueryRow(`SELECT u.active,u.must_change_password,p.name,u.password_hash FROM users u JOIN profiles p ON p.id=u.profile_id WHERE u.login='diretor'`).Scan(&active, &mustChange, &profile, &hash); err != nil {
+		t.Fatal(err)
+	}
+	if !active || !mustChange || profile != "Diretor" || hash == "secret" || bcrypt.CompareHashAndPassword([]byte(hash), []byte("secret")) != nil {
+		t.Fatalf("bootstrap director invalid active=%v must_change=%v profile=%s", active, mustChange, profile)
+	}
+	var permissionsTotal int
+	if err := db.QueryRow(`SELECT count(*) FROM permissions`).Scan(&permissionsTotal); err != nil {
+		t.Fatal(err)
+	}
+	assertCount(t, db, `SELECT count(*) FROM profile_permissions pp JOIN profiles p ON p.id=pp.profile_id WHERE p.name='Diretor'`, permissionsTotal)
 }
 
 func createTestUser(t *testing.T, a *app, login, pass, profile string, active bool) int64 {
