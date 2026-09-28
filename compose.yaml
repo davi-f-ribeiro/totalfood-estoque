@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-estoque}
+      POSTGRES_USER: ${POSTGRES_USER:-estoque}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-estoque_dev_change_me}
+    volumes:
+      - estoque_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-5656}:5656"
+    environment:
+      HTTP_ADDR: ":5656"
+      MIGRATIONS_DIR: /app/migrations
+      DATABASE_URL: "postgres://${POSTGRES_USER:-estoque}:${POSTGRES_PASSWORD:-estoque_dev_change_me}@db:5432/${POSTGRES_DB:-estoque}?sslmode=disable"
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      BOOTSTRAP_DIRECTOR_LOGIN: ${BOOTSTRAP_DIRECTOR_LOGIN:-diretor}
+      BOOTSTRAP_DIRECTOR_PASSWORD: ${BOOTSTRAP_DIRECTOR_PASSWORD:-troque-esta-senha}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5656/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  estoque_pgdata:

@@ -1,0 +1,15 @@
+.env
+.env.*
+*.log
+*.tmp
+*.bak
+*.dump
+*.sql.dump
+*.db
+*.sqlite
+*.sqlite3
+/server
+coverage.out
+.cache/
+.hermes/
+ui-review-screenshots/
