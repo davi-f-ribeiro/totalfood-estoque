@@ -246,7 +246,7 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if used {
-			writeJSONError(w, http.StatusConflict, "A unidade não pode ser alterada porque este item possui movimentações.")
+			writeJSONError(w, http.StatusConflict, "Unidade não pode ser alterada porque já existe movimentação para este item.")
 			return
 		}
 	}
