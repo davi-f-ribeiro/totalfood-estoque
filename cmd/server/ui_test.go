@@ -145,3 +145,35 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		}
 	}
 }
+
+func TestMovementProductSelectionUXStateContracts(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb, err := os.ReadFile(filepath.Join("templates", "movement.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(hb) + string(jsb)
+	checks := []string{
+		`id="productFeedback"`,
+		`Verificando código...`,
+		`EAN: `,
+		`Tentar novamente`,
+		`manualSeq++`,
+		`if(seq!==manualSeq)return`,
+		`lookup.hidden=true`,
+		`normalizeBarcode(q).length<2`,
+		`function skuLabel`,
+		`Produto selecionado`,
+		`id="changeProduct"`,
+		`productMsg('error','<strong>Código de barras não cadastrado.</strong>`,
+		`scanBtn?.addEventListener('scanner:start'`,
+	}
+	for _, want := range checks {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("product selection UX missing %q", want)
+		}
+	}
+}
