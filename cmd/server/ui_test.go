@@ -94,10 +94,22 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 	combined := string(hb) + string(jsb)
 	checks := []string{
 		`id="scanProduct"`,
-		`📷 Ler código`,
-		`Fechar câmera`,
+		`Ler código de barras`,
+		`Fechar`,
 		`Código de barras não cadastrado.`,
-		`cameraSupported()`,
+		`navigator.mediaDevices.getUserMedia`,
+		`function cameraSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)}`,
+		`BrowserMultiFormatReader`,
+		`BarcodeDetector`,
+		`CODE_128`,
+		`UPC_E`,
+		`getTracks().forEach`,
+		`Permissão da câmera negada. Libere o acesso à câmera nas configurações do navegador.`,
+		`Nenhuma câmera disponível.`,
+		`Câmera não suportada neste navegador.`,
+		`Código identificado`,
+		`Selecione um produto`,
+		`Disponível:`,
 		`aria-expanded`,
 		`openItem===id`,
 		`stopPropagation`,
@@ -109,6 +121,12 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 	for _, want := range checks {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("operational UI missing %q", want)
+		}
+	}
+
+	for _, forbidden := range []string{`📷`, `Leitura por câmera não disponível`} {
+		if strings.Contains(combined, forbidden) {
+			t.Fatalf("operational UI must not contain %q", forbidden)
 		}
 	}
 }

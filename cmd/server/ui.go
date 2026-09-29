@@ -14,7 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-//go:embed templates/*.html static/*
+//go:embed templates/*.html static/* static/vendor/*.js
 var uiFS embed.FS
 
 var uiTemplates = template.Must(template.ParseFS(uiFS, "templates/*.html"))
