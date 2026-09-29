@@ -126,6 +126,18 @@ func TestConcurrentTransfersCannotBothSpendSameStock(t *testing.T) {
 	assertStock(t, a, sku, wh2, "7.000", "10.0000")
 }
 
+func TestDecodeMovementRequestAcceptsBrazilianDecimalComma(t *testing.T) {
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/movements/entry", strings.NewReader(`{"operation_id":"op-comma","sku_id":1,"warehouse_id":1,"quantity":"180","unit_cost":"5,89"}`))
+	got, _, ok := decodeMovementRequest(rr, req, true)
+	if !ok {
+		t.Fatalf("comma decimal request rejected: status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got.Quantity != "180" || got.UnitCost != "5.89" {
+		t.Fatalf("decimal normalization got quantity=%q cost=%q", got.Quantity, got.UnitCost)
+	}
+}
+
 func TestPublicInsufficientStockMessage(t *testing.T) {
 	a := &app{}
 	rr := httptest.NewRecorder()

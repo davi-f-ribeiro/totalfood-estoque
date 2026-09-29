@@ -170,6 +170,12 @@ func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 		`id="changeProduct"`,
 		`productMsg('error','<strong>Código de barras não cadastrado.</strong>`,
 		`scanBtn?.addEventListener('scanner:start'`,
+		`function requestDecimal(v)`,
+		`quantity:requestDecimal(qty.value)`,
+		`unit_cost:requestDecimal(document.getElementById('unitCost').value)`,
+		`if(err.status===400||err.status===409)`,
+		`movementMsg('error',movementErrorMessage(err))`,
+		`id="status" class="operation-feedback"`,
 	}
 	for _, want := range checks {
 		if !strings.Contains(combined, want) {

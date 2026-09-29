@@ -122,11 +122,11 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 		writeJSONError(w, http.StatusBadRequest, "invalid json")
 		return req, "", false
 	}
+	req.OperationID = strings.TrimSpace(req.OperationID)
+	req.Quantity = normalizeDecimalInput(req.Quantity)
+	req.UnitCost = normalizeDecimalInput(req.UnitCost)
 	body, _ := json.Marshal(req)
 	h := sha256.Sum256(body)
-	req.OperationID = strings.TrimSpace(req.OperationID)
-	req.Quantity = strings.TrimSpace(req.Quantity)
-	req.UnitCost = strings.TrimSpace(req.UnitCost)
 	if req.OperationID == "" || req.SKUID <= 0 || !positiveDecimal(req.Quantity) {
 		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return req, "", false
@@ -146,6 +146,10 @@ func positiveDecimal(v string) bool {
 }
 
 func nonNegativeDecimal(v string) bool { return decimalPattern.MatchString(v) }
+
+func normalizeDecimalInput(v string) string {
+	return strings.ReplaceAll(strings.TrimSpace(v), ",", ".")
+}
 
 func withAuthUser(req movementRequest, r *http.Request) movementRequest {
 	req.UserID = userFromContext(r.Context()).ID
