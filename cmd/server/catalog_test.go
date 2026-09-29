@@ -105,3 +105,57 @@ func jsonID(t *testing.T, b []byte) int64 {
 }
 
 func itoa(v int64) string { return strconv.FormatInt(v, 10) }
+
+
+func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
+	a, _, wh, _ := newStockTestApp(t)
+	createTestUser(t, a, "director-catalog-parent", "secret", "Diretor", true)
+	director := doLogin(t, a, "director-catalog-parent", "secret")
+	catID := lookupID(t, a, `SELECT id FROM categories WHERE name='Alimentos'`)
+
+	parentA := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Feijão Teste Pai A", "category_id": catID, "unit_code": "KG", "minimum_stock": "2,5"}, director, "")
+	if parentA.Code != http.StatusCreated { t.Fatalf("create parent A status=%d body=%s", parentA.Code, parentA.Body.String()) }
+	parentAID := jsonID(t, parentA.Body.Bytes())
+	var minimum string
+	if err := a.db.QueryRow(`SELECT minimum_stock::text FROM inventory_items WHERE id=$1`, parentAID).Scan(&minimum); err != nil || minimum != "2.500" {
+		t.Fatalf("minimum normalization got=%q err=%v", minimum, err)
+	}
+
+	parentB := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Feijão Teste Pai B", "category_id": catID, "unit_code": "KG", "minimum_stock": "1"}, director, "")
+	parentBID := jsonID(t, parentB.Body.Bytes())
+	parentC := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Feijão Teste Pai C", "category_id": catID, "unit_code": "L", "minimum_stock": "1"}, director, "")
+	parentCID := jsonID(t, parentC.Body.Bytes())
+
+	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": parentAID, "name": "Feijão Teste Marca", "barcode": "7890000999911"}, director, "")
+	if skuResp.Code != http.StatusCreated { t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String()) }
+	skuID := jsonID(t, skuResp.Body.Bytes())
+	moveRes, moveErr := a.createEntry(context.Background(), movementRequest{OperationID: "catalog-parent-history", SKUID: skuID, WarehouseID: wh, Quantity: "3", UnitCost: "10"}, "catalog-parent-history")
+	mustMove2(t, moveRes, moveErr)
+
+	var snapshot int64
+	if err := a.db.QueryRow(`SELECT item_id FROM movement_lines WHERE sku_id=$1 LIMIT 1`, skuID).Scan(&snapshot); err != nil || snapshot != parentAID {
+		t.Fatalf("history snapshot got=%d want=%d err=%v", snapshot, parentAID, err)
+	}
+
+	move := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentBID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true}, director, "")
+	if move.Code != http.StatusOK { t.Fatalf("reassign same unit status=%d body=%s", move.Code, move.Body.String()) }
+	var currentParent, historicalParent int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuID).Scan(&currentParent); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT item_id FROM movement_lines WHERE sku_id=$1 LIMIT 1`, skuID).Scan(&historicalParent); err != nil { t.Fatal(err) }
+	if currentParent != parentBID || historicalParent != parentAID {
+		t.Fatalf("reassign current=%d history=%d want current=%d history=%d", currentParent, historicalParent, parentBID, parentAID)
+	}
+
+	badMove := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentCID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true}, director, "")
+	if badMove.Code != http.StatusConflict || !strings.Contains(badMove.Body.String(), "mesma unidade") {
+		t.Fatalf("cross-unit historical reassign status=%d body=%s", badMove.Code, badMove.Body.String())
+	}
+
+	search := authReq(a, http.MethodGet, "/api/catalog/items?q=7890000999911", nil, director, "")
+	if search.Code != http.StatusOK || !strings.Contains(search.Body.String(), "Feijão Teste Pai B") {
+		t.Fatalf("catalog barcode search status=%d body=%s", search.Code, search.Body.String())
+	}
+
+	dup := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": " feijão teste pai b ", "category_id": catID, "unit_code": "KG", "minimum_stock": "0"}, director, "")
+	if dup.Code != http.StatusConflict { t.Fatalf("duplicate normalized parent status=%d body=%s", dup.Code, dup.Body.String()) }
+}
