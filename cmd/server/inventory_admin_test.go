@@ -93,7 +93,9 @@ func TestInventoryGate07ACLNavigationAndAdminPermissions(t *testing.T) {
 	rwToken,rwCSRF:=inventorySession(t,e.db,rwUser)
 	rwPage:=g7serve(e.a,http.MethodGet,"/inventory","",rwToken,"")
 	if rwPage.Code!=http.StatusOK || !strings.Contains(rwPage.Body.String(),"inventoryCreateTotal") || !strings.Contains(rwPage.Body.String(),"inventoryCreateBlind") { t.Fatalf("rw page=%d body=%s",rwPage.Code,rwPage.Body.String()) }
-	rwToken,rwCSRF=inventorySession(t,e.db,rwUser)
+	rwToken="g7-rw-session-"+strings.ReplaceAll(t.Name(),"/","-")
+	rwCSRF="g7-rw-csrf-"+strings.ReplaceAll(t.Name(),"/","-")
+	if _,err:=e.db.Exec("INSERT INTO sessions (user_id,token_hash,csrf_token_hash,expires_at) VALUES ($1,$2,$3,now()+interval '1 hour')",rwUser,hashToken(rwToken),hashToken(rwCSRF));err!=nil{t.Fatal(err)}
 
 	wh:=e.warehouse(t,"acl-total",true); sku:=e.sku(t,"acl-total-sku",true,true); e.movementDecimal(t,sku,wh,"IN","5.000")
 	total:=g7serve(e.a,http.MethodPost,"/api/inventory-validations/total",fmt.Sprintf("{\"warehouse_id\":%d}",wh),rwToken,rwCSRF)
