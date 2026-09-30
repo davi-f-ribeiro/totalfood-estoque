@@ -3,60 +3,64 @@ package main
 import (
     "context"
     "os"
+    "path/filepath"
     "testing"
-
-    "github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestInventoryFoundationDoesNotCreateMovements(t *testing.T) {
-    databaseURL := os.Getenv("TEST_DATABASE_URL")
-    if databaseURL == "" {
-        t.Skip("TEST_DATABASE_URL is not set")
+    if os.Getenv("TEST_DATABASE_URL") == "" {
+        t.Skip("TEST_DATABASE_URL is required for PostgreSQL integration check")
     }
 
+    db := openTestDatabase(t)
     ctx := context.Background()
-    pool, err := pgxpool.New(ctx, databaseURL)
-    if err != nil {
-        t.Fatalf("connect test database: %v", err)
+    if err := runMigrations(ctx, db, filepath.Join("..", "..", "migrations")); err != nil {
+        t.Fatalf("migrate: %v", err)
     }
-    defer pool.Close()
 
     var movementsBefore, movementLinesBefore int64
-    if err := pool.QueryRow(ctx, "SELECT count(*) FROM movements").Scan(&movementsBefore); err != nil {
+    if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movements").Scan(&movementsBefore); err != nil {
         t.Fatalf("count movements before: %v", err)
     }
-    if err := pool.QueryRow(ctx, "SELECT count(*) FROM movement_lines").Scan(&movementLinesBefore); err != nil {
+    if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movement_lines").Scan(&movementLinesBefore); err != nil {
         t.Fatalf("count movement_lines before: %v", err)
     }
 
-    var warehouseID, userID int64
-    if err := pool.QueryRow(ctx, "SELECT id FROM warehouses ORDER BY id LIMIT 1").Scan(&warehouseID); err != nil {
+    var warehouseID, profileID, userID int64
+    if err := db.QueryRowContext(ctx, "SELECT id FROM warehouses ORDER BY id LIMIT 1").Scan(&warehouseID); err != nil {
         t.Fatalf("find warehouse: %v", err)
     }
-    if err := pool.QueryRow(ctx, "SELECT id FROM users ORDER BY id LIMIT 1").Scan(&userID); err != nil {
-        t.Skipf("no user available in migrated test database: %v", err)
+    if err := db.QueryRowContext(ctx, "SELECT id FROM profiles WHERE name = 'Diretor'").Scan(&profileID); err != nil {
+        t.Fatalf("find profile: %v", err)
+    }
+    if err := db.QueryRowContext(ctx,
+        `INSERT INTO users (login, password_hash, profile_id)
+         VALUES ($1, $2, $3)
+         RETURNING id`,
+        "inventory-foundation-"+t.Name(), "test-hash", profileID,
+    ).Scan(&userID); err != nil {
+        t.Fatalf("create responsible user: %v", err)
     }
 
     var validationID int64
-    err = pool.QueryRow(ctx,
+    if err := db.QueryRowContext(ctx,
         `INSERT INTO inventory_validations (type, warehouse_id, status, responsible_user_id, started_at)
          VALUES ('TOTAL', $1, 'OPEN', $2, now())
          RETURNING id`,
         warehouseID, userID,
-    ).Scan(&validationID)
-    if err != nil {
+    ).Scan(&validationID); err != nil {
         t.Fatalf("insert inventory validation: %v", err)
     }
 
-    if _, err := pool.Exec(ctx, "DELETE FROM inventory_validations WHERE id = $1", validationID); err != nil {
+    if _, err := db.ExecContext(ctx, "DELETE FROM inventory_validations WHERE id = $1", validationID); err != nil {
         t.Fatalf("cleanup inventory validation: %v", err)
     }
 
     var movementsAfter, movementLinesAfter int64
-    if err := pool.QueryRow(ctx, "SELECT count(*) FROM movements").Scan(&movementsAfter); err != nil {
+    if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movements").Scan(&movementsAfter); err != nil {
         t.Fatalf("count movements after: %v", err)
     }
-    if err := pool.QueryRow(ctx, "SELECT count(*) FROM movement_lines").Scan(&movementLinesAfter); err != nil {
+    if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movement_lines").Scan(&movementLinesAfter); err != nil {
         t.Fatalf("count movement_lines after: %v", err)
     }
 
