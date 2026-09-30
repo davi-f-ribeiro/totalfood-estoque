@@ -20,12 +20,14 @@ var uiFS embed.FS
 var uiTemplates = template.Must(template.ParseFS(uiFS, "templates/*.html"))
 
 type uiData struct {
-	Title    string
-	User     authUser
-	CSRF     string
-	Page     string
-	Error    string
-	CanAdmin bool
+	Title             string
+	User              authUser
+	CSRF              string
+	Page              string
+	Error             string
+	CanAdmin          bool
+	CanInventory      bool
+	CanInventoryWrite bool
 }
 
 func (a *app) registerUIHandlers(mux *http.ServeMux) {
@@ -126,7 +128,9 @@ func (a *app) uiPage(tmpl, title, res, act string) http.HandlerFunc {
 		}
 		csrf, _ := a.rotateCSRF(r.Context(), r)
 		canAdmin, _ := a.hasPermission(r.Context(), u.ID, "users", "write")
-		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin})
+		canInventory, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "read")
+		canInventoryWrite, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "write")
+		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin, CanInventory: canInventory, CanInventoryWrite: canInventoryWrite})
 	}
 }
 
