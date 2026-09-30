@@ -93,6 +93,7 @@ func TestInventoryGate07ACLNavigationAndAdminPermissions(t *testing.T) {
 	rwToken,rwCSRF:=inventorySession(t,e.db,rwUser)
 	rwPage:=g7serve(e.a,http.MethodGet,"/inventory","",rwToken,"")
 	if rwPage.Code!=http.StatusOK || !strings.Contains(rwPage.Body.String(),"inventoryCreateTotal") || !strings.Contains(rwPage.Body.String(),"inventoryCreateBlind") { t.Fatalf("rw page=%d body=%s",rwPage.Code,rwPage.Body.String()) }
+	rwToken,rwCSRF=inventorySession(t,e.db,rwUser)
 
 	wh:=e.warehouse(t,"acl-total",true); sku:=e.sku(t,"acl-total-sku",true,true); e.movementDecimal(t,sku,wh,"IN","5.000")
 	total:=g7serve(e.a,http.MethodPost,"/api/inventory-validations/total",fmt.Sprintf("{\"warehouse_id\":%d}",wh),rwToken,rwCSRF)
