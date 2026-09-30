@@ -90,52 +90,124 @@ function initAccount(){document.querySelectorAll('.nav a').forEach(a=>{if(a.getA
 
 function initInventory(){
 let openForm=document.getElementById('inventoryOpenForm'),workspace=document.getElementById('inventoryWorkspace');if(!openForm||!workspace)return;
-let idInput=document.getElementById('inventoryId'),linesBox=document.getElementById('inventoryLines'),message=document.getElementById('inventoryMessage'),search=document.getElementById('inventorySearch'),mode=document.getElementById('inventoryMode'),progressText=document.getElementById('inventoryProgress'),progressBar=document.getElementById('inventoryProgressBar'),statusText=document.getElementById('inventoryStatusText');
+let idInput=document.getElementById('inventoryId'),linesBox=document.getElementById('inventoryLines'),message=document.getElementById('inventoryMessage'),search=document.getElementById('inventorySearch'),mode=document.getElementById('inventoryMode'),progressText=document.getElementById('inventoryProgress'),progressBar=document.getElementById('inventoryProgressBar'),statusText=document.getElementById('inventoryStatusText'),terminalActions=document.getElementById('inventoryTerminalActions');
 let current=null,filter='pending';
 function setMessage(text,kind=''){message.className='msg'+(kind?' '+kind:'');message.textContent=text||''}
 function statusLabel(s){return ({OPEN:'Aberto',COUNTING:'Em contagem',REVIEW:'Em revisão',COMPLETED:'Concluído',CANCELLED:'Cancelado'})[s]||s}
 function counted(line){return line.physical_quantity!==null&&line.physical_quantity!==undefined}
 function reviewMode(){return !!(current&&current.review_mode)}
-function canEdit(){return current&&!reviewMode()&&(current.status==='OPEN'||current.status==='COUNTING')}
+function historyMode(){return !!(current&&current.history_mode)}
+function canEdit(){return current&&!reviewMode()&&!historyMode()&&(current.status==='OPEN'||current.status==='COUNTING')}
 function matches(line){let q=normalizeBarcode(search.value).toLowerCase();if(!q)return true;return [line.description,line.code,line.barcode,String(line.sku_id)].some(v=>String(v||'').toLowerCase().includes(q))}
-function visibleByFilter(line){if(filter==='all')return true;if(reviewMode())return filter==='pending'?line.state==='DIVERGENT':line.state==='MATCH';return filter==='counted'?counted(line):!counted(line)}
-function setFilterLabels(){let labels=reviewMode()?{pending:'Divergentes',counted:'Conferidos',all:'Todos'}:{pending:'Pendentes',counted:'Contados',all:'Todos'};document.querySelectorAll('[data-inventory-filter]').forEach(b=>{b.textContent=labels[b.dataset.inventoryFilter]||b.textContent})}
-function updateHeader(){if(!current)return;if(reviewMode()){let divergent=current.lines.filter(x=>x.state==='DIVERGENT').length;progressText.textContent=divergent+' divergência(s)';progressBar.value=current.lines.length?Math.floor((current.lines.length-divergent)*100/current.lines.length):100;statusText.textContent=statusLabel(current.status)+' · revisão do snapshot';mode.hidden=false;mode.textContent=current.type;return}progressText.textContent=current.counted+' de '+current.total+' itens contados';progressBar.value=current.progress_percent||0;statusText.textContent=statusLabel(current.status)+' · '+(current.progress_percent||0)+'%';mode.hidden=false;mode.textContent=current.type}
-function recompute(){if(reviewMode())return;current.counted=current.lines.filter(counted).length;current.total=current.lines.length;current.progress_percent=current.total?Math.floor(current.counted*100/current.total):0}
+function visibleByFilter(line){
+ if(filter==='all')return true;
+ if(reviewMode())return filter==='pending'?line.state==='DIVERGENT':line.state==='MATCH';
+ if(historyMode()){
+  if(!line.state)return true;
+  return filter==='pending'?line.state==='DIVERGENT':line.state==='MATCH';
+ }
+ return filter==='counted'?counted(line):!counted(line)
+}
+function setFilterLabels(){let labels=(reviewMode()||historyMode())?{pending:'Divergentes',counted:'Conferidos',all:'Todos'}:{pending:'Pendentes',counted:'Contados',all:'Todos'};document.querySelectorAll('[data-inventory-filter]').forEach(b=>{b.textContent=labels[b.dataset.inventoryFilter]||b.textContent})}
+function updateHeader(){
+ if(!current)return;
+ if(historyMode()){
+  let divergent=current.lines.filter(x=>x.state==='DIVERGENT').length,known=current.lines.filter(x=>x.state).length;
+  progressText.textContent=current.reference_revealed?(divergent+' divergência(s) finais'):'Histórico preservado';
+  progressBar.value=current.reference_revealed&&known?Math.floor((known-divergent)*100/known):0;
+  statusText.textContent=statusLabel(current.status)+' · registro histórico';
+  mode.hidden=false;mode.textContent=current.type;return
+ }
+ if(reviewMode()){let divergent=current.lines.filter(x=>x.state==='DIVERGENT').length;progressText.textContent=divergent+' divergência(s)';progressBar.value=current.lines.length?Math.floor((current.lines.length-divergent)*100/current.lines.length):100;statusText.textContent=statusLabel(current.status)+' · revisão do snapshot';mode.hidden=false;mode.textContent=current.type;return}
+ progressText.textContent=current.counted+' de '+current.total+' itens contados';progressBar.value=current.progress_percent||0;statusText.textContent=statusLabel(current.status)+' · '+(current.progress_percent||0)+'%';mode.hidden=false;mode.textContent=current.type
+}
+function recompute(){if(reviewMode()||historyMode())return;current.counted=current.lines.filter(counted).length;current.total=current.lines.length;current.progress_percent=current.total?Math.floor(current.counted*100/current.total):0}
+function auditTime(v){return v?new Date(v).toLocaleString('pt-BR'):''}
+function addAuditRow(box,label,value){if(!value)return;let p=document.createElement('p');let strong=document.createElement('strong');strong.textContent=label+': ';let span=document.createElement('span');span.textContent=value;p.append(strong,span);box.append(p)}
+function renderTerminalActions(){
+ terminalActions.textContent='';terminalActions.hidden=false;
+ if(historyMode()){
+  let box=document.createElement('div');box.className='inventory-history-audit';
+  addAuditRow(box,'Responsável inicial',current.responsible_by);
+  addAuditRow(box,'Iniciado em',auditTime(current.started_at));
+  addAuditRow(box,'Snapshot em',auditTime(current.snapshot_at));
+  if(current.status==='COMPLETED'){addAuditRow(box,'Concluído por',current.completed_by);addAuditRow(box,'Concluído em',auditTime(current.completed_at));addAuditRow(box,'Observação',current.completion_note)}
+  if(current.status==='CANCELLED'){addAuditRow(box,'Cancelado por',current.cancelled_by);addAuditRow(box,'Cancelado em',auditTime(current.cancelled_at));addAuditRow(box,'Motivo',current.cancellation_reason)}
+  if(!current.reference_revealed){let warn=document.createElement('p');warn.className='hint';warn.textContent='Referência e divergência permanecem ocultas porque este BLIND foi cancelado antes da revisão.';box.append(warn)}
+  terminalActions.append(box);return
+ }
+ let canCancel=current.status==='OPEN'||current.status==='COUNTING'||current.status==='REVIEW';
+ if(reviewMode()){
+  let unresolved=current.lines.some(x=>x.recount_available),finalDivergent=current.lines.some(x=>x.state==='DIVERGENT'&&!x.recount_available);
+  let form=document.createElement('form');form.className='inventory-terminal-form';
+  let lab=document.createElement('label');lab.textContent=finalDivergent?'Observação de conclusão (obrigatória com divergência final)':'Observação de conclusão (opcional)';
+  let note=document.createElement('textarea');note.maxLength=1000;note.rows=3;if(finalDivergent){note.required=true;note.minLength=5}lab.append(note);
+  let btn=document.createElement('button');btn.type='submit';btn.textContent='Concluir inventário';btn.disabled=unresolved;
+  form.append(lab,btn);
+  if(unresolved){let hint=document.createElement('p');hint.className='hint';hint.textContent='Conclua a recontagem formal de todas as divergências antes de encerrar.';form.append(hint)}
+  form.addEventListener('submit',async e=>{e.preventDefault();btn.disabled=true;setMessage('Concluindo inventário…');try{current=await api('/api/inventory-validations/'+current.id+'/complete',{method:'POST',body:JSON.stringify({completion_note:note.value})});current.history_mode=true;current.review_mode=false;filter='all';setMessage('Inventário concluído.','ok');render()}catch(err){btn.disabled=unresolved;setMessage(err.message||'Não foi possível concluir o inventário.','error')}});
+  terminalActions.append(form)
+ }
+ if(canCancel){
+  let form=document.createElement('form');form.className='inventory-terminal-form inventory-cancel-form';
+  let lab=document.createElement('label');lab.textContent='Motivo do cancelamento';let reason=document.createElement('textarea');reason.required=true;reason.minLength=5;reason.maxLength=1000;reason.rows=3;lab.append(reason);
+  let btn=document.createElement('button');btn.type='submit';btn.className='danger';btn.textContent='Cancelar inventário';form.append(lab,btn);
+  form.addEventListener('submit',async e=>{e.preventDefault();btn.disabled=true;setMessage('Cancelando inventário…');try{current=await api('/api/inventory-validations/'+current.id+'/cancel',{method:'POST',body:JSON.stringify({cancellation_reason:reason.value})});current.history_mode=true;current.review_mode=false;filter='all';setMessage('Inventário cancelado.','ok');render()}catch(err){btn.disabled=false;setMessage(err.message||'Não foi possível cancelar o inventário.','error')}});
+  terminalActions.append(form)
+ }
+ if(!terminalActions.children.length)terminalActions.hidden=true
+}
 function appendReviewCard(line){
  let card=document.createElement('article');card.className='inventory-line inventory-review-line'+(line.state==='DIVERGENT'?' divergent':' match');card.dataset.skuId=line.sku_id;
  let head=document.createElement('div');head.className='inventory-line-head';let title=document.createElement('div');let strong=document.createElement('strong');strong.textContent=line.description;let meta=document.createElement('small');meta.textContent='SKU '+line.code+(line.barcode?' · '+line.barcode:'')+' · '+line.unit;title.append(strong,meta);let badge=document.createElement('span');badge.className='badge';badge.textContent=line.state;head.append(title,badge);card.append(head);
  let compare=document.createElement('div');compare.className='inventory-review-grid';[['Primeira contagem',line.first_quantity],['Referência',line.reference_quantity],['Diferença',line.difference]].forEach(pair=>{let box=document.createElement('div');let sm=document.createElement('small');sm.textContent=pair[0];let val=document.createElement('strong');val.textContent=pair[1]+' '+line.unit;box.append(sm,val);compare.append(box)});card.append(compare);
- let audit=document.createElement('small');audit.className='hint inventory-audit';audit.textContent='Primeira contagem'+(line.first_counted_by?' por '+line.first_counted_by:'')+(line.first_counted_at?' · '+new Date(line.first_counted_at).toLocaleString('pt-BR'):'');card.append(audit);
- if(line.recount_quantity!==null&&line.recount_quantity!==undefined){let recount=document.createElement('div');recount.className='inventory-recount-result';let strong=document.createElement('strong');strong.textContent='Recontagem: '+line.recount_quantity+' '+line.unit;let sm=document.createElement('small');sm.textContent=(line.recounted_by?' por '+line.recounted_by:'')+(line.recounted_at?' · '+new Date(line.recounted_at).toLocaleString('pt-BR'):'');recount.append(strong,sm);card.append(recount)}
+ let audit=document.createElement('small');audit.className='hint inventory-audit';audit.textContent='Primeira contagem'+(line.first_counted_by?' por '+line.first_counted_by:'')+(line.first_counted_at?' · '+auditTime(line.first_counted_at):'');card.append(audit);
+ if(line.recount_quantity!==null&&line.recount_quantity!==undefined){let recount=document.createElement('div');recount.className='inventory-recount-result';let strong=document.createElement('strong');strong.textContent='Recontagem: '+line.recount_quantity+' '+line.unit;let sm=document.createElement('small');sm.textContent=(line.recounted_by?' por '+line.recounted_by:'')+(line.recounted_at?' · '+auditTime(line.recounted_at):'');recount.append(strong,sm);card.append(recount)}
  if(line.recount_available){let form=document.createElement('form');form.className='inventory-count-form inventory-recount-form';let lab=document.createElement('label');lab.textContent='Recontagem física ('+line.unit+')';let input=document.createElement('input');input.inputMode='decimal';input.autocomplete='off';input.placeholder='0';input.required=true;lab.append(input);let save=document.createElement('button');save.type='submit';save.textContent='Registrar recontagem';form.append(lab,save);form.addEventListener('submit',async e=>{e.preventDefault();save.disabled=true;setMessage('Salvando recontagem…');try{let out=await api('/api/inventory-validations/'+current.id+'/lines/'+line.sku_id+'/recount',{method:'PUT',body:JSON.stringify({physical_quantity:requestDecimal(input.value),expected_version:line.version})});Object.assign(line,out.line);setMessage('Recontagem registrada.','ok');render()}catch(err){save.disabled=false;setMessage(err.message||'Não foi possível registrar a recontagem.','error')}});card.append(form)}
  linesBox.append(card)
 }
+function appendHistoryCard(line){
+ let state=line.state||'',card=document.createElement('article');card.className='inventory-line inventory-review-line'+(state==='DIVERGENT'?' divergent':state==='MATCH'?' match':'');card.dataset.skuId=line.sku_id;
+ let head=document.createElement('div');head.className='inventory-line-head';let title=document.createElement('div');let strong=document.createElement('strong');strong.textContent=line.description;let meta=document.createElement('small');meta.textContent='SKU '+line.code+(line.barcode?' · '+line.barcode:'')+' · '+line.unit;title.append(strong,meta);head.append(title);
+ if(state){let badge=document.createElement('span');badge.className='badge';badge.textContent=state;head.append(badge)}card.append(head);
+ let first=document.createElement('div');first.className='inventory-recount-result';let fst=document.createElement('strong');fst.textContent='Primeira contagem: '+(line.first_quantity!==undefined?line.first_quantity+' '+line.unit:'não realizada');let fsm=document.createElement('small');fsm.textContent=(line.first_counted_by?' por '+line.first_counted_by:'')+(line.first_counted_at?' · '+auditTime(line.first_counted_at):'');first.append(fst,fsm);card.append(first);
+ if(line.recount_quantity!==undefined){let recount=document.createElement('div');recount.className='inventory-recount-result';let rs=document.createElement('strong');rs.textContent='Recontagem: '+line.recount_quantity+' '+line.unit;let rm=document.createElement('small');rm.textContent=(line.recounted_by?' por '+line.recounted_by:'')+(line.recounted_at?' · '+auditTime(line.recounted_at):'');recount.append(rs,rm);card.append(recount)}
+ if(line.reference_quantity!==undefined){let compare=document.createElement('div');compare.className='inventory-review-grid';[['Referência',line.reference_quantity],['Resultado físico',line.effective_quantity],['Diferença',line.difference]].forEach(pair=>{let box=document.createElement('div');let sm=document.createElement('small');sm.textContent=pair[0];let val=document.createElement('strong');val.textContent=pair[1]+' '+line.unit;box.append(sm,val);compare.append(box)});card.append(compare)}
+ linesBox.append(card)
+}
 function render(){
-if(!current)return;recompute();setFilterLabels();updateHeader();linesBox.textContent='';
-let rows=current.lines.filter(line=>matches(line)&&visibleByFilter(line));
-if(!rows.length){let p=document.createElement('p');p.className='catalog-empty';p.textContent=reviewMode()?'Nenhum item neste filtro de revisão.':'Nenhum item neste filtro.';linesBox.append(p);return}
-if(reviewMode()){rows.forEach(appendReviewCard);return}
-rows.forEach(line=>{
- let card=document.createElement('article');card.className='inventory-line';card.dataset.skuId=line.sku_id;
- let head=document.createElement('div');head.className='inventory-line-head';
- let title=document.createElement('div');let strong=document.createElement('strong');strong.textContent=line.description;let meta=document.createElement('small');meta.textContent='SKU '+line.code+(line.barcode?' · '+line.barcode:'')+' · '+line.unit;title.append(strong,meta);
- let badge=document.createElement('span');badge.className='badge';badge.textContent=counted(line)?'Contado':'Pendente';head.append(title,badge);
- let form=document.createElement('form');form.className='inventory-count-form';let lab=document.createElement('label');lab.textContent='Quantidade física ('+line.unit+')';let input=document.createElement('input');input.inputMode='decimal';input.autocomplete='off';input.placeholder='0';input.value=counted(line)?line.physical_quantity:'';input.required=true;input.disabled=!canEdit();lab.append(input);
- let save=document.createElement('button');save.type='submit';save.textContent=counted(line)?'Atualizar':'Salvar';save.disabled=!canEdit();form.append(lab,save);
- let audit=document.createElement('small');audit.className='hint';if(counted(line))audit.textContent='Salvo'+(line.counted_by?' por '+line.counted_by:'')+(line.counted_at?' · '+new Date(line.counted_at).toLocaleString('pt-BR'):'');
- form.addEventListener('submit',async e=>{e.preventDefault();if(!canEdit())return;save.disabled=true;setMessage('Salvando…');try{let out=await api('/api/inventory-validations/'+current.id+'/lines/'+line.sku_id+'/count',{method:'PUT',body:JSON.stringify({physical_quantity:requestDecimal(input.value),expected_version:line.version})});Object.assign(line,out.line);current.status=out.status;setMessage('Contagem salva.','ok');if(out.status==='REVIEW'){await load(current.id);return}render()}catch(err){save.disabled=false;if(err.status===409){setMessage(err.message||'Contagem alterada por outro operador. Recarregue.','error')}else setMessage(err.message||'Não foi possível salvar.','error')}});
- card.append(head,form,audit);linesBox.append(card)
-});
+ if(!current)return;recompute();setFilterLabels();updateHeader();renderTerminalActions();linesBox.textContent='';
+ let rows=current.lines.filter(line=>matches(line)&&visibleByFilter(line));
+ if(!rows.length){let p=document.createElement('p');p.className='catalog-empty';p.textContent=historyMode()?'Nenhum item neste filtro histórico.':reviewMode()?'Nenhum item neste filtro de revisão.':'Nenhum item neste filtro.';linesBox.append(p);return}
+ if(historyMode()){rows.forEach(appendHistoryCard);return}
+ if(reviewMode()){rows.forEach(appendReviewCard);return}
+ rows.forEach(line=>{
+  let card=document.createElement('article');card.className='inventory-line';card.dataset.skuId=line.sku_id;
+  let head=document.createElement('div');head.className='inventory-line-head';
+  let title=document.createElement('div');let strong=document.createElement('strong');strong.textContent=line.description;let meta=document.createElement('small');meta.textContent='SKU '+line.code+(line.barcode?' · '+line.barcode:'')+' · '+line.unit;title.append(strong,meta);
+  let badge=document.createElement('span');badge.className='badge';badge.textContent=counted(line)?'Contado':'Pendente';head.append(title,badge);
+  let form=document.createElement('form');form.className='inventory-count-form';let lab=document.createElement('label');lab.textContent='Quantidade física ('+line.unit+')';let input=document.createElement('input');input.inputMode='decimal';input.autocomplete='off';input.placeholder='0';input.value=counted(line)?line.physical_quantity:'';input.required=true;input.disabled=!canEdit();lab.append(input);
+  let save=document.createElement('button');save.type='submit';save.textContent=counted(line)?'Atualizar':'Salvar';save.disabled=!canEdit();form.append(lab,save);
+  let audit=document.createElement('small');audit.className='hint';if(counted(line))audit.textContent='Salvo'+(line.counted_by?' por '+line.counted_by:'')+(line.counted_at?' · '+auditTime(line.counted_at):'');
+  form.addEventListener('submit',async e=>{e.preventDefault();if(!canEdit())return;save.disabled=true;setMessage('Salvando…');try{let out=await api('/api/inventory-validations/'+current.id+'/lines/'+line.sku_id+'/count',{method:'PUT',body:JSON.stringify({physical_quantity:requestDecimal(input.value),expected_version:line.version})});Object.assign(line,out.line);current.status=out.status;setMessage('Contagem salva.','ok');if(out.status==='REVIEW'){await load(current.id);return}render()}catch(err){save.disabled=false;if(err.status===409){setMessage(err.message||'Contagem alterada por outro operador. Recarregue.','error')}else setMessage(err.message||'Não foi possível salvar.','error')}});
+  card.append(head,form,audit);linesBox.append(card)
+ })
 }
 async function load(id){
-setMessage('Carregando…');try{let base=await api('/api/inventory-validations/'+id+'/counting');if(base.status==='REVIEW'){current=await api('/api/inventory-validations/'+id+'/review');current.review_mode=true;filter='pending'}else{current=base;current.review_mode=false}idInput.value=current.id;workspace.hidden=false;let u=new URL(location.href);u.searchParams.set('id',current.id);history.replaceState(null,'',u);setMessage('');document.querySelectorAll('[data-inventory-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.inventoryFilter===filter));render()}catch(err){current=null;workspace.hidden=true;setMessage(err.message||'Não foi possível abrir o inventário.','error')}
+ setMessage('Carregando…');
+ try{
+  let base=await api('/api/inventory-validations/'+id+'/counting');
+  if(base.status==='REVIEW'){current=await api('/api/inventory-validations/'+id+'/review');current.review_mode=true;current.history_mode=false;filter='pending'}
+  else if(base.status==='COMPLETED'||base.status==='CANCELLED'){current=await api('/api/inventory-validations/'+id+'/history');current.history_mode=true;current.review_mode=false;filter='all'}
+  else{current=base;current.review_mode=false;current.history_mode=false;filter='pending'}
+  idInput.value=current.id;workspace.hidden=false;let u=new URL(location.href);u.searchParams.set('id',current.id);history.replaceState(null,'',u);setMessage('');document.querySelectorAll('[data-inventory-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.inventoryFilter===filter));render()
+ }catch(err){current=null;workspace.hidden=true;setMessage(err.message||'Não foi possível abrir o inventário.','error')}
 }
 function focusSKU(skuID){filter='all';document.querySelectorAll('[data-inventory-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.inventoryFilter==='all'));search.value='';render();let card=linesBox.querySelector('[data-sku-id="'+skuID+'"]');if(!card)return false;card.classList.add('inventory-highlight');card.scrollIntoView({behavior:'smooth',block:'center'});card.querySelector('input')?.focus();setTimeout(()=>card.classList.remove('inventory-highlight'),1800);return true}
 openForm.addEventListener('submit',e=>{e.preventDefault();let id=Number(idInput.value);if(id>0)load(id)});
 search.addEventListener('input',render);
 document.querySelectorAll('[data-inventory-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.inventoryFilter;document.querySelectorAll('[data-inventory-filter]').forEach(x=>x.classList.toggle('selected',x===b));render()}));
-initScanner('scanInventory',async code=>{if(!current)return;setMessage('Localizando código…');try{let r=await api('/api/inventory-validations/'+current.id+'/lookup?barcode='+encodeURIComponent(code));if(!r.known){setMessage('Código não localizado no catálogo.','error');return}if(!r.in_inventory){setMessage('Item não pertence a este inventário.','error');return}if(focusSKU(r.sku_id))setMessage(reviewMode()?'Item localizado na revisão.':'Item localizado. Informe a quantidade física.','ok')}catch(err){setMessage(err.message||'Não foi possível localizar o código.','error')}});
+initScanner('scanInventory',async code=>{if(!current)return;setMessage('Localizando código…');try{let r=await api('/api/inventory-validations/'+current.id+'/lookup?barcode='+encodeURIComponent(code));if(!r.known){setMessage('Código não localizado no catálogo.','error');return}if(!r.in_inventory){setMessage('Item não pertence a este inventário.','error');return}if(focusSKU(r.sku_id))setMessage(historyMode()?'Item localizado no histórico.':reviewMode()?'Item localizado na revisão.':'Item localizado. Informe a quantidade física.','ok')}catch(err){setMessage(err.message||'Não foi possível localizar o código.','error')}});
 let initial=Number(new URLSearchParams(location.search).get('id'));if(initial>0)load(initial)
 }
 
