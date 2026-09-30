@@ -313,6 +313,7 @@ WHERE validation_id=$1 AND sku_id=$2 AND count_version=$3`, validationID, skuID,
 }
 
 func inventoryReviewLineTx(ctx context.Context, tx *sql.Tx, validationID, skuID int64) (inventoryReviewLine, error) {
-	row := tx.QueryRowContext(ctx, reviewLinesSQL+` AND l.sku_id=$2`, validationID, skuID)
+	q := strings.Replace(reviewLinesSQL, "WHERE l.validation_id=$1", "WHERE l.validation_id=$1 AND l.sku_id=$2", 1)
+	row := tx.QueryRowContext(ctx, q, validationID, skuID)
 	return scanInventoryReviewLine(row)
 }
