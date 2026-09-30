@@ -9,6 +9,6 @@
 <div class="product-scan inventory-tools"><label>Buscar item<input id="inventorySearch" autocomplete="off" placeholder="Descrição, SKU ou código de barras"></label><button id="scanInventory" class="secondary scan-action" type="button"><span class="scan-icon" aria-hidden="true"></span><span>Ler código</span></button></div>
 <section id="scanner" class="scanner" hidden><video id="scanner-video" autoplay muted playsinline webkit-playsinline></video><p id="scanStatus" class="msg" aria-live="polite"></p><button id="scanCancel" class="secondary" type="button">Fechar câmera</button></section>
 <div class="inventory-filter actions" role="group" aria-label="Filtrar itens"><button type="button" class="secondary selected" data-inventory-filter="pending">Pendentes</button><button type="button" class="secondary" data-inventory-filter="counted">Contados</button><button type="button" class="secondary" data-inventory-filter="all">Todos</button></div>
-<p id="inventoryMessage" class="msg" aria-live="polite"></p><div id="inventoryLines" class="inventory-lines"></div>
+<p id="inventoryMessage" class="msg" aria-live="polite"></p><section id="inventoryTerminalActions" class="inventory-terminal-actions" hidden></section><div id="inventoryLines" class="inventory-lines"></div>
 </div></section></main>
 <script src="/static/vendor/zxing-browser.min.js" defer></script><script src="/static/app.js" defer></script></body></html>
