@@ -141,6 +141,7 @@ func newHTTPServer(addr string, a *app) *http.Server {
 	a.registerAuthHandlers(mux)
 	a.registerAccountHandlers(mux)
 	a.registerMovementHandlers(mux)
+	a.registerInventoryHandlers(mux)
 
 	return &http.Server{
 		Addr:              addr,
