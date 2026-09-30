@@ -32,3 +32,13 @@
 .inventory-recount-result{margin:10px 0;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--brand-primary-soft)}
 .inventory-recount-form{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
 @media(max-width:600px){.inventory-review-grid{grid-template-columns:1fr}.inventory-review-grid>div{display:flex;justify-content:space-between;gap:10px;align-items:baseline}}
+
+.inventory-terminal-actions{display:grid;gap:12px;margin:12px 0 16px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-secondary)}
+.inventory-terminal-form{display:grid;gap:10px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+.inventory-terminal-form label{margin:0}
+.inventory-terminal-form textarea{width:100%;resize:vertical}
+.inventory-terminal-form button{justify-self:start;min-width:190px}
+.inventory-history-audit{display:grid;gap:4px}
+.inventory-history-audit p{margin:0}
+.inventory-history-audit .hint{margin-top:8px}
+@media(max-width:600px){.inventory-terminal-form button{width:100%}}
