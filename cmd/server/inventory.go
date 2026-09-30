@@ -58,6 +58,7 @@ func (a *app) registerInventoryHandlers(mux *http.ServeMux) {
 	a.registerInventoryCountingHandlers(mux)
 	a.registerInventoryReviewHandlers(mux)
 	a.registerInventoryTerminalHandlers(mux)
+	a.registerInventoryAdminHandlers(mux)
 }
 
 func (a *app) handleCreateTotalInventory(w http.ResponseWriter, r *http.Request) {
