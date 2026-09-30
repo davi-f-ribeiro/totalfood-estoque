@@ -1,7 +1,7 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><title>{{.Title}} · Estoque</title><link rel="stylesheet" href="/static/app.css"></head><body>
 <header class="top"><div class="brand"><span class="brand-slot" aria-hidden="true"></span><span class="brand-copy"><strong>Gestão de Estoque</strong><small>Qualidade todo dia!</small></span></div><details class="account"><summary>{{.User.Login}}</summary><div><button id="changePasswordOpen" class="linkish" type="button">Alterar senha</button><button id="logout" class="linkish" type="button">Sair</button><p id="accountStatus" class="msg" aria-live="polite"></p></div></details></header>
 <nav class="nav"><a href="/stock">Estoque</a>{{if .CanInventory}}<a href="/inventory" aria-current="page">Validação de Estoque</a>{{end}}<a href="/entry">Entrada</a><a href="/exit">Saída</a><a href="/transfer">Transferir</a><a href="/catalog">Catálogo</a><a href="/assets">Patrimônio</a>{{if .CanAdmin}}<a href="/admin">Administração</a>{{end}}</nav>
-<main class="main inventory-shell">
+<main class="main inventory-shell" data-can-write="{{.CanInventoryWrite}}">
 <section class="panel inventory-home">
 <div class="section-heading"><div><h1>Validação de Estoque</h1><p class="hint">Crie, localize e retome inventários sem alterar o saldo operacional.</p></div></div>
 {{if .CanInventoryWrite}}
