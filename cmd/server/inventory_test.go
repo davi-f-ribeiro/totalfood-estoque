@@ -184,6 +184,8 @@ func TestBlindPayloadRejectsClientSelectionControls(t *testing.T) {
 		`{"quantity":2}`,
 		`{"sku_id":3}`,
 		`{"seed":"x"}`,
+		`{"system_quantity_snapshot":"5"}`,
+		`{"snapshot_at":"2026-09-30T10:00:00Z"}`,
 	} {
 		req := httptest.NewRequest(http.MethodPost, "/api/inventory-validations/blind", strings.NewReader(body))
 		rec := httptest.NewRecorder()
@@ -304,7 +306,7 @@ func TestBlindSKUHistoricalPriority(t *testing.T) {
 	tx, _ := e.db.BeginTx(ctx, nil)
 	selected, err := selectBlindSKUs(ctx, tx, wh, 1)
 	tx.Rollback()
-	if err != nil || len(selected) != 1 || selected[0] != aSKU {
+	if err != nil || len(selected) != 1 || selected[0].SKUID != aSKU {
 		t.Fatalf("never-selected SKU must win: selected=%v err=%v", selected, err)
 	}
 
@@ -312,7 +314,7 @@ func TestBlindSKUHistoricalPriority(t *testing.T) {
 	tx, _ = e.db.BeginTx(ctx, nil)
 	selected, err = selectBlindSKUs(ctx, tx, wh, 1)
 	tx.Rollback()
-	if err != nil || len(selected) != 1 || selected[0] != bSKU {
+	if err != nil || len(selected) != 1 || selected[0].SKUID != bSKU {
 		t.Fatalf("oldest SKU must win: selected=%v err=%v", selected, err)
 	}
 }
@@ -359,7 +361,10 @@ func TestInventorySelectionAtomicity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = persistInventorySelection(ctx, tx, "TOTAL", e.userID, wh, []int64{sku, sku})
+	_, err = persistInventorySelection(ctx, tx, "TOTAL", e.userID, wh, time.Now(), []inventorySnapshotLine{
+		{SKUID: sku, Quantity: "1.000"},
+		{SKUID: sku, Quantity: "1.000"},
+	})
 	if err == nil {
 		t.Fatal("expected duplicate SKU insertion to fail")
 	}
