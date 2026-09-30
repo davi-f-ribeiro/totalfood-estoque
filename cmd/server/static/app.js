@@ -87,5 +87,44 @@ document.getElementById('adminSavePerms').addEventListener('click',async()=>{try
 
 function initAccount(){document.querySelectorAll('.nav a').forEach(a=>{if(a.getAttribute('href')===location.pathname)a.setAttribute('aria-current','page')});let open=document.getElementById('changePasswordOpen');if(!open)return;let panel=open.parentElement,status=document.getElementById('accountStatus');open.addEventListener('click',()=>{if(document.getElementById('changePasswordForm'))return;let f=document.createElement('form');f.id='changePasswordForm';f.className='grid';let current=document.createElement('input');current.type='password';current.autocomplete='current-password';current.placeholder='Senha atual';current.required=true;let next=document.createElement('input');next.type='password';next.autocomplete='new-password';next.placeholder='Nova senha';next.required=true;let confirm=document.createElement('input');confirm.type='password';confirm.autocomplete='new-password';confirm.placeholder='Confirmar nova senha';confirm.required=true;let save=document.createElement('button');save.type='submit';save.textContent='Salvar senha';f.append(current,next,confirm,save);panel.insertBefore(f,status);f.addEventListener('submit',async e=>{e.preventDefault();status.className='msg';status.textContent='Salvando…';try{await api('/api/me/password',{method:'PATCH',body:JSON.stringify({current_password:current.value,new_password:next.value,confirm_password:confirm.value})});status.className='msg ok';status.textContent='Senha alterada.';f.remove()}catch(err){status.className='msg error';status.textContent=err.message}})})}
 
+
+function initInventory(){
+let openForm=document.getElementById('inventoryOpenForm'),workspace=document.getElementById('inventoryWorkspace');if(!openForm||!workspace)return;
+let idInput=document.getElementById('inventoryId'),linesBox=document.getElementById('inventoryLines'),message=document.getElementById('inventoryMessage'),search=document.getElementById('inventorySearch'),mode=document.getElementById('inventoryMode'),progressText=document.getElementById('inventoryProgress'),progressBar=document.getElementById('inventoryProgressBar'),statusText=document.getElementById('inventoryStatusText');
+let current=null,filter='pending';
+function setMessage(text,kind=''){message.className='msg'+(kind?' '+kind:'');message.textContent=text||''}
+function statusLabel(s){return ({OPEN:'Aberto',COUNTING:'Em contagem',REVIEW:'Em revisão',COMPLETED:'Concluído',CANCELLED:'Cancelado'})[s]||s}
+function counted(line){return line.physical_quantity!==null&&line.physical_quantity!==undefined}
+function canEdit(){return current&&(current.status==='OPEN'||current.status==='COUNTING')}
+function matches(line){let q=normalizeBarcode(search.value).toLowerCase();if(!q)return true;return [line.description,line.code,line.barcode,String(line.sku_id)].some(v=>String(v||'').toLowerCase().includes(q))}
+function updateHeader(){if(!current)return;progressText.textContent=current.counted+' de '+current.total+' itens contados';progressBar.value=current.progress_percent||0;statusText.textContent=statusLabel(current.status)+' · '+(current.progress_percent||0)+'%';mode.hidden=false;mode.textContent=current.type}
+function recompute(){current.counted=current.lines.filter(counted).length;current.total=current.lines.length;current.progress_percent=current.total?Math.floor(current.counted*100/current.total):0}
+function render(){
+if(!current)return;recompute();updateHeader();linesBox.textContent='';
+let rows=current.lines.filter(line=>matches(line)&&(filter==='all'||(filter==='counted'?counted(line):!counted(line))));
+if(!rows.length){let p=document.createElement('p');p.className='catalog-empty';p.textContent='Nenhum item neste filtro.';linesBox.append(p);return}
+rows.forEach(line=>{
+ let card=document.createElement('article');card.className='inventory-line';card.dataset.skuId=line.sku_id;
+ let head=document.createElement('div');head.className='inventory-line-head';
+ let title=document.createElement('div');let strong=document.createElement('strong');strong.textContent=line.description;let meta=document.createElement('small');meta.textContent='SKU '+line.code+(line.barcode?' · '+line.barcode:'')+' · '+line.unit;title.append(strong,meta);
+ let badge=document.createElement('span');badge.className='badge';badge.textContent=counted(line)?'Contado':'Pendente';head.append(title,badge);
+ let form=document.createElement('form');form.className='inventory-count-form';let lab=document.createElement('label');lab.textContent='Quantidade física ('+line.unit+')';let input=document.createElement('input');input.inputMode='decimal';input.autocomplete='off';input.placeholder='0';input.value=counted(line)?line.physical_quantity:'';input.required=true;input.disabled=!canEdit();lab.append(input);
+ let save=document.createElement('button');save.type='submit';save.textContent=counted(line)?'Atualizar':'Salvar';save.disabled=!canEdit();form.append(lab,save);
+ let audit=document.createElement('small');audit.className='hint';if(counted(line))audit.textContent='Salvo'+(line.counted_by?' por '+line.counted_by:'')+(line.counted_at?' · '+new Date(line.counted_at).toLocaleString('pt-BR'):'');
+ form.addEventListener('submit',async e=>{e.preventDefault();if(!canEdit())return;save.disabled=true;setMessage('Salvando…');try{let out=await api('/api/inventory-validations/'+current.id+'/lines/'+line.sku_id+'/count',{method:'PUT',body:JSON.stringify({physical_quantity:requestDecimal(input.value),expected_version:line.version})});Object.assign(line,out.line);current.status=out.status;setMessage('Contagem salva.','ok');render()}catch(err){save.disabled=false;if(err.status===409){setMessage(err.message||'Contagem alterada por outro operador. Recarregue.','error')}else setMessage(err.message||'Não foi possível salvar.','error')}});
+ card.append(head,form,audit);linesBox.append(card)
+});
+}
+async function load(id){
+setMessage('Carregando…');try{current=await api('/api/inventory-validations/'+id+'/counting');idInput.value=current.id;workspace.hidden=false;let u=new URL(location.href);u.searchParams.set('id',current.id);history.replaceState(null,'',u);setMessage('');render()}catch(err){current=null;workspace.hidden=true;setMessage(err.message||'Não foi possível abrir o inventário.','error')}
+}
+function focusSKU(skuID){filter='all';document.querySelectorAll('[data-inventory-filter]').forEach(b=>b.classList.toggle('selected',b.dataset.inventoryFilter==='all'));search.value='';render();let card=linesBox.querySelector('[data-sku-id="'+skuID+'"]');if(!card)return false;card.classList.add('inventory-highlight');card.scrollIntoView({behavior:'smooth',block:'center'});card.querySelector('input')?.focus();setTimeout(()=>card.classList.remove('inventory-highlight'),1800);return true}
+openForm.addEventListener('submit',e=>{e.preventDefault();let id=Number(idInput.value);if(id>0)load(id)});
+search.addEventListener('input',render);
+document.querySelectorAll('[data-inventory-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.inventoryFilter;document.querySelectorAll('[data-inventory-filter]').forEach(x=>x.classList.toggle('selected',x===b));render()}));
+initScanner('scanInventory',async code=>{if(!current)return;setMessage('Localizando código…');try{let r=await api('/api/inventory-validations/'+current.id+'/lookup?barcode='+encodeURIComponent(code));if(!r.known){setMessage('Código não localizado no catálogo.','error');return}if(!r.in_inventory){setMessage('Item não pertence a este inventário.','error');return}if(focusSKU(r.sku_id))setMessage('Item localizado. Informe a quantidade física.','ok')}catch(err){setMessage(err.message||'Não foi possível localizar o código.','error')}});
+let initial=Number(new URLSearchParams(location.search).get('id'));if(initial>0)load(initial)
+}
+
 function initForcedPassword(){let f=document.getElementById('forcedPasswordForm');if(!f)return;let st=document.getElementById('forcedPasswordStatus');f.addEventListener('submit',async e=>{e.preventDefault();st.className='msg';st.textContent='Salvando…';try{await api('/api/me/password',{method:'PATCH',body:JSON.stringify({current_password:forcedCurrent.value,new_password:forcedNew.value,confirm_password:forcedConfirm.value})});st.className='msg ok';st.textContent='Senha alterada.';location.href='/stock'}catch(err){st.className='msg error';st.textContent=err.message}})}
-initForcedPassword();initAccount();initStock();initMovement();initCatalog();initFiscal();initAssets();initAdmin();window.addEventListener('online',()=>document.getElementById('movementForm')?.requestSubmit());
+initForcedPassword();initAccount();initStock();initMovement();initInventory();initCatalog();initFiscal();initAssets();initAdmin();window.addEventListener('online',()=>document.getElementById('movementForm')?.requestSubmit());
