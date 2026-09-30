@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -153,7 +154,7 @@ func decodeCountJSON(w http.ResponseWriter, r *http.Request, dst *inventoryCount
 		return false
 	}
 	var extra any
-	if err := dec.Decode(&extra); err == nil {
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		writeJSONError(w, http.StatusBadRequest, "JSON inválido.")
 		return false
 	}
