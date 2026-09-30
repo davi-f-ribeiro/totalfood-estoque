@@ -2,6 +2,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "os"
     "path/filepath"
     "testing"
@@ -69,5 +70,59 @@ func TestInventoryFoundationDoesNotCreateMovements(t *testing.T) {
     }
     if movementLinesBefore != movementLinesAfter {
         t.Fatalf("inventory foundation changed movement_lines: before=%d after=%d", movementLinesBefore, movementLinesAfter)
+    }
+}
+
+
+func TestInventoryFoundationMigrationAppliesIncrementally(t *testing.T) {
+    if os.Getenv("TEST_DATABASE_URL") == "" {
+        t.Skip("TEST_DATABASE_URL is required for PostgreSQL integration check")
+    }
+
+    db := openTestDatabase(t)
+    ctx := context.Background()
+    migrationsDir := filepath.Join("..", "..", "migrations")
+
+    baseDir := t.TempDir()
+    for i := 1; i <= 13; i++ {
+        pattern := filepath.Join(migrationsDir, fmt.Sprintf("%03d_*.sql", i))
+        matches, err := filepath.Glob(pattern)
+        if err != nil || len(matches) != 1 {
+            t.Fatalf("resolve migration %03d: matches=%v err=%v", i, matches, err)
+        }
+        body, err := os.ReadFile(matches[0])
+        if err != nil {
+            t.Fatalf("read %s: %v", matches[0], err)
+        }
+        if err := os.WriteFile(filepath.Join(baseDir, filepath.Base(matches[0])), body, 0o600); err != nil {
+            t.Fatalf("copy base migration: %v", err)
+        }
+    }
+    if err := runMigrations(ctx, db, baseDir); err != nil {
+        t.Fatalf("apply migrations 001-013: %v", err)
+    }
+
+    incrementalDir := t.TempDir()
+    migration014 := filepath.Join(migrationsDir, "014_inventory_validation_foundation.sql")
+    body, err := os.ReadFile(migration014)
+    if err != nil {
+        t.Fatalf("read migration 014: %v", err)
+    }
+    if err := os.WriteFile(filepath.Join(incrementalDir, filepath.Base(migration014)), body, 0o600); err != nil {
+        t.Fatalf("copy migration 014: %v", err)
+    }
+    if err := runMigrations(ctx, db, incrementalDir); err != nil {
+        t.Fatalf("apply migration 014 incrementally: %v", err)
+    }
+
+    var validationsTable, linesTable bool
+    if err := db.QueryRowContext(ctx, `SELECT to_regclass('inventory_validations') IS NOT NULL`).Scan(&validationsTable); err != nil {
+        t.Fatalf("check inventory_validations: %v", err)
+    }
+    if err := db.QueryRowContext(ctx, `SELECT to_regclass('inventory_validation_lines') IS NOT NULL`).Scan(&linesTable); err != nil {
+        t.Fatalf("check inventory_validation_lines: %v", err)
+    }
+    if !validationsTable || !linesTable {
+        t.Fatalf("incremental migration did not create inventory tables")
     }
 }
