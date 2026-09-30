@@ -231,7 +231,9 @@ func inventoryEligibility(ctx context.Context, q inventoryQueryer, warehouseID i
 SELECT s.id,
        COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS balance,
        s.active,
-       i.active
+       i.active,
+       COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) > 0 AS positive_balance,
+       COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < 0 AS negative_balance
 FROM product_skus s
 JOIN inventory_items i ON i.id=s.item_id
 LEFT JOIN movement_lines ml ON ml.sku_id=s.id AND ml.warehouse_id=$1
@@ -245,11 +247,8 @@ ORDER BY s.id`, warehouseID)
 	out := []inventoryEligibilityRow{}
 	for rows.Next() {
 		var row inventoryEligibilityRow
-		if err := rows.Scan(&row.SKUID, &row.Balance, &row.SKUActive, &row.ItemActive); err != nil {
-			return nil, err
-		}
 		var positive, negative bool
-		if err := qBalanceFlags(ctx, q, row.Balance, &positive, &negative); err != nil {
+		if err := rows.Scan(&row.SKUID, &row.Balance, &row.SKUActive, &row.ItemActive, &positive, &negative); err != nil {
 			return nil, err
 		}
 		switch {
@@ -268,12 +267,6 @@ ORDER BY s.id`, warehouseID)
 		out = append(out, row)
 	}
 	return out, rows.Err()
-}
-
-func qBalanceFlags(ctx context.Context, q interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, balance string, positive, negative *bool) error {
-	return q.QueryRowContext(ctx, `SELECT $1::numeric > 0, $1::numeric < 0`, balance).Scan(positive, negative)
 }
 
 func blindSampleSize(eligibleCount int) int {
