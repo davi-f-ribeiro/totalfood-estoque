@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"database/sql"
 	"fmt"
 	"os"
@@ -146,9 +147,13 @@ func TestBlindPersistsSnapshotWithoutOperationalLeak(t *testing.T) {
 	if fmt.Sprint(loaded.SKUIDs) != fmt.Sprint(res.SKUIDs) {
 		t.Fatalf("selection changed on read: created=%v loaded=%v", res.SKUIDs, loaded.SKUIDs)
 	}
-	// The operational DTO intentionally contains no system quantity field.
-	if fmt.Sprintf("%+v", loaded) == "" {
-		t.Fatal("unexpected empty result")
+	payload, err := json.Marshal(loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), "system_quantity_snapshot") ||
+		strings.Contains(string(payload), "snapshot_at") {
+		t.Fatalf("BLIND operational payload leaked snapshot data: %s", payload)
 	}
 }
 
@@ -380,5 +385,60 @@ SELECT EXISTS (
 	}
 	if !snapshotAtExists {
 		t.Fatal("migration 015 did not create snapshot_at")
+	}
+}
+
+
+func TestInventorySnapshotDoesNotBlockOperationalExit(t *testing.T) {
+	e := newInventoryTestEnv(t)
+	ctx := context.Background()
+	wh := e.warehouse(t, "nonblocking-engine", true)
+	sku := e.sku(t, "nonblocking-engine-sku", true, true)
+	e.movementDecimal(t, sku, wh, "IN", "10.000")
+
+	second := openInventorySecondConnection(t, e.db)
+	tx, _, err := e.a.beginInventorySnapshotTx(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if err := lockInventorySelection(ctx, tx); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		app2 := &app{db: second}
+		_, err := app2.createExit(context.Background(), movementRequest{
+			OperationID: "inventory-nonblocking-exit-" + t.Name(),
+			SKUID:       sku,
+			WarehouseID: wh,
+			Quantity:    "3.000",
+			UserID:      e.userID,
+		}, "inventory-nonblocking-hash")
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("operational createExit failed while snapshot was open: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("operational createExit was blocked by inventory snapshot")
+	}
+
+	rows, err := inventoryEligibility(ctx, tx, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshotQty string
+	for _, row := range rows {
+		if row.SKUID == sku {
+			snapshotQty = row.Balance
+		}
+	}
+	if snapshotQty != "10.000" {
+		t.Fatalf("repeatable-read view changed after operational exit: %s", snapshotQty)
 	}
 }
