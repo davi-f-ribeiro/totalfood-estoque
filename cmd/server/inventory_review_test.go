@@ -83,8 +83,14 @@ func TestInventoryReviewMathExactNoTolerance(t *testing.T) {
 		t.Fatalf("review must prioritize divergences: %+v", view.Lines)
 	}
 
-	_, decimalInv, decimalSKUs := setupTotalCounting(t, e, 1, "10.125")
-	countInventoryToReview(t, e, decimalInv, map[int64]string{decimalSKUs[0]: "10.124"})
+	decimalWH := e.warehouse(t, "review-decimal", true)
+	decimalSKU := e.sku(t, "review-decimal-sku", true, true)
+	e.movementDecimal(t, decimalSKU, decimalWH, "IN", "10.125")
+	decimalInv, err := e.a.createTotalInventory(ctx, e.userID, decimalWH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	countInventoryToReview(t, e, decimalInv, map[int64]string{decimalSKU: "10.124"})
 	decimalView, err := e.a.getInventoryReviewView(ctx, decimalInv.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +287,7 @@ func TestBlindReviewLeakBoundaryHTTP(t *testing.T) {
 		t.Fatalf("review status=%d body=%s", reviewRec.Code, reviewRec.Body.String())
 	}
 	after := reviewRec.Body.String()
-	for _, required := range []string{"987.321", "system_quantity_snapshot", "difference", "MATCH"} {
+	for _, required := range []string{"987.321", "reference_quantity", "difference", "MATCH"} {
 		if !strings.Contains(after, required) {
 			t.Fatalf("authorized review missing %q: %s", required, after)
 		}
