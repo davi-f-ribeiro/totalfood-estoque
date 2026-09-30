@@ -455,3 +455,54 @@ func TestBlindSelectionHasNoDuplicates(t *testing.T) {
 		}
 	}
 }
+
+
+func TestBlindUsesOnlyEligibleWarehouseAndSKUs(t *testing.T) {
+	e := newInventoryTestEnv(t)
+	ctx := context.Background()
+
+	good := e.warehouse(t, "good", true)
+	single := e.warehouse(t, "single", true)
+	inactive := e.warehouse(t, "inactive-blind", false)
+
+	goodEligible := map[int64]bool{}
+	for i := 0; i < 4; i++ {
+		sku := e.sku(t, fmt.Sprintf("good-%d", i), true, true)
+		goodEligible[sku] = true
+		e.movement(t, sku, good, "IN", 5)
+	}
+
+	zero := e.sku(t, "good-zero", true, true)
+	e.movement(t, zero, good, "IN", 2)
+	e.movement(t, zero, good, "OUT", 2)
+	negative := e.sku(t, "good-negative", true, true)
+	e.movement(t, negative, good, "OUT", 1)
+	inactiveSKU := e.sku(t, "good-inactive-sku", true, false)
+	e.movement(t, inactiveSKU, good, "IN", 3)
+	inactiveItem := e.sku(t, "good-inactive-item", false, true)
+	e.movement(t, inactiveItem, good, "IN", 3)
+
+	singleSKU := e.sku(t, "single-only", true, true)
+	e.movement(t, singleSKU, single, "IN", 5)
+
+	for i := 0; i < 3; i++ {
+		sku := e.sku(t, fmt.Sprintf("inactive-wh-%d", i), true, true)
+		e.movement(t, sku, inactive, "IN", 5)
+	}
+
+	res, err := e.a.createBlindInventory(ctx, e.userID)
+	if err != nil {
+		t.Fatalf("blind: %v", err)
+	}
+	if res.WarehouseID != good {
+		t.Fatalf("selected warehouse=%d want=%d", res.WarehouseID, good)
+	}
+	if len(res.SKUIDs) != 2 {
+		t.Fatalf("sample=%v want 2 SKUs", res.SKUIDs)
+	}
+	for _, sku := range res.SKUIDs {
+		if !goodEligible[sku] {
+			t.Fatalf("BLIND included ineligible SKU %d; selection=%v", sku, res.SKUIDs)
+		}
+	}
+}
