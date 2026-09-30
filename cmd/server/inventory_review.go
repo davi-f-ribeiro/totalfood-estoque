@@ -26,7 +26,7 @@ type inventoryReviewLine struct {
 	FirstQuantity     string     `json:"first_quantity"`
 	FirstCountedAt    *time.Time `json:"first_counted_at"`
 	FirstCountedBy    string     `json:"first_counted_by,omitempty"`
-	SnapshotQuantity  string     `json:"system_quantity_snapshot"`
+	SnapshotQuantity  string     `json:"reference_quantity"`
 	EffectiveQuantity string     `json:"effective_quantity"`
 	Difference        string     `json:"difference"`
 	State             string     `json:"state"`
