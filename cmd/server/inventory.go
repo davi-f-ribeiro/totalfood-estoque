@@ -56,6 +56,7 @@ func (a *app) registerInventoryHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/inventory-validations/blind", a.requireAuth("inventory_validation", "write", a.handleCreateBlindInventory))
 	mux.HandleFunc("GET /api/inventory-validations/{id}", a.requireAuth("inventory_validation", "read", a.handleGetInventoryValidation))
 	a.registerInventoryCountingHandlers(mux)
+	a.registerInventoryReviewHandlers(mux)
 }
 
 func (a *app) handleCreateTotalInventory(w http.ResponseWriter, r *http.Request) {
