@@ -42,3 +42,24 @@
 .inventory-history-audit p{margin:0}
 .inventory-history-audit .hint{margin-top:8px}
 @media(max-width:600px){.inventory-terminal-form button{width:100%}}
+
+.inventory-shell{display:grid;gap:16px}
+.inventory-home{display:grid;gap:16px}
+.inventory-create-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.inventory-create-card{display:grid;align-content:start;gap:8px;padding:14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-secondary)}
+.inventory-create-card h2,.inventory-create-card p{margin:0}
+.inventory-create-card label{margin:4px 0 0}
+.inventory-list-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px;align-items:end}
+.inventory-list-filters label{margin:0}
+.inventory-list-filters .actions{margin:0;align-items:end}
+.inventory-admin-list{display:grid;gap:8px}
+.inventory-admin-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+.inventory-admin-card strong,.inventory-admin-card small{display:block}
+.inventory-admin-card small{color:var(--text-muted);margin-top:3px}
+.inventory-admin-card button{min-width:160px}
+@media(max-width:767px){
+ .inventory-create-grid,.inventory-list-filters{grid-template-columns:1fr}
+ .inventory-admin-card{grid-template-columns:1fr}
+ .inventory-admin-card button{width:100%}
+ .inventory-list-filters .actions button{flex:1 1 120px}
+}
