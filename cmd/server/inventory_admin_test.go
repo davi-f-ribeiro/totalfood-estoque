@@ -97,6 +97,14 @@ func TestInventoryGate07ACLNavigationAndAdminPermissions(t *testing.T) {
 	wh:=e.warehouse(t,"acl-total",true); sku:=e.sku(t,"acl-total-sku",true,true); e.movementDecimal(t,sku,wh,"IN","5.000")
 	total:=g7serve(e.a,http.MethodPost,"/api/inventory-validations/total",fmt.Sprintf("{\"warehouse_id\":%d}",wh),rwToken,rwCSRF)
 	if total.Code!=http.StatusCreated { t.Fatalf("rw create total=%d body=%s",total.Code,total.Body.String()) }
+
+	blindWH:=e.warehouse(t,"acl-blind",true)
+	blindA:=e.sku(t,"acl-blind-a",true,true)
+	blindB:=e.sku(t,"acl-blind-b",true,true)
+	e.movementDecimal(t,blindA,blindWH,"IN","4.000")
+	e.movementDecimal(t,blindB,blindWH,"IN","4.000")
+	blind:=g7serve(e.a,http.MethodPost,"/api/inventory-validations/blind","{}",rwToken,rwCSRF)
+	if blind.Code!=http.StatusCreated { t.Fatalf("rw create blind=%d body=%s",blind.Code,blind.Body.String()) }
 }
 
 func TestInventoryGate07ListBlindSecrecyAndFilters(t *testing.T) {
@@ -135,6 +143,9 @@ func TestInventoryGate07ResumeReviewHistory(t *testing.T){
 	if _,err:=e.a.completeInventory(ctx,inv.ID,e.userID,"");err!=nil{t.Fatal(err)}
 	h,err:=e.a.getInventoryHistory(ctx,inv.ID);if err!=nil{t.Fatal(err)}
 	if h.Status!="COMPLETED"{t.Fatalf("history status=%s",h.Status)}
+	token,_:=inventorySession(t,e.db,e.userID)
+	historyHTTP:=g7serve(e.a,http.MethodGet,fmt.Sprintf("/api/inventory-validations/%d/history",inv.ID),"",token,"")
+	if historyHTTP.Code!=http.StatusOK || !strings.Contains(historyHTTP.Body.String(),"\"status\":\"COMPLETED\""){t.Fatalf("history HTTP=%d body=%s",historyHTTP.Code,historyHTTP.Body.String())}
 }
 
 func TestInventoryGate07AntiMovement(t *testing.T){
