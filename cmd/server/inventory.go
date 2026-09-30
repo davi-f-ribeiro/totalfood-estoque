@@ -19,6 +19,11 @@ var (
 	errInventoryValidationNotFound  = errors.New("inventory validation not found")
 )
 
+type inventoryQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 type inventoryEligibilityRow struct {
 	SKUID     int64
 	Balance   string
@@ -221,9 +226,7 @@ func validateInventoryWarehouse(ctx context.Context, q interface {
 	return nil
 }
 
-func inventoryEligibility(ctx context.Context, q interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}, warehouseID int64) ([]inventoryEligibilityRow, error) {
+func inventoryEligibility(ctx context.Context, q inventoryQueryer, warehouseID int64) ([]inventoryEligibilityRow, error) {
 	rows, err := q.QueryContext(ctx, `
 SELECT s.id,
        COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS balance,
