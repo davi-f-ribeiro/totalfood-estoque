@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"time"
 )
 
 var (
@@ -31,6 +32,11 @@ type inventoryEligibilityRow struct {
 	ItemActive bool
 	Eligible  bool
 	Reason    string
+}
+
+type inventorySnapshotLine struct {
+	SKUID    int64
+	Quantity string
 }
 
 type inventorySelection struct {
@@ -132,7 +138,7 @@ func writeInventoryResponse(w http.ResponseWriter, res inventorySelection, err e
 }
 
 func (a *app) createTotalInventory(ctx context.Context, responsibleUserID, warehouseID int64) (inventorySelection, error) {
-	tx, err := a.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	tx, snapshotAt, err := a.beginInventorySnapshotTx(ctx)
 	if err != nil {
 		return inventorySelection{}, err
 	}
@@ -148,18 +154,18 @@ func (a *app) createTotalInventory(ctx context.Context, responsibleUserID, wareh
 	if err != nil {
 		return inventorySelection{}, err
 	}
-	skuIDs := make([]int64, 0, len(rows))
+	lines := make([]inventorySnapshotLine, 0, len(rows))
 	for _, row := range rows {
 		if row.Eligible {
-			skuIDs = append(skuIDs, row.SKUID)
+			lines = append(lines, inventorySnapshotLine{SKUID: row.SKUID, Quantity: row.Balance})
 		}
 	}
-	if len(skuIDs) == 0 {
+	if len(lines) == 0 {
 		return inventorySelection{}, errInventoryNoEligibleSKUs
 	}
-	sort.Slice(skuIDs, func(i, j int) bool { return skuIDs[i] < skuIDs[j] })
+	sort.Slice(lines, func(i, j int) bool { return lines[i].SKUID < lines[j].SKUID })
 
-	res, err := persistInventorySelection(ctx, tx, "TOTAL", responsibleUserID, warehouseID, skuIDs)
+	res, err := persistInventorySelection(ctx, tx, "TOTAL", responsibleUserID, warehouseID, snapshotAt, lines)
 	if err != nil {
 		return inventorySelection{}, err
 	}
@@ -170,7 +176,7 @@ func (a *app) createTotalInventory(ctx context.Context, responsibleUserID, wareh
 }
 
 func (a *app) createBlindInventory(ctx context.Context, responsibleUserID int64) (inventorySelection, error) {
-	tx, err := a.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	tx, snapshotAt, err := a.beginInventorySnapshotTx(ctx)
 	if err != nil {
 		return inventorySelection{}, err
 	}
@@ -187,14 +193,14 @@ func (a *app) createBlindInventory(ctx context.Context, responsibleUserID int64)
 	if sampleSize < 1 {
 		return inventorySelection{}, errInventoryNoBlindWarehouse
 	}
-	skuIDs, err := selectBlindSKUs(ctx, tx, warehouseID, sampleSize)
+	lines, err := selectBlindSKUs(ctx, tx, warehouseID, sampleSize)
 	if err != nil {
 		return inventorySelection{}, err
 	}
-	if len(skuIDs) != sampleSize {
+	if len(lines) != sampleSize {
 		return inventorySelection{}, errInventoryNoEligibleSKUs
 	}
-	res, err := persistInventorySelection(ctx, tx, "BLIND", responsibleUserID, warehouseID, skuIDs)
+	res, err := persistInventorySelection(ctx, tx, "BLIND", responsibleUserID, warehouseID, snapshotAt, lines)
 	if err != nil {
 		return inventorySelection{}, err
 	}
@@ -202,6 +208,20 @@ func (a *app) createBlindInventory(ctx context.Context, responsibleUserID int64)
 		return inventorySelection{}, err
 	}
 	return res, nil
+}
+
+func (a *app) beginInventorySnapshotTx(ctx context.Context) (*sql.Tx, time.Time, error) {
+	tx, err := a.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	var snapshotAt time.Time
+	var snapshotID string
+	if err := tx.QueryRowContext(ctx, `SELECT statement_timestamp(), pg_current_snapshot()::text`).Scan(&snapshotAt, &snapshotID); err != nil {
+		_ = tx.Rollback()
+		return nil, time.Time{}, err
+	}
+	return tx, snapshotAt, nil
 }
 
 func lockInventorySelection(ctx context.Context, tx *sql.Tx) error {
@@ -336,7 +356,7 @@ LIMIT 1`).Scan(&warehouseID, &eligibleCount)
 	return warehouseID, eligibleCount, err
 }
 
-func selectBlindSKUs(ctx context.Context, tx *sql.Tx, warehouseID int64, sampleSize int) ([]int64, error) {
+func selectBlindSKUs(ctx context.Context, tx *sql.Tx, warehouseID int64, sampleSize int) ([]inventorySnapshotLine, error) {
 	rows, err := tx.QueryContext(ctx, `
 WITH balances AS (
     SELECT s.id AS sku_id,
@@ -354,7 +374,7 @@ history AS (
     JOIN inventory_validations v ON v.id=l.validation_id
     GROUP BY l.sku_id
 )
-SELECT b.sku_id
+SELECT b.sku_id, b.balance::text
 FROM balances b
 LEFT JOIN history h ON h.sku_id=b.sku_id
 WHERE b.sku_active=true AND b.item_active=true AND b.balance>0
@@ -364,36 +384,41 @@ LIMIT $2`, warehouseID, sampleSize)
 		return nil, err
 	}
 	defer rows.Close()
-	out := make([]int64, 0, sampleSize)
+	out := make([]inventorySnapshotLine, 0, sampleSize)
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var line inventorySnapshotLine
+		if err := rows.Scan(&line.SKUID, &line.Quantity); err != nil {
 			return nil, err
 		}
-		out = append(out, id)
+		out = append(out, line)
 	}
 	return out, rows.Err()
 }
 
-func persistInventorySelection(ctx context.Context, tx *sql.Tx, typ string, responsibleUserID, warehouseID int64, skuIDs []int64) (inventorySelection, error) {
-	if len(skuIDs) == 0 {
+func persistInventorySelection(ctx context.Context, tx *sql.Tx, typ string, responsibleUserID, warehouseID int64, snapshotAt time.Time, lines []inventorySnapshotLine) (inventorySelection, error) {
+	if len(lines) == 0 {
 		return inventorySelection{}, errInventoryNoEligibleSKUs
 	}
 	var id int64
 	if err := tx.QueryRowContext(ctx, `
-INSERT INTO inventory_validations (type,warehouse_id,status,responsible_user_id,started_at)
-VALUES ($1,$2,'OPEN',$3,now())
-RETURNING id`, typ, warehouseID, responsibleUserID).Scan(&id); err != nil {
+INSERT INTO inventory_validations (type,warehouse_id,status,responsible_user_id,started_at,snapshot_at)
+VALUES ($1,$2,'OPEN',$3,$4,$4)
+RETURNING id`, typ, warehouseID, responsibleUserID, snapshotAt).Scan(&id); err != nil {
 		return inventorySelection{}, err
 	}
-	for _, skuID := range skuIDs {
+	skuIDs := make([]int64, 0, len(lines))
+	for _, line := range lines {
+		if line.Quantity == "" {
+			return inventorySelection{}, errors.New("inventory snapshot quantity is empty")
+		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO inventory_validation_lines (validation_id,sku_id,status)
-VALUES ($1,$2,'OPEN')`, id, skuID); err != nil {
+INSERT INTO inventory_validation_lines (validation_id,sku_id,system_quantity_snapshot,status)
+VALUES ($1,$2,$3::numeric,'OPEN')`, id, line.SKUID, line.Quantity); err != nil {
 			return inventorySelection{}, err
 		}
+		skuIDs = append(skuIDs, line.SKUID)
 	}
-	return inventorySelection{ID: id, Type: typ, WarehouseID: warehouseID, Status: "OPEN", SKUIDs: append([]int64(nil), skuIDs...)}, nil
+	return inventorySelection{ID: id, Type: typ, WarehouseID: warehouseID, Status: "OPEN", SKUIDs: skuIDs}, nil
 }
 
 func (a *app) getInventoryValidation(ctx context.Context, id int64) (inventorySelection, error) {
