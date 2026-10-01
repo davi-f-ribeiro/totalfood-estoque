@@ -29,6 +29,7 @@ type assetRequest struct {
 type assetUpdateRequest struct {
 	AssetTypeID int64  `json:"asset_type_id"`
 	Tag         string `json:"tag"`
+	Version     int64  `json:"version"`
 }
 
 type assetMoveRequest struct {
@@ -91,7 +92,7 @@ func (a *app) handleCreateAssetType(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 409, "tipo patrimonial não salvo")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
 }
 
 func (a *app) handleUpdateAssetType(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +123,7 @@ func (a *app) handleUpdateAssetType(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleAssets(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), `SELECT a.id,a.tag,a.status,COALESCE(a.current_warehouse_id,0),COALESCE(w.name,''),t.id,t.name FROM assets a JOIN asset_types t ON t.id=a.asset_type_id LEFT JOIN warehouses w ON w.id=a.current_warehouse_id WHERE $1='' OR a.tag=$1 OR lower(t.name) LIKE lower($2) ORDER BY a.tag LIMIT 100`, cleanBarcode(r.URL.Query().Get("q")), "%"+cleanBarcode(r.URL.Query().Get("q"))+"%")
+	rows, err := a.db.QueryContext(r.Context(), `SELECT a.id,a.tag,a.status,COALESCE(a.current_warehouse_id,0),COALESCE(w.name,''),t.id,t.name,a.version FROM assets a JOIN asset_types t ON t.id=a.asset_type_id LEFT JOIN warehouses w ON w.id=a.current_warehouse_id WHERE $1='' OR a.tag=$1 OR lower(t.name) LIKE lower($2) ORDER BY a.tag LIMIT 100`, cleanBarcode(r.URL.Query().Get("q")), "%"+cleanBarcode(r.URL.Query().Get("q"))+"%")
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
@@ -130,13 +131,13 @@ func (a *app) handleAssets(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, whID, typeID int64
+		var id, whID, typeID, version int64
 		var tag, status, whName, typeName string
-		if err := rows.Scan(&id, &tag, &status, &whID, &whName, &typeID, &typeName); err != nil {
+		if err := rows.Scan(&id, &tag, &status, &whID, &whName, &typeID, &typeName, &version); err != nil {
 			writeJSONError(w, 500, "internal error")
 			return
 		}
-		out = append(out, map[string]any{"id": id, "tag": tag, "status": status, "warehouse_id": whID, "warehouse": whName, "asset_type_id": typeID, "type": typeName})
+		out = append(out, map[string]any{"id": id, "tag": tag, "status": status, "warehouse_id": whID, "warehouse": whName, "asset_type_id": typeID, "type": typeName, "version": version})
 	}
 	writeJSON(w, 200, out)
 }
@@ -147,7 +148,7 @@ func (a *app) handleAssetLookup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{})
 		return
 	}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT a.id,a.tag,a.status,COALESCE(a.current_warehouse_id,0),COALESCE(w.name,''),t.id,t.name FROM assets a JOIN asset_types t ON t.id=a.asset_type_id LEFT JOIN warehouses w ON w.id=a.current_warehouse_id WHERE a.tag=$1 LIMIT 1`, q)
+	rows, err := a.db.QueryContext(r.Context(), `SELECT a.id,a.tag,a.status,COALESCE(a.current_warehouse_id,0),COALESCE(w.name,''),t.id,t.name,a.version FROM assets a JOIN asset_types t ON t.id=a.asset_type_id LEFT JOIN warehouses w ON w.id=a.current_warehouse_id WHERE a.tag=$1 LIMIT 1`, q)
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
@@ -157,13 +158,13 @@ func (a *app) handleAssetLookup(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 404, "patrimônio não encontrado")
 		return
 	}
-	var id, whID, typeID int64
+	var id, whID, typeID, version int64
 	var tag, status, whName, typeName string
-	if err := rows.Scan(&id, &tag, &status, &whID, &whName, &typeID, &typeName); err != nil {
+	if err := rows.Scan(&id, &tag, &status, &whID, &whName, &typeID, &typeName, &version); err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"id": id, "tag": tag, "status": status, "warehouse_id": whID, "warehouse": whName, "asset_type_id": typeID, "type": typeName})
+	writeJSON(w, 200, map[string]any{"id": id, "tag": tag, "status": status, "warehouse_id": whID, "warehouse": whName, "asset_type_id": typeID, "type": typeName, "version": version})
 }
 
 func (a *app) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
@@ -200,20 +201,37 @@ func (a *app) handleUpdateAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req assetUpdateRequest
-	if !decodeJSON(w, r, &req) || req.AssetTypeID <= 0 || cleanBarcode(req.Tag) == "" {
+	if !decodeJSON(w, r, &req) || req.AssetTypeID <= 0 || cleanBarcode(req.Tag) == "" || req.Version <= 0 {
 		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	res, err := a.db.ExecContext(r.Context(), `UPDATE assets SET asset_type_id=$1,tag=$2 WHERE id=$3`, req.AssetTypeID, cleanBarcode(req.Tag), id)
+	var currentVersion int64
+	if err := a.db.QueryRowContext(r.Context(), `SELECT version FROM assets WHERE id=$1`, id).Scan(&currentVersion); errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusNotFound, "patrimônio não encontrado")
+		return
+	} else if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if currentVersion != req.Version {
+		writeConcurrentEditError(w)
+		return
+	}
+	var newVersion int64
+	err := a.db.QueryRowContext(r.Context(), `
+UPDATE assets
+SET asset_type_id=$1,tag=$2,version=version+1
+WHERE id=$3 AND version=$4
+RETURNING version`, req.AssetTypeID, cleanBarcode(req.Tag), id, req.Version).Scan(&newVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeConcurrentEditError(w)
+		return
+	}
 	if err != nil {
 		writeAssetError(w, err, "asset update failed")
 		return
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		writeJSONError(w, http.StatusNotFound, "patrimônio não encontrado")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "version": newVersion})
 }
 
 func validAssetReq(req assetRequest) bool {
@@ -316,7 +334,7 @@ func (a *app) changeAssetLocation(ctx context.Context, tag string, req assetMove
 		if origin.Valid && origin.Int64 == req.WarehouseID {
 			return errValidation
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE assets SET current_warehouse_id=$1 WHERE id=$2`, req.WarehouseID, assetID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE assets SET current_warehouse_id=$1,version=version+1 WHERE id=$2`, req.WarehouseID, assetID); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO asset_events (operation_id,request_hash,asset_id,event_type,origin_warehouse_id,destination_warehouse_id,old_status,new_status,user_id) VALUES ($1,$2,$3,'MOVE',$4,$5,$6,$6,$7)`, req.OperationID, hash, assetID, nullInt(origin), req.WarehouseID, status, userID)
@@ -345,7 +363,7 @@ func (a *app) changeAssetStatus(ctx context.Context, tag string, req assetStatus
 		if req.Status == "BAIXADO" {
 			newWh = nil
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE assets SET status=$1,current_warehouse_id=$2 WHERE id=$3`, req.Status, newWh, assetID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE assets SET status=$1,current_warehouse_id=$2,version=version+1 WHERE id=$3`, req.Status, newWh, assetID); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO asset_events (operation_id,request_hash,asset_id,event_type,origin_warehouse_id,destination_warehouse_id,old_status,new_status,user_id) VALUES ($1,$2,$3,'STATUS',$4,$4,$5,$6,$7)`, req.OperationID, hash, assetID, nullInt(wh), old, req.Status, userID)
