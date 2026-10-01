@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-var errWarehouseNotEmpty = errors.New("warehouse not empty")
+var (
+	errWarehouseNotEmpty = errors.New("warehouse not empty")
+	errWarehouseInactive = errors.New("warehouse inactive")
+)
 
 type warehouseAdminRequest struct {
 	Name string `json:"name"`
