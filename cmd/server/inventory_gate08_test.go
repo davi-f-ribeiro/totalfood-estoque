@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -153,5 +154,117 @@ func TestGate08InventoryMigrationsIncrementalAndStartupIdempotent(t *testing.T) 
 	}
 	if movementsBefore != movementsAfter || movementLinesBefore != movementLinesAfter {
 		t.Fatalf("inventory migrations changed movement data: movements %d->%d lines %d->%d", movementsBefore, movementsAfter, movementLinesBefore, movementLinesAfter)
+	}
+}
+
+func inventoryStockBySKUWarehouse(t *testing.T, e inventoryTestEnv) map[string]string {
+	t.Helper()
+	rows, err := e.db.Query(`
+SELECT sku_id::text || ':' || warehouse_id::text,
+       sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END)::text
+FROM movement_lines
+GROUP BY sku_id,warehouse_id
+ORDER BY sku_id,warehouse_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var key, qty string
+		if err := rows.Scan(&key, &qty); err != nil {
+			t.Fatal(err)
+		}
+		out[key] = qty
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestGate08FullLifecycleDoesNotChangeStockBySKUWarehouse(t *testing.T) {
+	e := newInventoryTestEnv(t)
+	ctx := context.Background()
+
+	totalWH := e.warehouse(t, "gate08-total", true)
+	totalA := e.sku(t, "gate08-total-a", true, true)
+	totalB := e.sku(t, "gate08-total-b", true, true)
+	e.movementDecimal(t, totalA, totalWH, "IN", "10.000")
+	e.movementDecimal(t, totalB, totalWH, "IN", "7.500")
+
+	blindWH := e.warehouse(t, "gate08-blind", true)
+	for i := 0; i < 4; i++ {
+		sku := e.sku(t, fmt.Sprintf("gate08-blind-%d", i), true, true)
+		e.movementDecimal(t, sku, blindWH, "IN", fmt.Sprintf("%d.250", i+1))
+	}
+
+	var movementsBefore, linesBefore int64
+	if err := e.db.QueryRow("SELECT count(*) FROM movements").Scan(&movementsBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.QueryRow("SELECT count(*) FROM movement_lines").Scan(&linesBefore); err != nil {
+		t.Fatal(err)
+	}
+	stockBefore := inventoryStockBySKUWarehouse(t, e)
+
+	total, err := e.a.createTotalInventory(ctx, e.userID, totalWH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	countInventoryToReview(t, e, total, map[int64]string{totalA: "8.000", totalB: "7.500"})
+	review, err := e.a.getInventoryReviewView(ctx, total.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	div := reviewBySKU(t, review)[totalA]
+	if _, err := e.a.saveInventoryRecount(ctx, total.ID, totalA, "9.000", div.Version, e.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.completeInventory(ctx, total.ID, e.userID, "Divergência confirmada no Gate 08."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.getInventoryHistory(ctx, total.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := e.db.Exec("UPDATE warehouses SET active=false WHERE id=$1", totalWH); err != nil {
+		t.Fatal(err)
+	}
+	blind, err := e.a.createBlindInventory(ctx, e.userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blind.WarehouseID != blindWH {
+		t.Fatalf("blind warehouse=%d want=%d", blind.WarehouseID, blindWH)
+	}
+	counting, err := e.a.getInventoryCountingView(ctx, blind.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(counting.Lines) == 0 {
+		t.Fatal("blind selection is empty")
+	}
+	line := counting.Lines[0]
+	if _, _, err := e.a.saveInventoryCount(ctx, blind.ID, line.SKUID, "0.000", line.Version, e.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.cancelInventory(ctx, blind.ID, e.userID, "Cancelamento cego durante Gate 08."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.getInventoryHistory(ctx, blind.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	var movementsAfter, linesAfter int64
+	if err := e.db.QueryRow("SELECT count(*) FROM movements").Scan(&movementsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.QueryRow("SELECT count(*) FROM movement_lines").Scan(&linesAfter); err != nil {
+		t.Fatal(err)
+	}
+	stockAfter := inventoryStockBySKUWarehouse(t, e)
+	if movementsBefore != movementsAfter || linesBefore != linesAfter || !reflect.DeepEqual(stockBefore, stockAfter) {
+		t.Fatalf("inventory lifecycle changed stock: movements %d->%d lines %d->%d stock before=%v after=%v", movementsBefore, movementsAfter, linesBefore, linesAfter, stockBefore, stockAfter)
 	}
 }
