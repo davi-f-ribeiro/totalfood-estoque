@@ -63,12 +63,7 @@ func (a *app) handleCatalogOptions(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 500, "Erro interno.")
 		return
 	}
-	items, err := catalogItems(r, a.db, "")
-	if err != nil {
-		writeJSONError(w, 500, "Erro interno.")
-		return
-	}
-	writeJSON(w, 200, map[string]any{"categories": cats, "units": units, "items": items})
+	writeJSON(w, 200, map[string]any{"categories": cats, "units": units})
 }
 
 func simpleRows(r *http.Request, db *sql.DB, q string) ([]map[string]any, error) {
