@@ -12,10 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-var (
-	errWarehouseNotEmpty = errors.New("warehouse not empty")
-	errWarehouseInactive = errors.New("warehouse inactive")
-)
+var errWarehouseInactive = errors.New("warehouse inactive")
 
 type warehouseAdminRequest struct {
 	Name string `json:"name"`
@@ -65,6 +62,10 @@ func (a *app) handleAdminWarehouses(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = append(out, map[string]any{"id": id, "name": name, "active": active, "created_at": created, "nonzero_skus": nonZeroSKUs, "asset_count": assetCount, "empty": nonZeroSKUs == 0 && assetCount == 0})
+	}
+	if err := rows.Err(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 	writeJSON(w, http.StatusOK, out)
 }
