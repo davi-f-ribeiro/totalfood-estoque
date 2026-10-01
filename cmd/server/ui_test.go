@@ -374,3 +374,52 @@ func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 		}
 	}
 }
+
+
+func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join("templates", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	files := []string{"base.html", "stock.html", "movement.html", "catalog.html", "fiscal.html", "assets.html", "inventory.html", "admin.html"}
+	for _, name := range files {
+		body := read(name)
+		if strings.Contains(body, "Validação de Estoque") {
+			t.Fatalf("%s reintroduced obsolete inventory label", name)
+		}
+		if !strings.Contains(body, "Auditoria de Estoque") {
+			t.Fatalf("%s missing Auditoria de Estoque label", name)
+		}
+	}
+	for _, name := range []string{"stock.html", "movement.html", "catalog.html", "fiscal.html", "assets.html", "inventory.html", "admin.html"} {
+		body := read(name)
+		audit := strings.Index(body, `<a href="/inventory"`)
+		admin := strings.Index(body, `<a href="/admin"`)
+		if audit < 0 || admin < 0 || audit > admin {
+			t.Fatalf("%s must place Auditoria de Estoque before Administração", name)
+		}
+	}
+	catalog := read("catalog.html")
+	if strings.Index(catalog, `id="catalogEmpty"`) > strings.Index(catalog, `id="catalogList"`) {
+		t.Fatal("catalog empty guidance must stay grouped with the parent-list heading before the list")
+	}
+	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(cssb)
+	for _, want := range []string{
+		".catalog-parent-card{justify-content:stretch;justify-items:start",
+		".catalog-empty{padding:14px;text-align:left",
+		".catalog-parent-list{max-height:none;overflow:visible",
+		".catalog-manager{padding:0;border:0;border-radius:0;box-shadow:none",
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("catalog responsive/Gestalt contract missing %q", want)
+		}
+	}
+}
