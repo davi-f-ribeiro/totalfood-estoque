@@ -120,3 +120,6 @@
   .assets form>button[type="submit"],
   .fiscal form>button[type="submit"]{width:100%}
 }
+
+
+.impact-warning{margin:10px 0 14px;padding:10px 12px;border:1px solid #e3c58d;border-radius:var(--radius-sm);background:#fffaf0;color:var(--warning);font-weight:700}
