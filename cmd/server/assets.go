@@ -168,6 +168,9 @@ func (a *app) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
 	var wh any = req.WarehouseID
 	if req.Status == "BAIXADO" {
 		wh = nil
+	} else if !a.activeWarehouseExists(r.Context(), req.WarehouseID) {
+		writeJSONError(w, http.StatusConflict, "depósito inativo ou inexistente")
+		return
 	}
 	var id int64
 	if err := a.db.QueryRowContext(r.Context(), `INSERT INTO assets (asset_type_id,tag,status,current_warehouse_id) VALUES ($1,$2,$3,$4) RETURNING id`, req.AssetTypeID, cleanBarcode(req.Tag), req.Status, wh).Scan(&id); err != nil {
@@ -190,6 +193,9 @@ func (a *app) handleUpdateAsset(w http.ResponseWriter, r *http.Request) {
 	var wh any = req.WarehouseID
 	if req.Status == "BAIXADO" {
 		wh = nil
+	} else if !a.activeWarehouseExists(r.Context(), req.WarehouseID) {
+		writeJSONError(w, http.StatusConflict, "depósito inativo ou inexistente")
+		return
 	}
 	res, err := a.db.ExecContext(r.Context(), `UPDATE assets SET asset_type_id=$1,tag=$2,status=$3,current_warehouse_id=$4 WHERE id=$5`, req.AssetTypeID, cleanBarcode(req.Tag), req.Status, wh, id)
 	if err != nil {
@@ -353,4 +359,13 @@ func (a *app) writeAssetEvent(ctx context.Context, op, hash string, fn func(cont
 		return err
 	}
 	return tx.Commit()
+}
+
+
+func (a *app) activeWarehouseExists(ctx context.Context, warehouseID int64) bool {
+	if warehouseID <= 0 {
+		return false
+	}
+	var ok bool
+	return a.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM warehouses WHERE id=$1 AND active=true)`, warehouseID).Scan(&ok) == nil && ok
 }
