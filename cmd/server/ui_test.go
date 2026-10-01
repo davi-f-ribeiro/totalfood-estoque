@@ -170,6 +170,9 @@ func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 		`id="changeProduct"`,
 		`productMsg('error','<strong>Código de barras não cadastrado.</strong>`,
 		`scanBtn?.addEventListener('scanner:start'`,
+		`async function resolveMovementBarcode(code)`,
+		`resolveMovementBarcode(search.value)`,
+		`initScanner('scanProduct',resolveMovementBarcode)`,
 		`function requestDecimal(v)`,
 		`quantity:requestDecimal(qty.value)`,
 		`unit_cost:requestDecimal(cost.value)`,
@@ -181,6 +184,12 @@ func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("product selection UX missing %q", want)
 		}
+	}
+	if strings.Contains(combined, "initScanner('scanProduct',async code=>") {
+		t.Fatal("camera must use the shared movement barcode resolver")
+	}
+	if strings.Count(combined, "productLookup(normalized)") != 1 {
+		t.Fatal("movement barcode resolution must have a single product lookup path")
 	}
 }
 
