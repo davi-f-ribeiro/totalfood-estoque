@@ -199,3 +199,78 @@ func assertStock(t *testing.T, a *app, sku, wh int64, qty, avg string) {
 		t.Fatalf("stock got qty=%s avg=%s want qty=%s avg=%s", s.Quantity, s.AvgCost, qty, avg)
 	}
 }
+
+
+func TestMovementIdempotencyIsBoundToOriginalOperator(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	userA := createTestUser(t, a, "movement-owner-a", "secret", "Estoquista", true)
+	userB := createTestUser(t, a, "movement-owner-b", "secret", "Estoquista", true)
+
+	first, err := a.createEntry(ctx, movementRequest{
+		OperationID: "op-owned-idempotency",
+		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "10", UserID: userA,
+	}, "same-request-hash")
+	if err != nil {
+		t.Fatalf("first movement: %v", err)
+	}
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "op-owned-idempotency",
+		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "10", UserID: userB,
+	}, "same-request-hash"); !errors.Is(err, errOperationConflict) {
+		t.Fatalf("cross-user replay must conflict, got %v", err)
+	}
+	var movementCount int
+	if err := a.db.QueryRow(`SELECT count(*) FROM movements WHERE operation_id='op-owned-idempotency'`).Scan(&movementCount); err != nil {
+		t.Fatal(err)
+	}
+	if movementCount != 1 {
+		t.Fatalf("movement count=%d want 1", movementCount)
+	}
+	var owner int64
+	if err := a.db.QueryRow(`SELECT user_id FROM movements WHERE id=$1`, first.MovementID).Scan(&owner); err != nil {
+		t.Fatal(err)
+	}
+	if owner != userA {
+		t.Fatalf("movement owner=%d want %d", owner, userA)
+	}
+	assertStock(t, a, sku, wh, "1.000", "10.0000")
+}
+
+func TestOperationLookupAllowsOwnerWithMovementPermissionOnly(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.db.Exec(`
+INSERT INTO profile_permissions (profile_id, permission_id)
+SELECT p.id,perm.id
+FROM profiles p
+JOIN permissions perm ON perm.resource='movement_entry' AND perm.action='write'
+WHERE p.name='Estoquista'
+ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	ownerID := createTestUser(t, a, "movement-lookup-owner", "secret", "Estoquista", true)
+	otherID := createTestUser(t, a, "movement-lookup-other", "secret", "Estoquista", true)
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "op-owner-lookup",
+		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "5", UserID: ownerID,
+	}, "lookup-hash"); err != nil {
+		t.Fatal(err)
+	}
+	owner := doLogin(t, a, "movement-lookup-owner", "secret")
+	other := doLogin(t, a, "movement-lookup-other", "secret")
+	rr := authReq(a, http.MethodGet, "/api/operations/op-owner-lookup", nil, owner, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("owner lookup status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "user_id") {
+		t.Fatalf("operation lookup leaked internal owner: %s", rr.Body.String())
+	}
+	rr = authReq(a, http.MethodGet, "/api/operations/op-owner-lookup", nil, other, "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("other operator lookup status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if ownerID == otherID {
+		t.Fatal("test users unexpectedly identical")
+	}
+}
