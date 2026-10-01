@@ -56,15 +56,15 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 
 	res, err := a.createEntry(context.Background(), movementRequest{OperationID: "catalog-hist", SKUID: firstSKU, WarehouseID: wh, Quantity: "1", UnitCost: "10"}, "catalog-hist")
 	mustMove2(t, res, err)
-	editBlocked := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(itemID), map[string]any{"name": "Feijão Carioca <b>", "category_id": catID, "unit_code": "UN", "minimum_stock": "3", "notes": "ok", "active": true}, director, "")
+	editBlocked := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(itemID), map[string]any{"name": "Feijão Carioca <b>", "category_id": catID, "unit_code": "UN", "minimum_stock": "3", "notes": "ok", "active": true, "version": crudVersion(t, a, "inventory_items", itemID)}, director, "")
 	if editBlocked.Code != http.StatusConflict || !strings.Contains(editBlocked.Body.String(), "Unidade não pode ser alterada") {
 		t.Fatalf("unit edit with history status=%d body=%s", editBlocked.Code, editBlocked.Body.String())
 	}
-	editOK := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(itemID), map[string]any{"name": "Feijão Carioca Corrigido", "category_id": catID, "unit_code": "KG", "minimum_stock": "4", "notes": "ok", "active": true}, director, "")
+	editOK := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(itemID), map[string]any{"name": "Feijão Carioca Corrigido", "category_id": catID, "unit_code": "KG", "minimum_stock": "4", "notes": "ok", "active": true, "version": crudVersion(t, a, "inventory_items", itemID)}, director, "")
 	if editOK.Code != http.StatusOK {
 		t.Fatalf("allowed item edit status=%d body=%s", editOK.Code, editOK.Body.String())
 	}
-	skuEdit := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(firstSKU), map[string]any{"name": "Feijão Marca A Corrigido", "barcode": "7891000000011", "active": true}, director, "")
+	skuEdit := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(firstSKU), map[string]any{"name": "Feijão Marca A Corrigido", "barcode": "7891000000011", "active": true, "version": crudVersion(t, a, "product_skus", firstSKU)}, director, "")
 	if skuEdit.Code != http.StatusOK {
 		t.Fatalf("sku edit status=%d body=%s", skuEdit.Code, skuEdit.Body.String())
 	}
@@ -137,7 +137,7 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 		t.Fatalf("history snapshot got=%d want=%d err=%v", snapshot, parentAID, err)
 	}
 
-	move := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentBID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true}, director, "")
+	move := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentBID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true, "version": crudVersion(t, a, "product_skus", skuID)}, director, "")
 	if move.Code != http.StatusOK { t.Fatalf("reassign same unit status=%d body=%s", move.Code, move.Body.String()) }
 	var currentParent, historicalParent int64
 	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuID).Scan(&currentParent); err != nil { t.Fatal(err) }
@@ -146,7 +146,7 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 		t.Fatalf("reassign current=%d history=%d want current=%d history=%d", currentParent, historicalParent, parentBID, parentAID)
 	}
 
-	badMove := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentCID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true}, director, "")
+	badMove := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentCID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true, "version": crudVersion(t, a, "product_skus", skuID)}, director, "")
 	if badMove.Code != http.StatusConflict || !strings.Contains(badMove.Body.String(), "mesma unidade") {
 		t.Fatalf("cross-unit historical reassign status=%d body=%s", badMove.Code, badMove.Body.String())
 	}
