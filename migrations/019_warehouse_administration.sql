@@ -103,3 +103,31 @@ $$;
 CREATE TRIGGER warehouses_deactivate_only_empty
 BEFORE UPDATE OF active ON warehouses
 FOR EACH ROW EXECUTE FUNCTION enforce_warehouse_deactivation_empty();
+
+
+-- Stock movements must never create new operational history in an inactive
+-- warehouse, even when a write bypasses the HTTP layer.
+CREATE OR REPLACE FUNCTION enforce_active_movement_warehouse()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    warehouse_active boolean;
+BEGIN
+    SELECT active
+      INTO warehouse_active
+      FROM warehouses
+     WHERE id = NEW.warehouse_id
+     FOR UPDATE;
+
+    IF NOT FOUND OR NOT warehouse_active THEN
+        RAISE EXCEPTION 'movement warehouse inactive or not found';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER movement_lines_active_warehouse
+BEFORE INSERT OR UPDATE OF warehouse_id ON movement_lines
+FOR EACH ROW EXECUTE FUNCTION enforce_active_movement_warehouse();
