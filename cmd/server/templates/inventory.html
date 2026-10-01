@@ -9,26 +9,26 @@
 <form id="inventoryCreateTotal" class="inventory-create-card">
 <h2>Novo inventário total</h2>
 <p class="hint">O backend incluirá 100% dos SKUs elegíveis do warehouse escolhido.</p>
-<label>Warehouse ativo<select id="inventoryCreateWarehouse" required><option value="">Carregando warehouses…</option></select></label>
+<label>Depósito ativo<select id="inventoryCreateWarehouse" required><option value="">Carregando depósitos…</option></select></label>
 <button type="submit">Criar TOTAL</button>
 </form>
 <form id="inventoryCreateBlind" class="inventory-create-card">
 <h2>Novo inventário cego</h2>
-<p>Warehouse e itens serão escolhidos automaticamente. As quantidades esperadas permanecerão ocultas durante a primeira contagem.</p>
+<p>Depósito e itens serão escolhidos automaticamente. As quantidades esperadas permanecerão ocultas durante a primeira contagem.</p>
 <button type="submit">Criar BLIND</button>
 </form>
 </div>
 {{end}}
 <form id="inventoryListFilters" class="inventory-list-filters">
 <label>Status<select id="inventoryListStatus"><option value="">Todos</option><option value="OPEN">Aberto</option><option value="COUNTING">Em contagem</option><option value="REVIEW">Em revisão</option><option value="COMPLETED">Concluído</option><option value="CANCELLED">Cancelado</option></select></label>
-<label>Tipo<select id="inventoryListType"><option value="">Todos</option><option value="TOTAL">TOTAL</option><option value="BLIND">BLIND</option></select></label>
-<label>Warehouse<select id="inventoryListWarehouse"><option value="">Todos</option></select></label>
+<label>Tipo<select id="inventoryListType"><option value="">Todos</option><option value="TOTAL">Total</option><option value="BLIND">Cego</option></select></label>
+<label>Depósito<select id="inventoryListWarehouse"><option value="">Todos</option></select></label>
 <label>Responsável<input id="inventoryListResponsible" autocomplete="off" placeholder="Login"></label>
 <label>De<input id="inventoryListFrom" type="date"></label>
 <label>Até<input id="inventoryListTo" type="date"></label>
 <div class="actions"><button type="submit">Filtrar</button><button id="inventoryListClear" class="secondary" type="button">Limpar</button></div>
 </form>
-<p id="inventoryListMessage" class="msg" aria-live="polite"></p>
+<p id="inventoryListMessage" class="operation-feedback" role="status" aria-live="polite" hidden></p>
 <div id="inventoryList" class="inventory-admin-list" aria-live="polite"></div>
 <div id="inventoryListPaging" class="actions" hidden><button id="inventoryListPrev" class="secondary" type="button">Anterior</button><button id="inventoryListNext" class="secondary" type="button">Próxima</button></div>
 </section>
@@ -41,7 +41,7 @@
 <div class="product-scan inventory-tools"><label>Buscar item<input id="inventorySearch" autocomplete="off" placeholder="Descrição, SKU ou código de barras"></label><button id="scanInventory" class="secondary scan-action" type="button"><span class="scan-icon" aria-hidden="true"></span><span>Ler código</span></button></div>
 <section id="scanner" class="scanner" hidden><video id="scanner-video" autoplay muted playsinline webkit-playsinline></video><p id="scanStatus" class="msg" aria-live="polite"></p><button id="scanCancel" class="secondary" type="button">Fechar câmera</button></section>
 <div class="inventory-filter actions" role="group" aria-label="Filtrar itens"><button type="button" class="secondary selected" data-inventory-filter="pending">Pendentes</button><button type="button" class="secondary" data-inventory-filter="counted">Contados</button><button type="button" class="secondary" data-inventory-filter="all">Todos</button></div>
-<p id="inventoryMessage" class="msg" aria-live="polite"></p><section id="inventoryTerminalActions" class="inventory-terminal-actions" hidden></section><div id="inventoryLines" class="inventory-lines"></div>
+<p id="inventoryMessage" class="operation-feedback" role="status" aria-live="polite" hidden></p><section id="inventoryTerminalActions" class="inventory-terminal-actions" hidden></section><div id="inventoryLines" class="inventory-lines"></div>
 </div></section>
 </main>
 <script src="/static/vendor/zxing-browser.min.js" defer></script><script src="/static/app.js" defer></script></body></html>
