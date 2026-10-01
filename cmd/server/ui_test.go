@@ -634,9 +634,9 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(form,true,'Criar usuário','Atualizar usuário')",
 		"true,'Criar perfil','Atualizar perfil'",
-		"Tipo patrimonial criado.",
-		"Usuário criado.",
-		"Perfil criado.",
+		"body.name+(id?' atualizado.':' criado.')",
+		"body.login+(id?' atualizado.':' criado.')",
+		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')"
 		"itemForm.reset()",
 		"typeForm.reset()",
 		"unitForm.reset()",
