@@ -63,3 +63,5 @@
  .inventory-admin-card button{width:100%}
  .inventory-list-filters .actions button{flex:1 1 120px}
 }
+
+.admin{display:grid;gap:16px}.warehouse-row{align-items:center}.warehouse-row button{min-width:112px}@media(max-width:720px){.admin{gap:10px}.warehouse-row button{width:100%}}
