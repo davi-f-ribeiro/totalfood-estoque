@@ -56,6 +56,15 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 		t.Fatalf("lookup by item status=%d body=%s", lookupItem.Code, lookupItem.Body.String())
 	}
 
+	pagedBarcode := authReq(a, http.MethodGet, "/api/catalog/items?paged=1&q=7891000000011", nil, director, "")
+	if pagedBarcode.Code != http.StatusOK || !strings.Contains(pagedBarcode.Body.String(), "Feijão Carioca") || !strings.Contains(pagedBarcode.Body.String(), "\"items\"") {
+		t.Fatalf("paged catalog barcode search status=%d body=%s", pagedBarcode.Code, pagedBarcode.Body.String())
+	}
+	options := authReq(a, http.MethodGet, "/api/catalog/options", nil, director, "")
+	if options.Code != http.StatusOK || strings.Contains(options.Body.String(), "\"items\"") {
+		t.Fatalf("catalog options must not preload parent items status=%d body=%s", options.Code, options.Body.String())
+	}
+
 	res, err := a.createEntry(context.Background(), movementRequest{OperationID: "catalog-hist", SKUID: firstSKU, WarehouseID: wh, Quantity: "1", UnitCost: "10"}, "catalog-hist")
 	mustMove2(t, res, err)
 	editBlocked := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(itemID), map[string]any{"name": "Feijão Carioca <b>", "category_id": catID, "unit_code": "UN", "minimum_stock": "3", "notes": "ok", "active": true, "version": crudVersion(t, a, "inventory_items", itemID)}, director, "")
