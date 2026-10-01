@@ -92,7 +92,7 @@ func (a *app) handleCreateAssetType(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 409, "tipo patrimonial não salvo")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
 }
 
 func (a *app) handleUpdateAssetType(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +192,7 @@ func (a *app) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
 		writeAssetError(w, err, "asset create failed")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
 }
 
 func (a *app) handleUpdateAsset(w http.ResponseWriter, r *http.Request) {
