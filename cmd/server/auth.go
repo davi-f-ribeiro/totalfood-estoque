@@ -126,7 +126,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil || strings.TrimSpace(req.Login) == "" || req.Password == "" {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Dados de autenticação informados são inválidos.")
 		return
 	}
 	var id int64
@@ -195,7 +195,7 @@ func (a *app) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil || strings.TrimSpace(req.Login) == "" || req.Password == "" || strings.TrimSpace(req.Profile) == "" {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Dados de autenticação informados são inválidos.")
 		return
 	}
 	active := true
@@ -216,7 +216,7 @@ func (a *app) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	err = a.db.QueryRowContext(r.Context(), `INSERT INTO users (login,password_hash,profile_id,active) VALUES ($1,$2,$3,$4) RETURNING id`, req.Login, string(h), profileID, active).Scan(&id)
 	if err != nil {
 		log.Printf("user create failed error=%v", err)
-		writeJSONError(w, http.StatusConflict, "user not created")
+		writeJSONError(w, http.StatusConflict, "Usuário inicial não pôde ser criado com os dados informados.")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "login": req.Login, "active": active, "profile": req.Profile})
