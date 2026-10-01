@@ -328,7 +328,7 @@ func (a *app) changeAssetLocation(ctx context.Context, tag string, req assetMove
 		if _, err := tx.ExecContext(ctx, `UPDATE assets SET current_warehouse_id=$1 WHERE id=$2`, req.WarehouseID, assetID); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO asset_events (operation_id,request_hash,asset_id,event_type,origin_warehouse_id,destination_warehouse_id,old_status,new_status,user_id) VALUES ($1,$2,$3,'MOVE',$4,$5,$6,$6,$7)`, req.OperationID, hash, assetID, nullInt(origin), req.WarehouseID, status, userID)
+		_, err = tx.ExecContext(ctx, `INSERT INTO asset_events (operation_id,request_hash,asset_id,event_type,origin_warehouse_id,destination_warehouse_id,old_status,new_status,user_id) VALUES ($1,$2,$3,'MOVE',$4,$5,$6,$6,$7)`, req.OperationID, hash, assetID, nullInt(origin), req.WarehouseID, status, userID)
 		return err
 	})
 }
