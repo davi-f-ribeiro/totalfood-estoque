@@ -227,6 +227,32 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 	}
 }
 
+func TestUnknownEntryBarcodeContinuesIntoExistingCatalogSKUFlow(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	for _, want := range []string{
+		`let register=isEntry?'<a class="button secondary" href="/catalog?new_sku_barcode='`,
+		`&return_to=%2Fentry`,
+		`pendingNewSKUBarcode=normalizeBarcode(new URLSearchParams(location.search).get('new_sku_barcode'))`,
+		`returnTo=new URLSearchParams(location.search).get('return_to')==='/entry'?'/entry':''`,
+		`function startNewSKU(prefillBarcode='')`,
+		`barcode.value=normalizeBarcode(prefillBarcode)`,
+		`if(pendingNewSKUBarcode)startNewSKU(pendingNewSKUBarcode)`,
+		`body.barcode===pendingNewSKUBarcode&&+body.item_id===+currentItem.id`,
+		`location.href=returnTo+'?'+back.toString()`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("unknown entry barcode flow missing %q", want)
+		}
+	}
+	if strings.Contains(js, "/api/catalog/skus/from-entry") {
+		t.Fatal("entry handoff must reuse the existing catalog SKU endpoint")
+	}
+}
+
 func TestWarehouseAdminUIContracts(t *testing.T) {
 	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
 	if err != nil {
