@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -226,5 +227,81 @@ func TestCatalogNormalizedNameUniqueAtDatabaseLayer(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "idx_inventory_items_normalized_name_unique") {
 		t.Fatalf("unexpected duplicate database error: %v", err)
+	}
+}
+
+
+func TestCatalogParentPaginationKeyset(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "director-catalog-page", "secret", "Diretor", true)
+	director := doLogin(t, a, "director-catalog-page", "secret")
+	catID := lookupID(t, a, "SELECT id FROM categories WHERE name='Alimentos'")
+
+	for i := 1; i <= 61; i++ {
+		name := fmt.Sprintf("Paginacao Teste %03d", i)
+		if _, err := a.db.Exec(`
+INSERT INTO inventory_items (name,category_id,unit_code,minimum_stock,active)
+VALUES ($1,$2,'UN',0,true)`, name, catID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	type page struct {
+		Items []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"items"`
+		HasMore bool   `json:"has_more"`
+		Cursor  string `json:"next_cursor"`
+	}
+	readPage := func(path string) page {
+		rr := authReq(a, http.MethodGet, path, nil, director, "")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("page status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		var p page
+		if err := json.Unmarshal(rr.Body.Bytes(), &p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	p1 := readPage("/api/catalog/items?paged=1&q=Paginacao%20Teste")
+	if len(p1.Items) != 30 || !p1.HasMore || p1.Cursor == "" {
+		t.Fatalf("page1 len=%d has_more=%v cursor=%q", len(p1.Items), p1.HasMore, p1.Cursor)
+	}
+	p2 := readPage("/api/catalog/items?paged=1&q=Paginacao%20Teste&cursor=" + p1.Cursor)
+	if len(p2.Items) != 30 || !p2.HasMore || p2.Cursor == "" {
+		t.Fatalf("page2 len=%d has_more=%v cursor=%q", len(p2.Items), p2.HasMore, p2.Cursor)
+	}
+	p3 := readPage("/api/catalog/items?paged=1&q=Paginacao%20Teste&cursor=" + p2.Cursor)
+	if len(p3.Items) != 1 || p3.HasMore || p3.Cursor != "" {
+		t.Fatalf("page3 len=%d has_more=%v cursor=%q", len(p3.Items), p3.HasMore, p3.Cursor)
+	}
+
+	seen := map[int64]bool{}
+	var names []string
+	for _, p := range []page{p1, p2, p3} {
+		for _, item := range p.Items {
+			if seen[item.ID] {
+				t.Fatalf("duplicate item id=%d", item.ID)
+			}
+			seen[item.ID] = true
+			names = append(names, item.Name)
+		}
+	}
+	if len(seen) != 61 {
+		t.Fatalf("unique items=%d want=61", len(seen))
+	}
+	for i, name := range names {
+		want := fmt.Sprintf("Paginacao Teste %03d", i+1)
+		if name != want {
+			t.Fatalf("item[%d]=%q want=%q", i, name, want)
+		}
+	}
+
+	bad := authReq(a, http.MethodGet, "/api/catalog/items?paged=1&cursor=not-a-cursor", nil, director, "")
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("invalid cursor status=%d body=%s", bad.Code, bad.Body.String())
 	}
 }

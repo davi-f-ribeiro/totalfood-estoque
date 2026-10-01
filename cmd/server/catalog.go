@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"log"
@@ -88,13 +89,144 @@ func simpleRows(r *http.Request, db *sql.DB, q string) ([]map[string]any, error)
 	return out, rows.Err()
 }
 
+const catalogPageSize = 30
+
+type catalogPageCursor struct {
+	Rank int    `json:"r"`
+	Name string `json:"n"`
+	ID   int64  `json:"i"`
+}
+
+type catalogPageResponse struct {
+	Items      []map[string]any `json:"items"`
+	HasMore    bool             `json:"has_more"`
+	NextCursor string           `json:"next_cursor,omitempty"`
+}
+
+func encodeCatalogCursor(c catalogPageCursor) (string, error) {
+	b, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func decodeCatalogCursor(raw string) (catalogPageCursor, error) {
+	var c catalogPageCursor
+	b, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return c, err
+	}
+	if err := json.Unmarshal(b, &c); err != nil {
+		return c, err
+	}
+	if c.Rank < 0 || c.Rank > 1 || c.Name == "" || c.ID <= 0 {
+		return c, errors.New("invalid catalog cursor")
+	}
+	return c, nil
+}
+
 func (a *app) handleCatalogItems(w http.ResponseWriter, r *http.Request) {
-	out, err := catalogItems(r, a.db, strings.TrimSpace(r.URL.Query().Get("q")))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if r.URL.Query().Get("paged") == "1" {
+		var cursor *catalogPageCursor
+		if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
+			decoded, err := decodeCatalogCursor(raw)
+			if err != nil {
+				writeJSONError(w, http.StatusBadRequest, "Cursor de catálogo inválido.")
+				return
+			}
+			cursor = &decoded
+		}
+		out, err := catalogItemsPage(r, a.db, q, cursor)
+		if err != nil {
+			writeJSONError(w, 500, "Erro interno.")
+			return
+		}
+		writeJSON(w, 200, out)
+		return
+	}
+	out, err := catalogItems(r, a.db, q)
 	if err != nil {
 		writeJSONError(w, 500, "Erro interno.")
 		return
 	}
 	writeJSON(w, 200, out)
+}
+
+func catalogItemsPage(r *http.Request, db *sql.DB, q string, cursor *catalogPageCursor) (catalogPageResponse, error) {
+	arg := "%" + q + "%"
+	hasCursor := cursor != nil
+	cursorRank, cursorName, cursorID := 0, "", int64(0)
+	if cursor != nil {
+		cursorRank, cursorName, cursorID = cursor.Rank, cursor.Name, cursor.ID
+	}
+	rows, err := db.QueryContext(r.Context(), `
+WITH parent_page AS (
+    SELECT i.id,i.name,COALESCE(c.name,'') AS category,COALESCE(i.category_id,0) AS category_id,
+           i.unit_code,COALESCE(i.minimum_stock::text,'') AS minimum_stock,
+           COALESCE(i.notes,'') AS notes,i.active,i.version,
+           CASE WHEN i.active THEN 0 ELSE 1 END AS active_rank,
+           lower(i.name) AS sort_name
+    FROM inventory_items i
+    LEFT JOIN categories c ON c.id=i.category_id
+    WHERE (
+        $1='' OR lower(i.name) LIKE lower($2)
+        OR EXISTS (
+            SELECT 1 FROM product_skus sx
+            WHERE sx.item_id=i.id
+              AND (lower(COALESCE(sx.name,'')) LIKE lower($2)
+                   OR lower(COALESCE(sx.brand,'')) LIKE lower($2)
+                   OR COALESCE(sx.barcode,'') LIKE $2)
+        )
+    )
+      AND (
+        $3::boolean=false
+        OR (CASE WHEN i.active THEN 0 ELSE 1 END, lower(i.name), i.id)
+           > ($4::int, $5::text, $6::bigint)
+      )
+    ORDER BY active_rank,sort_name,i.id
+    LIMIT 31
+)
+SELECT p.id,p.name,p.category,p.category_id,p.unit_code,p.minimum_stock,p.notes,p.active,p.version,
+       (SELECT count(*) FROM product_skus s WHERE s.item_id=p.id) AS sku_count,
+       p.active_rank,p.sort_name
+FROM parent_page p
+ORDER BY p.active_rank,p.sort_name,p.id
+`, q, arg, hasCursor, cursorRank, cursorName, cursorID)
+	if err != nil {
+		return catalogPageResponse{}, err
+	}
+	defer rows.Close()
+
+	items := make([]map[string]any, 0, catalogPageSize+1)
+	cursors := make([]catalogPageCursor, 0, catalogPageSize+1)
+	for rows.Next() {
+		var id, categoryID, skuCount, version int64
+		var name, category, unit, minimum, notes, sortName string
+		var active bool
+		var rank int
+		if err := rows.Scan(&id, &name, &category, &categoryID, &unit, &minimum, &notes, &active, &version, &skuCount, &rank, &sortName); err != nil {
+			return catalogPageResponse{}, err
+		}
+		items = append(items, map[string]any{"id": id, "name": name, "category": category, "category_id": categoryID, "unit": unit, "minimum_stock": minimum, "notes": notes, "active": active, "version": version, "sku_count": skuCount})
+		cursors = append(cursors, catalogPageCursor{Rank: rank, Name: sortName, ID: id})
+	}
+	if err := rows.Err(); err != nil {
+		return catalogPageResponse{}, err
+	}
+
+	out := catalogPageResponse{Items: items, HasMore: len(items) > catalogPageSize}
+	if out.HasMore {
+		out.Items = out.Items[:catalogPageSize]
+		cursors = cursors[:catalogPageSize]
+		next, err := encodeCatalogCursor(cursors[len(cursors)-1])
+		if err != nil {
+			return catalogPageResponse{}, err
+		}
+		out.NextCursor = next
+	}
+	return out, nil
 }
 
 func catalogItems(r *http.Request, db *sql.DB, q string) ([]map[string]any, error) {
