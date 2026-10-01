@@ -636,7 +636,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"true,'Criar perfil','Atualizar perfil'",
 		"body.name+(id?' atualizado.':' criado.')",
 		"body.login+(id?' atualizado.':' criado.')",
-		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')"
+		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')",
 		"itemForm.reset()",
 		"typeForm.reset()",
 		"unitForm.reset()",
