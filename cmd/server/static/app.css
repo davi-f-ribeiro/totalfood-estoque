@@ -81,6 +81,7 @@
   .stock-shell>.panel{padding:22px}
   .stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}
   .stock-shell .stock-card{min-height:72px}
+  .stock-shell #stockDetail{grid-column:1/-1}
 
   .assets{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
   .assets>.panel:first-child{grid-column:1/-1}
@@ -106,6 +107,7 @@
   .main{max-width:900px;padding:18px}
   .assets,.admin{grid-template-columns:1fr}
   .stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px}
+  .stock-shell #stockDetail{grid-column:1/-1}
   .fiscal .line{grid-template-columns:minmax(0,1fr) 120px 120px auto}
 }
 
