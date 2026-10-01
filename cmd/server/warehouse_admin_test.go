@@ -66,6 +66,24 @@ func TestWarehouseAdministrationLifecycleAndMovementGuard(t *testing.T) {
 	}
 }
 
+
+func TestWarehouseNameIsUniqueForTracking(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "warehouse-name-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "warehouse-name-director", "secret")
+
+	first := authReq(a, http.MethodPost, "/api/admin/warehouses", map[string]any{"name": "Depósito Rastreável"}, director, "")
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first create status=%d body=%s", first.Code, first.Body.String())
+	}
+	for _, name := range []string{"depósito rastreável", " DEPÓSITO RASTREÁVEL "} {
+		rr := authReq(a, http.MethodPost, "/api/admin/warehouses", map[string]any{"name": name}, director, "")
+		if rr.Code != http.StatusConflict {
+			t.Fatalf("duplicate %q status=%d body=%s", name, rr.Code, rr.Body.String())
+		}
+	}
+}
+
 func TestWarehouseCannotBeDeleted(t *testing.T) {
 	a, _, wh, _ := newStockTestApp(t)
 	if _, err := a.db.Exec(`DELETE FROM warehouses WHERE id=$1`, wh); err == nil {
