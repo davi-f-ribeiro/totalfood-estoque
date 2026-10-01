@@ -98,7 +98,7 @@ func TestInventoryGate07ACLNavigationAndAdminPermissions(t *testing.T) {
 	if _,err:=e.db.Exec("INSERT INTO sessions (user_id,token_hash,csrf_token_hash,expires_at) VALUES ($1,$2,$3,now()+interval '1 hour')",rwUser,hashToken(rwToken),hashToken(rwCSRF));err!=nil{t.Fatal(err)}
 
 	wh:=e.warehouse(t,"acl-total",true); sku:=e.sku(t,"acl-total-sku",true,true); e.movementDecimal(t,sku,wh,"IN","5.000")
-	total:=g7serve(e.a,http.MethodPost,"/api/inventory-validations/total",fmt.Sprintf("{\"warehouse_id\":%d}",wh),rwToken,rwCSRF)
+	total:=g7serve(e.a,http.MethodPost,"/api/inventory-validations/total",fmt.Sprintf("{\"operation_id\":\"g7-total-create\",\"warehouse_id\":%d}",wh),rwToken,rwCSRF)
 	if total.Code!=http.StatusCreated { t.Fatalf("rw create total=%d body=%s",total.Code,total.Body.String()) }
 
 	blindWH:=e.warehouse(t,"acl-blind",true)
@@ -106,7 +106,7 @@ func TestInventoryGate07ACLNavigationAndAdminPermissions(t *testing.T) {
 	blindB:=e.sku(t,"acl-blind-b",true,true)
 	e.movementDecimal(t,blindA,blindWH,"IN","4.000")
 	e.movementDecimal(t,blindB,blindWH,"IN","4.000")
-	blind:=g7serve(e.a,http.MethodPost,"/api/inventory-validations/blind","{}",rwToken,rwCSRF)
+	blind:=g7serve(e.a,http.MethodPost,"/api/inventory-validations/blind","{\"operation_id\":\"g7-blind-create\"}",rwToken,rwCSRF)
 	if blind.Code!=http.StatusCreated { t.Fatalf("rw create blind=%d body=%s",blind.Code,blind.Body.String()) }
 }
 
@@ -159,7 +159,7 @@ func TestInventoryGate07AntiMovement(t *testing.T){
 	e.db.QueryRow("SELECT count(*) FROM movements").Scan(&mb);e.db.QueryRow("SELECT count(*) FROM movement_lines").Scan(&lb);e.db.QueryRow("SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::text FROM movement_lines").Scan(&sb)
 	token,csrf:=inventorySession(t,e.db,e.userID);mux:=http.NewServeMux();e.a.registerInventoryHandlers(mux)
 	list:=httptest.NewRecorder();mux.ServeHTTP(list,inventoryRequest(http.MethodGet,"/api/inventory-validations","",token,""));if list.Code!=http.StatusOK{t.Fatalf("list=%d",list.Code)}
-	create:=httptest.NewRecorder();mux.ServeHTTP(create,inventoryRequest(http.MethodPost,"/api/inventory-validations/total",fmt.Sprintf("{\"warehouse_id\":%d}",wh),token,csrf));if create.Code!=http.StatusCreated{t.Fatalf("create=%d %s",create.Code,create.Body.String())}
+	create:=httptest.NewRecorder();mux.ServeHTTP(create,inventoryRequest(http.MethodPost,"/api/inventory-validations/total",fmt.Sprintf("{\"operation_id\":\"g7-anti-total\",\"warehouse_id\":%d}",wh),token,csrf));if create.Code!=http.StatusCreated{t.Fatalf("create=%d %s",create.Code,create.Body.String())}
 	var inv inventorySelection;if err:=json.Unmarshal(create.Body.Bytes(),&inv);err!=nil{t.Fatal(err)}
 	view,_:=e.a.getInventoryCountingView(ctx,inv.ID)
 	for _,line:=range view.Lines{q:="10.000";if line.SKUID==a{q="8.000"};if _,_,err:=e.a.saveInventoryCount(ctx,inv.ID,line.SKUID,q,line.Version,e.userID);err!=nil{t.Fatal(err)}}
