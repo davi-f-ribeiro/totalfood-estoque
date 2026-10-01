@@ -590,7 +590,7 @@ func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
 		"unitWarehouse.disabled=editing",
 		"setAssetUnitEditMode(true)",
 		"setAssetUnitEditMode(false)",
-		"let body=id?{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value}:{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
+		"let body=id?{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,version:editingAssetVersion}:{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
 		"Dados cadastrais atualizados. Estado e localização permanecem inalterados.",
 		"id=\"assetUnitOperationalHint\"",
 		"Estado e localização preservam histórico.",
@@ -646,5 +646,24 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 	}
 	if strings.Contains(js, "body:'{}'});setListMessage('Inventário cego criado.") {
 		t.Fatal("inventory blind creation reintroduced request without operation_id")
+	}
+}
+
+func TestCRUDOptimisticConcurrencyUIContracts(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+	for _, want := range []string{
+		"registro foi alterado por outro operador",
+		"body.version=Number(currentItem?.version||0)",
+		"body.version=editingSKUVersion",
+		"version:editingAssetVersion",
+		"body.version=selectedUserVersion",
+		"body.version=Number(selected?.version||0)",
+		"permission_ids:ids,version:Number(profile?.version||0)",
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("CRUD optimistic concurrency UI contract missing %q", want)
+		}
 	}
 }
