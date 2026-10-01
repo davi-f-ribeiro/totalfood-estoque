@@ -280,6 +280,36 @@ func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 	}
 }
 
+func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb, err := os.ReadFile(filepath.Join("templates", "catalog.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, html := string(jsb), string(hb)
+	for _, want := range []string{
+		`id="skuStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
+		`function skuMsg(type,text){setFeedback(skuStatus,type,text)}`,
+		`skuMsg('loading',moving?'Movendo '+skuLabel+'…':(wasEditing?'Atualizando ':'Criando ')+skuLabel+'…')`,
+		`skuMsg('error','Código de barras '+body.barcode+' já existe no banco de dados.')`,
+		`resetSKUForm(false)`,
+		`skuMsg('success',moving?skuLabel+' movido para '+targetName+'.':skuLabel+(wasEditing?' atualizado.':' criado.'))`,
+	} {
+		if !strings.Contains(js+html, want) {
+			t.Fatalf("catalog SKU local feedback missing %q", want)
+		}
+	}
+	if strings.Count(html, `id="skuStatus"`) != 1 {
+		t.Fatal("catalog must expose a single SKU feedback region")
+	}
+	if strings.Contains(js, `msg('loading',moving?'Movendo '+skuLabel`) {
+		t.Fatal("SKU operations must not use the global catalog feedback region")
+	}
+}
+
 func TestWarehouseAdminUIContracts(t *testing.T) {
 	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
 	if err != nil {
