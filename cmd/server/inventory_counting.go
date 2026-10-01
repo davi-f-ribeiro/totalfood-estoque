@@ -60,7 +60,7 @@ type inventoryLookupResult struct {
 }
 
 func (a *app) registerInventoryCountingHandlers(mux *http.ServeMux) {
-	mux.HandleFunc("GET /inventory", a.uiPage("inventory", "Inventário", "inventory_validation", "read"))
+	mux.HandleFunc("GET /inventory", a.uiPage("inventory", "Auditoria de Estoque", "inventory_validation", "read"))
 	mux.HandleFunc("GET /api/inventory-validations/{id}/counting", a.requireAuth("inventory_validation", "read", a.handleGetInventoryCounting))
 	mux.HandleFunc("PUT /api/inventory-validations/{id}/lines/{sku_id}/count", a.requireAuth("inventory_validation", "write", a.handleSaveInventoryCount))
 	mux.HandleFunc("GET /api/inventory-validations/{id}/lookup", a.requireAuth("inventory_validation", "read", a.handleInventoryLookup))
