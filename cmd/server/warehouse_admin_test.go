@@ -178,6 +178,54 @@ func TestInactiveWarehouseRejectedByAssetAssignment(t *testing.T) {
 	}
 }
 
+
+func TestWarehouseWithCurrentAssetCannotBeDeactivatedAndDirectAssignmentIsRejected(t *testing.T) {
+	a, _, wh1, wh2 := newStockTestApp(t)
+	var typeID int64
+	if err := a.db.QueryRow(`INSERT INTO asset_types(name) VALUES('Tipo Ocupação Depósito') RETURNING id`).Scan(&typeID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO assets(asset_type_id,tag,status,current_warehouse_id) VALUES($1,'WH-ASSET-OCCUPIED','ATIVO',$2)`, typeID, wh1); err != nil {
+		t.Fatal(err)
+	}
+	createTestUser(t, a, "warehouse-asset-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "warehouse-asset-director", "secret")
+	rr := authReq(a, http.MethodPost, "/api/admin/warehouses/"+itoa(wh1)+"/deactivate", nil, director, "")
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "warehouse_not_empty") {
+		t.Fatalf("warehouse with asset deactivate status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	list := authReq(a, http.MethodGet, "/api/admin/warehouses", nil, director, "")
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"asset_count":1`) {
+		t.Fatalf("warehouse occupancy missing asset count status=%d body=%s", list.Code, list.Body.String())
+	}
+
+	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO assets(asset_type_id,tag,status,current_warehouse_id) VALUES($1,'WH-ASSET-DIRECT-INACTIVE','ATIVO',$2)`, typeID, wh2); err == nil || !strings.Contains(err.Error(), "asset warehouse inactive or not found") {
+		t.Fatalf("direct inactive asset assignment err=%v", err)
+	}
+}
+
+func TestWarehouseAdminPanelFollowsWarehousePermission(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "warehouse-panel-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "warehouse-panel-director", "secret")
+	if _, err := a.db.Exec(`DELETE FROM profile_permissions pp USING profiles p, permissions perm WHERE pp.profile_id=p.id AND pp.permission_id=perm.id AND p.name='Diretor' AND perm.resource='warehouses' AND perm.action='write'`); err != nil {
+		t.Fatal(err)
+	}
+	page := authReq(a, http.MethodGet, "/admin", nil, director, "")
+	if page.Code != http.StatusOK {
+		t.Fatalf("admin page status=%d body=%s", page.Code, page.Body.String())
+	}
+	if strings.Contains(page.Body.String(), "<h1>Depósitos</h1>") {
+		t.Fatalf("warehouse panel rendered without warehouses/write")
+	}
+	if rr := authReq(a, http.MethodGet, "/api/admin/warehouses", nil, director, ""); rr.Code != http.StatusForbidden {
+		t.Fatalf("warehouse API status without permission=%d", rr.Code)
+	}
+}
+
 func TestWarehouseCannotBeDeleted(t *testing.T) {
 	a, _, wh, _ := newStockTestApp(t)
 	if _, err := a.db.Exec(`DELETE FROM warehouses WHERE id=$1`, wh); err == nil {
