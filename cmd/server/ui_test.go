@@ -230,6 +230,29 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 	}
 }
 
+func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	for _, want := range []string{
+		`skuParentSearch.closest('label').hidden=true`,
+		`skuParentId.disabled=true`,
+		`Item pai definido pelo contexto selecionado.`,
+		`skuParentSearch.closest('label').hidden=false`,
+		`skuParentId.disabled=false`,
+		`Alterar este campo reatribui o SKU. Com histórico, a unidade do novo pai deve ser a mesma.`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("catalog SKU parent context missing %q", want)
+		}
+	}
+	if strings.Count(js, `function startNewSKU(prefillBarcode='')`) != 1 {
+		t.Fatal("catalog must keep a single new-SKU entry point")
+	}
+}
+
 func TestWarehouseAdminUIContracts(t *testing.T) {
 	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
 	if err != nil {
