@@ -4,9 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -85,7 +88,13 @@ func (a *app) handleAdminCreateWarehouse(w http.ResponseWriter, r *http.Request)
 	var id int64
 	err = tx.QueryRowContext(r.Context(), `INSERT INTO warehouses(name,active) VALUES($1,false) RETURNING id`, name).Scan(&id)
 	if err != nil {
-		writeJSONError(w, http.StatusConflict, "warehouse name already exists")
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			writeJSONError(w, http.StatusConflict, "warehouse name already exists")
+			return
+		}
+		log.Printf("warehouse create failed error=%v", err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	u := userFromContext(r.Context())
