@@ -172,8 +172,8 @@ func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 		`scanBtn?.addEventListener('scanner:start'`,
 		`function requestDecimal(v)`,
 		`quantity:requestDecimal(qty.value)`,
-		`unit_cost:requestDecimal(document.getElementById('unitCost').value)`,
-		`if(err.status===400||err.status===409)`,
+		`unit_cost:requestDecimal(cost.value)`,
+		`if(err.status===400||err.status===404||err.status===409)`,
 		`movementMsg('error',movementErrorMessage(err))`,
 		`id="status" class="operation-feedback"`,
 	}
