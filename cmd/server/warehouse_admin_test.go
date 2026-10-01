@@ -95,6 +95,10 @@ func TestInactiveWarehouseRejectedAcrossStockOperationsAndSelectors(t *testing.T
 
 	createTestUser(t, a, "warehouse-selector-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "warehouse-selector-director", "secret")
+	rr := authReq(a, http.MethodPost, "/api/movements/entry", map[string]any{"operation_id": "inactive-http-entry", "sku_id": sku, "warehouse_id": wh2, "quantity": "1", "unit_cost": "1"}, director, "")
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "Depósito inativo") {
+		t.Fatalf("inactive HTTP movement status=%d body=%s", rr.Code, rr.Body.String())
+	}
 	for _, path := range []string{"/api/warehouses", "/api/inventory-validations/warehouses", "/api/stock/availability?sku_id=" + itoa(sku)} {
 		rr := authReq(a, http.MethodGet, path, nil, director, "")
 		if rr.Code != http.StatusOK {
