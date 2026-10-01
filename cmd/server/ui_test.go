@@ -536,3 +536,43 @@ func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 		t.Fatal("movement validation must happen before locking the submit control")
 	}
 }
+
+func TestAdminSafetyAtomicUserUpdateAndExplicitPermissionTarget(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, html := string(jsb), string(htmlb)
+
+	for _, forbidden := range []string{
+		"if(pass)await api('/api/admin/users/'+id+'/password'",
+		"if(!selectedProfile&&profiles[0])selectedProfile=profiles[0].id",
+	} {
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("admin safety reintroduced unsafe flow %q", forbidden)
+		}
+	}
+	for _, want := range []string{
+		"if(pass)body.password=pass",
+		"out=await api('/api/admin/users/'+id,{method:'PATCH'",
+		"if(out?.reauth_required){location.href='/login';return}",
+		"selectedProfile=0",
+		"permSave.disabled=true",
+		"permSave.disabled=false",
+		"Nenhum perfil selecionado. Selecione um perfil na lista acima.",
+		"Perfil selecionado: ",
+		"Selecione explicitamente um perfil antes de salvar as permissões.",
+		"Selecione novamente um perfil para realizar outra alteração.",
+		"id=\"adminSavePerms\" type=\"button\" disabled",
+		"id=\"adminPermSelection\"",
+		"Obrigatória ao criar. Ao editar, deixe em branco para manter a senha atual.",
+	} {
+		if !strings.Contains(js+html, want) {
+			t.Fatalf("admin safety contract missing %q", want)
+		}
+	}
+}
