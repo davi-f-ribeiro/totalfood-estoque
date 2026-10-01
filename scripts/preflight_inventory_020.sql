@@ -41,8 +41,17 @@ BEGIN
     IF has_operation <> has_hash THEN
         RAISE EXCEPTION 'PRECHECK_FAILED: inventory idempotency schema is partially present';
     END IF;
+
+    IF has_operation
+       AND NOT EXISTS (
+           SELECT 1
+           FROM schema_migrations
+           WHERE version = '020_inventory_creation_idempotency'
+       ) THEN
+        RAISE EXCEPTION 'PRECHECK_FAILED: inventory idempotency schema exists without migration 020 record';
+    END IF;
 END;
-$$;
+$;
 
 SELECT version, applied_at
 FROM schema_migrations
