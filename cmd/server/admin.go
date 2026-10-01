@@ -13,6 +13,7 @@ import (
 
 type adminUserRequest struct {
 	Login     string `json:"login"`
+	Password  string `json:"password,omitempty"`
 	ProfileID int64  `json:"profile_id"`
 	Active    *bool  `json:"active"`
 }
@@ -114,60 +115,108 @@ func (a *app) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	login := strings.TrimSpace(req.Login)
 	if login == "" || req.ProfileID <= 0 {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	active := true
 	if req.Active != nil {
 		active = *req.Active
 	}
-	if !a.profileExists(r, req.ProfileID) {
-		writeJSONError(w, 400, "invalid profile")
+	var passwordHash string
+	if req.Password != "" {
+		h, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		passwordHash = string(h)
+	}
+
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	defer tx.Rollback()
+
+	// Serialize changes that can affect the effective administrator set.
+	if _, err = tx.ExecContext(r.Context(), `LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `LOCK TABLE profile_permissions IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	var currentProfileID int64
+	var currentActive bool
+	if err = tx.QueryRowContext(r.Context(), `SELECT profile_id,active FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentProfileID, &currentActive); errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusNotFound, "user not found")
+		return
+	} else if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	var profileExists, newAdmin bool
+	if err = tx.QueryRowContext(r.Context(), `
+SELECT EXISTS(SELECT 1 FROM profiles WHERE id=$1),
+       EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=$1 AND p.resource='users' AND p.action='write')
+       AND EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=$1 AND p.resource='profiles' AND p.action='write')`, req.ProfileID).Scan(&profileExists, &newAdmin); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if !profileExists {
+		writeJSONError(w, http.StatusBadRequest, "invalid profile")
+		return
+	}
+
 	u := userFromContext(r.Context())
 	if id == u.ID && !active {
-		writeJSONError(w, 409, "não é permitido desativar o próprio administrador")
-		return
-	}
-	newAdmin, err := a.profileHasAdmin(r, req.ProfileID)
-	if err != nil {
-		writeJSONError(w, 500, "internal error")
+		writeJSONError(w, http.StatusConflict, "não é permitido desativar o próprio administrador")
 		return
 	}
 	if id == u.ID && !newAdmin {
-		writeJSONError(w, 409, "não é permitido remover o próprio acesso administrativo")
+		writeJSONError(w, http.StatusConflict, "não é permitido remover o próprio acesso administrativo")
 		return
 	}
-	oldAdmin, err := a.userIsAdmin(r, id)
-	if err != nil {
-		writeJSONError(w, 500, "internal error")
-		return
+
+	if passwordHash != "" {
+		_, err = tx.ExecContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3,password_hash=$4 WHERE id=$5`, login, req.ProfileID, active, passwordHash, id)
+	} else {
+		_, err = tx.ExecContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3 WHERE id=$4`, login, req.ProfileID, active, id)
 	}
-	if oldAdmin && (!active || !newAdmin) {
-		cnt, err := a.activeAdminCountExcluding(r, id)
-		if err != nil {
-			writeJSONError(w, 500, "internal error")
-			return
-		}
-		if cnt == 0 {
-			writeJSONError(w, 409, "não é permitido remover o último administrador ativo")
-			return
-		}
-	}
-	res, err := a.db.ExecContext(r.Context(), `UPDATE users SET login=$1, profile_id=$2, active=$3 WHERE id=$4`, login, req.ProfileID, active, id)
 	if err != nil {
 		log.Printf("admin user update failed user_id=%d error=%v", id, err)
-		writeJSONError(w, 409, "user not updated")
+		writeJSONError(w, http.StatusConflict, "user not updated")
 		return
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		writeJSONError(w, 404, "user not found")
+
+	var activeAdmins int
+	if err = tx.QueryRowContext(r.Context(), `
+SELECT count(DISTINCT u.id)
+FROM users u
+WHERE u.active=true
+  AND EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=u.profile_id AND p.resource='users' AND p.action='write')
+  AND EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=u.profile_id AND p.resource='profiles' AND p.action='write')`).Scan(&activeAdmins); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	_, _ = a.db.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, id)
-	writeJSON(w, 200, map[string]any{"status": "ok"})
+	if activeAdmins == 0 {
+		writeJSONError(w, http.StatusConflict, "não é permitido remover o último administrador ativo")
+		return
+	}
+
+	if _, err = tx.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, id); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == u.ID, "profile_id": req.ProfileID, "active": active, "previous_profile_id": currentProfileID, "previous_active": currentActive})
 }
 
 func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
@@ -180,27 +229,40 @@ func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Password == "" {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
 	if err != nil {
-		writeJSONError(w, 500, "internal error")
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	res, err := a.db.ExecContext(r.Context(), `UPDATE users SET password_hash=$1 WHERE id=$2`, string(h), id)
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(r.Context(), `UPDATE users SET password_hash=$1 WHERE id=$2`, string(h), id)
 	if err != nil {
 		log.Printf("admin password reset failed user_id=%d error=%v", id, err)
-		writeJSONError(w, 500, "internal error")
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		writeJSONError(w, 404, "user not found")
+		writeJSONError(w, http.StatusNotFound, "user not found")
 		return
 	}
-	_, _ = a.db.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, id)
-	writeJSON(w, 200, map[string]any{"status": "ok"})
+	if _, err = tx.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, id); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == userFromContext(r.Context()).ID})
 }
 
 func (a *app) handleAdminProfiles(w http.ResponseWriter, r *http.Request) {
@@ -305,44 +367,112 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	var name string
-	if err := a.db.QueryRowContext(r.Context(), `SELECT name FROM profiles WHERE id=$1`, id).Scan(&name); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, 404, "profile not found")
-		return
-	} else if err != nil {
-		writeJSONError(w, 500, "internal error")
-		return
-	}
-	if name == "Diretor" {
-		writeJSONError(w, 409, "permissões do Diretor são completas")
-		return
-	}
 	var req adminProfilePermissionsRequest
 	if !decodeAdminJSON(w, r, &req) {
 		return
 	}
+
 	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		writeJSONError(w, 500, "internal error")
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	defer tx.Rollback()
+
+	// Same lock order as user updates: this serializes all changes that can
+	// remove effective administrators, including concurrent cross-demotions.
+	if _, err = tx.ExecContext(r.Context(), `LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `LOCK TABLE profile_permissions IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	var name string
+	if err = tx.QueryRowContext(r.Context(), `SELECT name FROM profiles WHERE id=$1 FOR UPDATE`, id).Scan(&name); errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusNotFound, "profile not found")
+		return
+	} else if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if name == "Diretor" {
+		writeJSONError(w, http.StatusConflict, "permissões do Diretor são completas")
+		return
+	}
+
+	seen := map[int64]bool{}
+	newUsersWrite, newProfilesWrite := false, false
+	for _, pid := range req.PermissionIDs {
+		if pid <= 0 || seen[pid] {
+			writeJSONError(w, http.StatusBadRequest, "invalid permission")
+			return
+		}
+		seen[pid] = true
+		var resource, action string
+		if err = tx.QueryRowContext(r.Context(), `SELECT resource,action FROM permissions WHERE id=$1`, pid).Scan(&resource, &action); errors.Is(err, sql.ErrNoRows) {
+			writeJSONError(w, http.StatusBadRequest, "invalid permission")
+			return
+		} else if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if resource == "users" && action == "write" {
+			newUsersWrite = true
+		}
+		if resource == "profiles" && action == "write" {
+			newProfilesWrite = true
+		}
+	}
+
+	u := userFromContext(r.Context())
+	if id == u.ProfileID && !(newUsersWrite && newProfilesWrite) {
+		writeJSONError(w, http.StatusConflict, "não é permitido remover o próprio acesso administrativo")
+		return
+	}
+
 	if _, err = tx.ExecContext(r.Context(), `DELETE FROM profile_permissions WHERE profile_id=$1`, id); err != nil {
-		writeJSONError(w, 500, "internal error")
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	for _, pid := range req.PermissionIDs {
-		if _, err = tx.ExecContext(r.Context(), `INSERT INTO profile_permissions (profile_id, permission_id) SELECT $1,id FROM permissions WHERE id=$2`, id, pid); err != nil {
-			writeJSONError(w, 400, "invalid permission")
+		res, execErr := tx.ExecContext(r.Context(), `INSERT INTO profile_permissions (profile_id,permission_id) VALUES ($1,$2)`, id, pid)
+		if execErr != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid permission")
+			return
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			writeJSONError(w, http.StatusBadRequest, "invalid permission")
 			return
 		}
 	}
-	if err = tx.Commit(); err != nil {
-		writeJSONError(w, 500, "internal error")
+
+	var activeAdmins int
+	if err = tx.QueryRowContext(r.Context(), `
+SELECT count(DISTINCT u.id)
+FROM users u
+WHERE u.active=true
+  AND EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=u.profile_id AND p.resource='users' AND p.action='write')
+  AND EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=u.profile_id AND p.resource='profiles' AND p.action='write')`).Scan(&activeAdmins); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	_, _ = a.db.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE user_id IN (SELECT id FROM users WHERE profile_id=$1) AND revoked_at IS NULL`, id)
-	writeJSON(w, 200, map[string]any{"status": "ok"})
+	if activeAdmins == 0 {
+		writeJSONError(w, http.StatusConflict, "não é permitido remover o último administrador ativo")
+		return
+	}
+
+	if _, err = tx.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE user_id IN (SELECT id FROM users WHERE profile_id=$1) AND revoked_at IS NULL`, id); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == u.ProfileID})
 }
 
 func decodeAdminJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
