@@ -40,3 +40,35 @@ $$;
 CREATE TRIGGER warehouses_no_delete
 BEFORE DELETE ON warehouses
 FOR EACH ROW EXECUTE FUNCTION prevent_warehouse_delete();
+
+
+-- A current asset location is operational state. Never allow a new/current
+-- asset assignment to an inactive warehouse, including direct SQL writes.
+CREATE OR REPLACE FUNCTION enforce_active_asset_warehouse()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    warehouse_active boolean;
+BEGIN
+    IF NEW.current_warehouse_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT active
+      INTO warehouse_active
+      FROM warehouses
+     WHERE id = NEW.current_warehouse_id
+     FOR UPDATE;
+
+    IF NOT FOUND OR NOT warehouse_active THEN
+        RAISE EXCEPTION 'asset warehouse inactive or not found';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER assets_active_warehouse
+BEFORE INSERT OR UPDATE OF current_warehouse_id ON assets
+FOR EACH ROW EXECUTE FUNCTION enforce_active_asset_warehouse();
