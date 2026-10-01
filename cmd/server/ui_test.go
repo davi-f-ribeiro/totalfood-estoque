@@ -162,6 +162,7 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 		`let openItem=null,detailSeq=0`,
 		`let seq=++detailSeq`,
 		`if(seq!==detailSeq||openItem!==id)return`,
+		`detailSeq++;detail.hidden=true;detail.textContent='';openItem=null`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
 		if !strings.Contains(js+css, want) {
