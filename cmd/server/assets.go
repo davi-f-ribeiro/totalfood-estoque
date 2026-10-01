@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+var errAssetWarehouseNotFound = errors.New("asset warehouse not found")
+
 type assetTypeRequest struct {
 	Name   string `json:"name"`
 	Active *bool  `json:"active"`
@@ -271,6 +273,14 @@ func writeAssetMutationError(w http.ResponseWriter, err error) {
 		writeJSONError(w, 409, "operation_id conflict")
 		return
 	}
+	if errors.Is(err, errAssetWarehouseNotFound) {
+		writeJSONError(w, 404, "depósito não encontrado")
+		return
+	}
+	if errors.Is(err, errWarehouseInactive) {
+		writeJSONError(w, 409, "depósito inativo")
+		return
+	}
 	if errors.Is(err, errNotFound) {
 		writeJSONError(w, 404, "patrimônio não encontrado")
 		return
@@ -301,9 +311,16 @@ func (a *app) changeAssetLocation(ctx context.Context, tag string, req assetMove
 		if status != "ATIVO" {
 			return errValidation
 		}
-		var ok bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM warehouses WHERE id=$1 AND active=true)`, req.WarehouseID).Scan(&ok); err != nil || !ok {
-			return errNotFound
+		var warehouseActive bool
+		err := tx.QueryRowContext(ctx, `SELECT active FROM warehouses WHERE id=$1 FOR UPDATE`, req.WarehouseID).Scan(&warehouseActive)
+		if errors.Is(err, sql.ErrNoRows) {
+			return errAssetWarehouseNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if !warehouseActive {
+			return errWarehouseInactive
 		}
 		if origin.Valid && origin.Int64 == req.WarehouseID {
 			return errValidation
