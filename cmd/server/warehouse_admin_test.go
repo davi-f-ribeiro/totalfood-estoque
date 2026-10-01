@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+
+func warehouseFixture(t *testing.T, a *app, label string, active bool) int64 {
+	t.Helper()
+	var id int64
+	if err := a.db.QueryRow(`INSERT INTO warehouses(name,active) VALUES($1,$2) RETURNING id`, t.Name()+"-"+label, active).Scan(&id); err != nil {
+		t.Fatalf("warehouse fixture %s: %v", label, err)
+	}
+	return id
+}
+
 func TestWarehouseAdministrationLifecycleAndMovementGuard(t *testing.T) {
 	a, sku, wh1, wh2 := newStockTestApp(t)
 	ctx := context.Background()
@@ -69,12 +79,10 @@ func TestWarehouseAdministrationLifecycleAndMovementGuard(t *testing.T) {
 
 
 func TestInactiveWarehouseRejectedAcrossStockOperationsAndSelectors(t *testing.T) {
-	a, sku, wh1, wh2 := newStockTestApp(t)
+	a, sku, wh1, _ := newStockTestApp(t)
 	ctx := context.Background()
+	wh2 := warehouseFixture(t, a, "inactive-stock", false)
 	if _, err := a.createEntry(ctx, movementRequest{OperationID: "guard-seed-source", SKUID: sku, WarehouseID: wh1, Quantity: "3", UnitCost: "1"}, "guard-seed-source"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh2); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.createEntry(ctx, movementRequest{OperationID: "guard-entry", SKUID: sku, WarehouseID: wh2, Quantity: "1", UnitCost: "1"}, "guard-entry"); !errors.Is(err, errWarehouseInactive) {
@@ -108,7 +116,8 @@ func TestInactiveWarehouseRejectedAcrossStockOperationsAndSelectors(t *testing.T
 }
 
 func TestWarehouseWithNegativeBalanceCannotBeDeactivated(t *testing.T) {
-	a, sku, wh, _ := newStockTestApp(t)
+	a, sku, _, _ := newStockTestApp(t)
+	wh := warehouseFixture(t, a, "negative-balance", true)
 	userID := createTestUser(t, a, "warehouse-negative-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "warehouse-negative-director", "secret")
 	tx, err := a.db.Begin()
@@ -139,8 +148,10 @@ func TestWarehouseWithNegativeBalanceCannotBeDeactivated(t *testing.T) {
 
 
 func TestWarehouseDatabaseInvariantsRejectDirectBypass(t *testing.T) {
-	a, sku, wh1, wh2 := newStockTestApp(t)
+	a, sku, _, _ := newStockTestApp(t)
 	ctx := context.Background()
+	wh1 := warehouseFixture(t, a, "occupied-db-bypass", true)
+	wh2 := warehouseFixture(t, a, "inactive-db-bypass", false)
 	if _, err := a.createEntry(ctx, movementRequest{OperationID: "db-bypass-seed", SKUID: sku, WarehouseID: wh1, Quantity: "1", UnitCost: "1"}, "db-bypass-seed"); err != nil {
 		t.Fatal(err)
 	}
@@ -150,9 +161,6 @@ func TestWarehouseDatabaseInvariantsRejectDirectBypass(t *testing.T) {
 	var active bool
 	if err := a.db.QueryRow(`SELECT active FROM warehouses WHERE id=$1`, wh1).Scan(&active); err != nil || !active {
 		t.Fatalf("direct deactivation changed occupied warehouse active=%v err=%v", active, err)
-	}
-	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh2); err != nil {
-		t.Fatal(err)
 	}
 	userID := createTestUser(t, a, "warehouse-db-bypass", "secret", "Diretor", true)
 	tx, err := a.db.Begin()
@@ -211,7 +219,9 @@ func TestInactiveWarehouseRejectedByAssetAssignment(t *testing.T) {
 
 
 func TestWarehouseWithCurrentAssetCannotBeDeactivatedAndDirectAssignmentIsRejected(t *testing.T) {
-	a, _, wh1, wh2 := newStockTestApp(t)
+	a, _, _, _ := newStockTestApp(t)
+	wh1 := warehouseFixture(t, a, "asset-occupied", true)
+	wh2 := warehouseFixture(t, a, "asset-inactive", false)
 	var typeID int64
 	if err := a.db.QueryRow(`INSERT INTO asset_types(name) VALUES('Tipo Ocupação Depósito') RETURNING id`).Scan(&typeID); err != nil {
 		t.Fatal(err)
@@ -230,9 +240,6 @@ func TestWarehouseWithCurrentAssetCannotBeDeactivatedAndDirectAssignmentIsReject
 		t.Fatalf("warehouse occupancy missing asset count status=%d body=%s", list.Code, list.Body.String())
 	}
 
-	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh2); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := a.db.Exec(`INSERT INTO assets(asset_type_id,tag,status,current_warehouse_id) VALUES($1,'WH-ASSET-DIRECT-INACTIVE','ATIVO',$2)`, typeID, wh2); err == nil || !strings.Contains(err.Error(), "asset warehouse inactive or not found") {
 		t.Fatalf("direct inactive asset assignment err=%v", err)
 	}
