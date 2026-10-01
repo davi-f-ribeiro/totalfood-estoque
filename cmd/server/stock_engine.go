@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"strings"
 )
 
@@ -27,6 +28,8 @@ func (a *app) createEntry(ctx context.Context, req movementRequest, hash string)
 	})
 }
 
+var errDuplicateEntrySKU = errors.New("duplicate sku in entry lines")
+
 type entryLineRequest struct {
 	SKUID    int64  `json:"sku_id"`
 	Quantity string `json:"quantity"`
@@ -37,19 +40,27 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 	if req.WarehouseID <= 0 || len(lines) == 0 {
 		return operationResult{}, errValidation
 	}
+	seen := make(map[int64]struct{}, len(lines))
+	skuIDs := make([]int64, 0, len(lines))
 	for _, line := range lines {
 		if line.SKUID <= 0 || !positiveDecimal(line.Quantity) || !nonNegativeDecimal(line.UnitCost) {
 			return operationResult{}, errValidation
 		}
+		if _, exists := seen[line.SKUID]; exists {
+			return operationResult{}, errDuplicateEntrySKU
+		}
+		seen[line.SKUID] = struct{}{}
+		skuIDs = append(skuIDs, line.SKUID)
 	}
+	sort.Slice(skuIDs, func(i, j int) bool { return skuIDs[i] < skuIDs[j] })
 	return a.writeMovement(ctx, "ENTRADA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
-		for _, line := range lines {
-			if err := ensureRefs(ctx, tx, line.SKUID, req.WarehouseID); err != nil {
+		for _, skuID := range skuIDs {
+			if err := ensureRefs(ctx, tx, skuID, req.WarehouseID); err != nil {
 				return 0, err
 			}
 		}
-		for _, line := range lines {
-			if err := lockStock(ctx, tx, line.SKUID, req.WarehouseID); err != nil {
+		for _, skuID := range skuIDs {
+			if err := lockStock(ctx, tx, skuID, req.WarehouseID); err != nil {
 				return 0, err
 			}
 		}
