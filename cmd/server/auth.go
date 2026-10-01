@@ -222,6 +222,21 @@ func (a *app) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "login": req.Login, "active": active, "profile": req.Profile})
 }
 
+func (a *app) requireAuthenticatedRead(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u, _, err := a.authenticate(r.Context(), r)
+		if err != nil {
+			writeJSONError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		if u.MustChangePassword {
+			writeJSONError(w, http.StatusForbidden, "password change required")
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), authCtxKey, u)))
+	}
+}
+
 func (a *app) requireAuth(resource, action string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u, csrf, err := a.authenticate(r.Context(), r)
