@@ -474,3 +474,65 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		}
 	}
 }
+
+
+func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlb, err := os.ReadFile(filepath.Join("templates", "movement.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, html := string(jsb), string(htmlb)
+
+	for _, forbidden := range []string{
+		"requestSubmit()",
+		"window.addEventListener('online'",
+	} {
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("movement safety forbids automatic submission %q", forbidden)
+		}
+	}
+
+	for _, want := range []string{
+		`id="movementPending"`,
+		"Verificar resultado",
+		"Reenviar a mesma operação",
+		"function readPending()",
+		"function savePending(p)",
+		"function resetMovementForm()",
+		"function verifyPending()",
+		"async function retryPending()",
+		"Existe uma operação pendente",
+		"Formulário pronto para uma nova movimentação.",
+		"sessionStorage.getItem('pendingOp')",
+		"sessionStorage.removeItem('pendingOp')",
+		"await api('/api/operations/'+encodeURIComponent(p.body.operation_id))",
+		"await api(p.url,{method:'POST',body:JSON.stringify(p.body)})",
+		"if(readPending()){showPending(readPending(),false)",
+		"document.getElementById('skuId').value=''",
+		"history.replaceState(null,'',location.pathname)",
+		"cost.required=isEntry",
+	} {
+		if !strings.Contains(js+html, want) {
+			t.Fatalf("movement safety contract missing %q", want)
+		}
+	}
+
+	savePos := strings.Index(js, "savePending(payload)")
+	sendPos := strings.Index(js, "await api(payload.url,{method:'POST'")
+	if savePos < 0 || sendPos < 0 || savePos > sendPos {
+		t.Fatal("movement must persist operation_id before first mutation request")
+	}
+	verifyPos := strings.Index(js, "let state=await verifyPending()")
+	retryPos := strings.Index(js, "await api(p.url,{method:'POST'")
+	if verifyPos < 0 || retryPos < 0 || verifyPos > retryPos {
+		t.Fatal("pending movement must be verified before explicit resend")
+	}
+	validatePos := strings.Index(js, "if(!validateMovement())return;submit.dataset.busy='1'")
+	if validatePos < 0 {
+		t.Fatal("movement validation must happen before locking the submit control")
+	}
+}
