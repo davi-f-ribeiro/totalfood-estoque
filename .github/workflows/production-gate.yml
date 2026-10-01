@@ -1,13 +1,19 @@
 name: production-gate
+
 on:
   push:
     branches:
       - main
       - 'hotfix/**'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine
@@ -25,16 +31,28 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://estoque:estoque_test@127.0.0.1:5432/estoque_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version: '1.24.x'
           cache: true
+      - name: Toolchain versions
+        run: |
+          go version
+          node --version
+          psql --version
+          docker --version
       - name: JavaScript syntax
         run: node --check cmd/server/static/app.js
+      - name: Go vet
+        run: go vet ./...
       - name: Go tests with PostgreSQL 17
         run: go test -count=1 ./...
+      - name: Go race tests with PostgreSQL 17
+        run: go test -race -count=1 ./...
       - name: Go build
         run: go build ./...
       - name: Docker build
-        run: docker build -t totalfood-estoque:validation .
+        run: docker build -t totalfood-estoque:production-gate .
