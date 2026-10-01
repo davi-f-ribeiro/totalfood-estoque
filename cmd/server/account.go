@@ -25,7 +25,7 @@ func (a *app) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil || req.CurrentPassword == "" || strings.TrimSpace(req.NewPassword) == "" || req.ConfirmPassword == "" {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Preencha a senha atual, a nova senha e a confirmação.")
 		return
 	}
 	if req.NewPassword != req.ConfirmPassword {
