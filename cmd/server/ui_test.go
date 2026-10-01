@@ -310,6 +310,26 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 	}
 }
 
+func TestFrontendCleanupKeepsSingleCanonicalHelpers(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	for _, forbidden := range []string{
+		`function pickMovementProduct(`,
+		`function stopScan(`,
+		`async function loadWarehouses(){let s=document.querySelectorAll('select[id^="warehouse"]')`,
+	} {
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("dead or competing frontend helper reintroduced %q", forbidden)
+		}
+	}
+	if strings.Count(js, `async function loadWarehouses(includeGeneral=false)`) != 1 {
+		t.Fatal("operational warehouse loader must have one canonical global implementation")
+	}
+}
+
 func TestWarehouseAdminUIContracts(t *testing.T) {
 	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
 	if err != nil {
