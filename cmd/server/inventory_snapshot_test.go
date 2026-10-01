@@ -288,7 +288,7 @@ func TestInventoryRepeatableReadSnapshotBeforeConcurrentMovement(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("snapshot view lost eligible SKUs: %+v", rows)
 	}
-	res, err := persistInventorySelection(ctx, tx, "TOTAL", e.userID, wh, snapshotAt, lines)
+	res, err := persistInventorySelection(ctx, tx, "TOTAL", e.userID, wh, snapshotAt, lines, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
