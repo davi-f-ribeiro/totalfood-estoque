@@ -17,6 +17,7 @@ type catalogItemRequest struct {
 	MinimumStock string `json:"minimum_stock"`
 	Notes        string `json:"notes"`
 	Active       *bool  `json:"active"`
+	Version      int64  `json:"version,omitempty"`
 }
 
 type catalogSKURequest struct {
@@ -24,6 +25,7 @@ type catalogSKURequest struct {
 	Name    string `json:"name"`
 	Barcode string `json:"barcode"`
 	Active  *bool  `json:"active"`
+	Version int64  `json:"version,omitempty"`
 }
 
 func (a *app) registerCatalogHandlers(mux *http.ServeMux) {
@@ -99,7 +101,7 @@ func catalogItems(r *http.Request, db *sql.DB, q string) ([]map[string]any, erro
 	arg := "%" + q + "%"
 	rows, err := db.QueryContext(r.Context(), `
 SELECT i.id,i.name,COALESCE(c.name,''),COALESCE(i.category_id,0),i.unit_code,
-       COALESCE(i.minimum_stock::text,''),COALESCE(i.notes,''),i.active,
+       COALESCE(i.minimum_stock::text,''),COALESCE(i.notes,''),i.active,i.version,
        count(s.id) AS sku_count
 FROM inventory_items i
 LEFT JOIN categories c ON c.id=i.category_id
@@ -121,13 +123,13 @@ LIMIT 50`, q, arg)
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, categoryID, skuCount int64
+		var id, categoryID, skuCount, version int64
 		var name, category, unit, minimum, notes string
 		var active bool
-		if err := rows.Scan(&id, &name, &category, &categoryID, &unit, &minimum, &notes, &active, &skuCount); err != nil {
+		if err := rows.Scan(&id, &name, &category, &categoryID, &unit, &minimum, &notes, &active, &version, &skuCount); err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]any{"id": id, "name": name, "category": category, "category_id": categoryID, "unit": unit, "minimum_stock": minimum, "notes": notes, "active": active, "sku_count": skuCount})
+		out = append(out, map[string]any{"id": id, "name": name, "category": category, "category_id": categoryID, "unit": unit, "minimum_stock": minimum, "notes": notes, "active": active, "version": version, "sku_count": skuCount})
 	}
 	return out, rows.Err()
 }
@@ -147,7 +149,7 @@ func (a *app) handleCatalogItemSKUs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
-SELECT s.id,s.item_id,COALESCE(s.name,''),COALESCE(s.brand,''),COALESCE(s.barcode,''),s.active,
+SELECT s.id,s.item_id,COALESCE(s.name,''),COALESCE(s.brand,''),COALESCE(s.barcode,''),s.active,s.version,
        COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS balance,
        EXISTS(SELECT 1 FROM movement_lines mh WHERE mh.sku_id=s.id) AS has_history
 FROM product_skus s
@@ -162,14 +164,14 @@ ORDER BY s.active DESC,COALESCE(s.name,''),COALESCE(s.barcode,'')`, itemID)
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, parentID int64
+		var id, parentID, version int64
 		var name, brand, barcode, balance string
 		var active, hasHistory bool
-		if err := rows.Scan(&id, &parentID, &name, &brand, &barcode, &active, &balance, &hasHistory); err != nil {
+		if err := rows.Scan(&id, &parentID, &name, &brand, &barcode, &active, &version, &balance, &hasHistory); err != nil {
 			writeJSONError(w, 500, "Erro interno.")
 			return
 		}
-		out = append(out, map[string]any{"id": id, "item_id": parentID, "name": name, "brand": brand, "barcode": barcode, "active": active, "balance": balance, "has_history": hasHistory})
+		out = append(out, map[string]any{"id": id, "item_id": parentID, "name": name, "brand": brand, "barcode": barcode, "active": active, "version": version, "balance": balance, "has_history": hasHistory})
 	}
 	writeJSON(w, 200, out)
 }
@@ -205,7 +207,7 @@ func (a *app) handleCreateCatalogItem(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "Não foi possível criar o item pai.")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
 }
 
 func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
@@ -218,16 +220,21 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogItemRequest(&req)
-	if !validItemReq(req) {
-		writeJSONError(w, http.StatusBadRequest, "Preencha nome, categoria, unidade e estoque mínimo válido.")
+	if !validItemReq(req) || req.Version <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "Preencha nome, categoria, unidade, estoque mínimo e versão válidos.")
 		return
 	}
 	var currentUnit string
-	if err := a.db.QueryRowContext(r.Context(), `SELECT unit_code FROM inventory_items WHERE id=$1`, id).Scan(&currentUnit); errors.Is(err, sql.ErrNoRows) {
+	var currentVersion int64
+	if err := a.db.QueryRowContext(r.Context(), `SELECT unit_code,version FROM inventory_items WHERE id=$1`, id).Scan(&currentUnit, &currentVersion); errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "Item pai não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, 500, "Erro interno.")
+		return
+	}
+	if currentVersion != req.Version {
+		writeConcurrentEditError(w)
 		return
 	}
 	var duplicate bool
@@ -254,17 +261,22 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 	if req.Active != nil {
 		active = *req.Active
 	}
-	res, err := a.db.ExecContext(r.Context(), `UPDATE inventory_items SET name=$1,category_id=$2,unit_code=$3,minimum_stock=$4,notes=NULLIF($5,''),active=$6 WHERE id=$7`, req.Name, req.CategoryID, req.UnitCode, req.MinimumStock, req.Notes, active, id)
+	var newVersion int64
+	err := a.db.QueryRowContext(r.Context(), `
+UPDATE inventory_items
+SET name=$1,category_id=$2,unit_code=$3,minimum_stock=$4,notes=NULLIF($5,''),active=$6,version=version+1
+WHERE id=$7 AND version=$8
+RETURNING version`, req.Name, req.CategoryID, req.UnitCode, req.MinimumStock, req.Notes, active, id, req.Version).Scan(&newVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeConcurrentEditError(w)
+		return
+	}
 	if err != nil {
 		log.Printf("catalog item update failed item_id=%d error=%v", id, err)
 		writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o item pai.")
 		return
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		writeJSONError(w, http.StatusNotFound, "Item pai não encontrado.")
-		return
-	}
-	writeJSON(w, 200, map[string]any{"id": id})
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "version": newVersion})
 }
 
 func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +299,7 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		writeCatalogSKUError(w, err, "catalog sku create failed")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
 }
 
 func (a *app) handleUpdateCatalogSKU(w http.ResponseWriter, r *http.Request) {
@@ -300,22 +312,26 @@ func (a *app) handleUpdateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogSKURequest(&req)
-	if req.Name == "" || req.Barcode == "" {
-		writeJSONError(w, http.StatusBadRequest, "Preencha o produto/SKU e código de barras.")
+	if req.Name == "" || req.Barcode == "" || req.Version <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "Preencha o produto/SKU, código de barras e versão válidos.")
 		return
 	}
-	var currentItem int64
+	var currentItem, currentVersion int64
 	var currentUnit, targetUnit string
 	var hasHistory bool
 	err := a.db.QueryRowContext(r.Context(), `
-SELECT s.item_id,src.unit_code,EXISTS(SELECT 1 FROM movement_lines ml WHERE ml.sku_id=s.id)
-FROM product_skus s JOIN inventory_items src ON src.id=s.item_id WHERE s.id=$1`, id).Scan(&currentItem, &currentUnit, &hasHistory)
+SELECT s.item_id,s.version,src.unit_code,EXISTS(SELECT 1 FROM movement_lines ml WHERE ml.sku_id=s.id)
+FROM product_skus s JOIN inventory_items src ON src.id=s.item_id WHERE s.id=$1`, id).Scan(&currentItem, &currentVersion, &currentUnit, &hasHistory)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "SKU não encontrado.")
 		return
 	}
 	if err != nil {
 		writeJSONError(w, 500, "Erro interno.")
+		return
+	}
+	if currentVersion != req.Version {
+		writeConcurrentEditError(w)
 		return
 	}
 	if req.ItemID <= 0 {
@@ -336,16 +352,21 @@ FROM product_skus s JOIN inventory_items src ON src.id=s.item_id WHERE s.id=$1`,
 	if req.Active != nil {
 		active = *req.Active
 	}
-	res, err := a.db.ExecContext(r.Context(), `UPDATE product_skus SET item_id=$1,name=$2,barcode=$3,active=$4 WHERE id=$5`, req.ItemID, req.Name, req.Barcode, active, id)
+	var newVersion int64
+	err = a.db.QueryRowContext(r.Context(), `
+UPDATE product_skus
+SET item_id=$1,name=$2,barcode=$3,active=$4,version=version+1
+WHERE id=$5 AND version=$6
+RETURNING version`, req.ItemID, req.Name, req.Barcode, active, id, req.Version).Scan(&newVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeConcurrentEditError(w)
+		return
+	}
 	if err != nil {
 		writeCatalogSKUError(w, err, "catalog sku update failed")
 		return
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		writeJSONError(w, http.StatusNotFound, "SKU não encontrado.")
-		return
-	}
-	writeJSON(w, 200, map[string]any{"id": id, "item_id": req.ItemID, "moved": currentItem != req.ItemID})
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "item_id": req.ItemID, "moved": currentItem != req.ItemID, "version": newVersion})
 }
 
 func writeCatalogSKUError(w http.ResponseWriter, err error, logPrefix string) {
