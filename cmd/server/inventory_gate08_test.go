@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -73,5 +76,82 @@ func TestCancelledTotalDoesNotClassifyUncountedLineAsDivergent(t *testing.T) {
 		if line.State != nil || line.EffectiveQuantity != nil || line.Difference != nil {
 			t.Fatalf("uncounted line %d was classified: %+v", line.SKUID, line)
 		}
+	}
+}
+
+func TestGate08InventoryMigrationsIncrementalAndStartupIdempotent(t *testing.T) {
+	if os.Getenv("TEST_DATABASE_URL") == "" {
+		t.Skip("TEST_DATABASE_URL is required")
+	}
+	ctx := context.Background()
+	db := openTestDatabase(t)
+	migrationsDir := filepath.Join("..", "..", "migrations")
+	baseDir := t.TempDir()
+	for i := 1; i <= 13; i++ {
+		matches, err := filepath.Glob(filepath.Join(migrationsDir, fmt.Sprintf("%03d_*.sql", i)))
+		if err != nil || len(matches) != 1 {
+			t.Fatalf("migration %03d matches=%v err=%v", i, matches, err)
+		}
+		body, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(baseDir, filepath.Base(matches[0])), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runMigrations(ctx, db, baseDir); err != nil {
+		t.Fatalf("production-base migrations: %v", err)
+	}
+
+	var movementsBefore, movementLinesBefore int64
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movements").Scan(&movementsBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movement_lines").Scan(&movementLinesBefore); err != nil {
+		t.Fatal(err)
+	}
+
+	incrementalDir := t.TempDir()
+	for i := 14; i <= 18; i++ {
+		matches, err := filepath.Glob(filepath.Join(migrationsDir, fmt.Sprintf("%03d_*.sql", i)))
+		if err != nil || len(matches) != 1 {
+			t.Fatalf("migration %03d matches=%v err=%v", i, matches, err)
+		}
+		body, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(incrementalDir, filepath.Base(matches[0])), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runMigrations(ctx, db, incrementalDir); err != nil {
+		t.Fatalf("incremental 014-018: %v", err)
+	}
+	var appliedBefore int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations").Scan(&appliedBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := runMigrations(ctx, db, incrementalDir); err != nil {
+		t.Fatalf("idempotent startup rerun: %v", err)
+	}
+	var appliedAfter int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations").Scan(&appliedAfter); err != nil {
+		t.Fatal(err)
+	}
+	if appliedBefore != appliedAfter {
+		t.Fatalf("startup reapplied migrations: %d -> %d", appliedBefore, appliedAfter)
+	}
+
+	var movementsAfter, movementLinesAfter int64
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movements").Scan(&movementsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movement_lines").Scan(&movementLinesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if movementsBefore != movementsAfter || movementLinesBefore != movementLinesAfter {
+		t.Fatalf("inventory migrations changed movement data: movements %d->%d lines %d->%d", movementsBefore, movementsAfter, movementLinesBefore, movementLinesAfter)
 	}
 }
