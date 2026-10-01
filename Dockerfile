@@ -10,7 +10,11 @@ COPY cmd ./cmd
 COPY migrations ./migrations
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/estoque ./cmd/server
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM debian:12-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 65532 --no-create-home --shell /usr/sbin/nologin estoque
 WORKDIR /app
 
 COPY --from=build /out/estoque /app/estoque
@@ -20,5 +24,5 @@ ENV PORT=8080
 ENV MIGRATIONS_DIR=/app/migrations
 EXPOSE 8080
 
-USER nonroot:nonroot
+USER 65532:65532
 ENTRYPOINT ["/app/estoque"]
