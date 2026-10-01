@@ -123,3 +123,41 @@
 
 
 .impact-warning{margin:10px 0 14px;padding:10px 12px;border:1px solid #e3c58d;border-radius:var(--radius-sm);background:#fffaf0;color:var(--warning);font-weight:700}
+
+
+/* Catalog composition: preserve hierarchy, proximity and continuity per viewport. */
+.catalog-manager{display:grid;gap:16px}
+.catalog-title{padding-bottom:14px;border-bottom:1px solid var(--border)}
+.catalog-title .hint{margin-bottom:0}
+.catalog-search{margin:0}
+.catalog-manager-layout>aside h2{margin-bottom:10px}
+.catalog-parent-list{gap:8px}
+.catalog-parent-card{justify-content:stretch;justify-items:start;align-content:center;text-align:left;padding:11px 13px;min-height:0}
+.catalog-parent-card strong,.catalog-parent-card small{width:100%;text-align:left}
+.catalog-empty{padding:14px;text-align:left;margin:0 0 10px;background:var(--surface-secondary)}
+.catalog-empty h2{font-size:1rem;margin:0 0 4px}
+.catalog-empty p{margin:0}
+
+@media(min-width:1024px){
+  .catalog-manager{padding:22px}
+  .catalog-manager-layout{grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:24px}
+  .catalog-manager-layout>aside{padding-right:20px}
+}
+@media(min-width:768px) and (max-width:1023px){
+  .catalog-manager-layout{grid-template-columns:minmax(230px,280px) minmax(0,1fr);gap:18px}
+  .catalog-manager-layout>aside{padding-right:16px}
+}
+@media(max-width:767px){
+  .catalog-manager{padding:0;border:0;border-radius:0;box-shadow:none;background:transparent;gap:14px}
+  .catalog-title{gap:10px;padding:4px 0 14px}
+  .catalog-title h1{margin-bottom:6px}
+  .catalog-title .hint{margin-top:0}
+  .catalog-search{margin:0 0 2px}
+  .catalog-manager-layout{display:grid;grid-template-columns:1fr;gap:14px}
+  .catalog-manager-layout>aside{border:0;padding:0}
+  .catalog-parent-list{max-height:none;overflow:visible;gap:8px}
+  .catalog-parent-card{padding:11px 12px;border-radius:var(--radius-md)}
+  .catalog-empty{padding:12px;margin-bottom:10px}
+  .catalog-editor{padding-top:14px;border-top:1px solid var(--border)}
+  .sku-manager{margin-top:16px;padding-top:16px}
+}
