@@ -26,6 +26,7 @@ type uiData struct {
 	Page              string
 	Error             string
 	CanAdmin          bool
+	CanWarehouseAdmin bool
 	CanInventory      bool
 	CanInventoryWrite bool
 }
@@ -128,9 +129,10 @@ func (a *app) uiPage(tmpl, title, res, act string) http.HandlerFunc {
 		}
 		csrf, _ := a.rotateCSRF(r.Context(), r)
 		canAdmin, _ := a.hasPermission(r.Context(), u.ID, "users", "write")
+		canWarehouseAdmin, _ := a.hasPermission(r.Context(), u.ID, "warehouses", "write")
 		canInventory, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "read")
 		canInventoryWrite, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "write")
-		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin, CanInventory: canInventory, CanInventoryWrite: canInventoryWrite})
+		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin, CanWarehouseAdmin: canWarehouseAdmin, CanInventory: canInventory, CanInventoryWrite: canInventoryWrite})
 	}
 }
 
