@@ -26,8 +26,11 @@ func newInventoryTestEnv(t *testing.T) inventoryTestEnv {
 	if err := runMigrations(ctx, db, filepath.Join("..", "..", "migrations")); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if _, err := db.ExecContext(ctx, `UPDATE warehouses SET active=false`); err != nil {
-		t.Fatalf("deactivate seeded warehouses: %v", err)
+	// Keep seeded warehouses historically valid. Isolate inventory tests by
+	// making pre-existing SKUs ineligible instead of deactivating warehouses
+	// that may still hold stock.
+	if _, err := db.ExecContext(ctx, `UPDATE product_skus SET active=false`); err != nil {
+		t.Fatalf("isolate seeded inventory SKUs: %v", err)
 	}
 	var profileID, userID int64
 	if err := db.QueryRowContext(ctx, `SELECT id FROM profiles WHERE name='Diretor'`).Scan(&profileID); err != nil {
