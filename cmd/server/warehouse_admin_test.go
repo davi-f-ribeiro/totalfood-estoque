@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -281,5 +284,100 @@ func TestWarehouseAdminRequiresPermission(t *testing.T) {
 	sales := doLogin(t, a, "warehouse-sales", "secret")
 	if rr := authReq(a, http.MethodGet, "/api/admin/warehouses", nil, sales, ""); rr.Code != http.StatusForbidden {
 		t.Fatalf("sales warehouse admin status=%d", rr.Code)
+	}
+}
+
+
+func TestWarehouseMigration019IncrementalAndIdempotent(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	migrationsDir := filepath.Join("..", "..", "migrations")
+
+	baseDir := t.TempDir()
+	for i := 1; i <= 18; i++ {
+		matches, err := filepath.Glob(filepath.Join(migrationsDir, fmt.Sprintf("%03d_*.sql", i)))
+		if err != nil || len(matches) != 1 {
+			t.Fatalf("base migration %03d matches=%v err=%v", i, matches, err)
+		}
+		body, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(baseDir, filepath.Base(matches[0])), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runMigrations(ctx, db, baseDir); err != nil {
+		t.Fatalf("base migrations: %v", err)
+	}
+
+	var movementsBefore, linesBefore, assetsBefore int64
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movements").Scan(&movementsBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movement_lines").Scan(&linesBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM assets").Scan(&assetsBefore); err != nil {
+		t.Fatal(err)
+	}
+
+	incrementalDir := t.TempDir()
+	matches, err := filepath.Glob(filepath.Join(migrationsDir, "019_*.sql"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("migration 019 matches=%v err=%v", matches, err)
+	}
+	body, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(incrementalDir, filepath.Base(matches[0])), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runMigrations(ctx, db, incrementalDir); err != nil {
+		t.Fatalf("incremental migration 019: %v", err)
+	}
+	var appliedBefore int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations").Scan(&appliedBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := runMigrations(ctx, db, incrementalDir); err != nil {
+		t.Fatalf("migration 019 idempotent startup: %v", err)
+	}
+	var appliedAfter int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations").Scan(&appliedAfter); err != nil {
+		t.Fatal(err)
+	}
+	if appliedBefore != appliedAfter {
+		t.Fatalf("migration 019 reapplied: %d -> %d", appliedBefore, appliedAfter)
+	}
+
+	var movementsAfter, linesAfter, assetsAfter int64
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movements").Scan(&movementsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM movement_lines").Scan(&linesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM assets").Scan(&assetsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if movementsBefore != movementsAfter || linesBefore != linesAfter || assetsBefore != assetsAfter {
+		t.Fatalf("migration 019 changed historical data: movements %d->%d lines %d->%d assets %d->%d",
+			movementsBefore, movementsAfter, linesBefore, linesAfter, assetsBefore, assetsAfter)
+	}
+
+	var permissionCount, indexCount, triggerCount int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM permissions WHERE resource='warehouses' AND action='write'").Scan(&permissionCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pg_indexes WHERE tablename='warehouses' AND indexname='warehouses_name_tracking_unique'").Scan(&indexCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname IN ('warehouses_no_delete','warehouses_deactivate_only_empty','assets_active_warehouse','movement_lines_active_warehouse')").Scan(&triggerCount); err != nil {
+		t.Fatal(err)
+	}
+	if permissionCount != 1 || indexCount != 1 || triggerCount != 4 {
+		t.Fatalf("migration 019 contract permission=%d index=%d triggers=%d", permissionCount, indexCount, triggerCount)
 	}
 }
