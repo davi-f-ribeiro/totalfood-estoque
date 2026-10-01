@@ -106,10 +106,10 @@ func (a *app) createTransfer(ctx context.Context, req movementRequest, hash stri
 		return operationResult{}, errValidation
 	}
 	return a.writeMovement(ctx, "TRANSFERENCIA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
-		if err := ensureRefs(ctx, tx, req.SKUID, req.FromWarehouseID); err != nil {
+		if err := ensureSKU(ctx, tx, req.SKUID); err != nil {
 			return 0, err
 		}
-		if err := ensureRefs(ctx, tx, req.SKUID, req.ToWarehouseID); err != nil {
+		if err := lockActiveWarehouses(ctx, tx, req.FromWarehouseID, req.ToWarehouseID); err != nil {
 			return 0, err
 		}
 		if req.FromWarehouseID < req.ToWarehouseID {
@@ -187,12 +187,40 @@ func lockStock(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error 
 }
 
 func ensureRefs(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error {
+	if err := ensureSKU(ctx, tx, skuID); err != nil {
+		return err
+	}
+	return lockActiveWarehouses(ctx, tx, warehouseID)
+}
+
+func ensureSKU(ctx context.Context, tx *sql.Tx, skuID int64) error {
 	var ok bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM product_skus WHERE id=$1)`, skuID).Scan(&ok); err != nil || !ok {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM product_skus WHERE id=$1)`, skuID).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
 		return errNotFound
 	}
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM warehouses WHERE id=$1)`, warehouseID).Scan(&ok); err != nil || !ok {
-		return errNotFound
+	return nil
+}
+
+func lockActiveWarehouses(ctx context.Context, tx *sql.Tx, warehouseIDs ...int64) error {
+	ids := append([]int64(nil), warehouseIDs...)
+	if len(ids) == 2 && ids[0] > ids[1] {
+		ids[0], ids[1] = ids[1], ids[0]
+	}
+	for _, id := range ids {
+		var active bool
+		err := tx.QueryRowContext(ctx, `SELECT active FROM warehouses WHERE id=$1 FOR UPDATE`, id).Scan(&active)
+		if errors.Is(err, sql.ErrNoRows) {
+			return errNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if !active {
+			return errWarehouseInactive
+		}
 	}
 	return nil
 }
