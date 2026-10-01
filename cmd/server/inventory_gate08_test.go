@@ -228,7 +228,9 @@ func TestGate08FullLifecycleDoesNotChangeStockBySKUWarehouse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := e.db.Exec("UPDATE warehouses SET active=false WHERE id=$1", totalWH); err != nil {
+	// Keep the stocked TOTAL warehouse active; make only its SKUs ineligible
+	// so BLIND selection deterministically chooses the dedicated warehouse.
+	if _, err := e.db.Exec("UPDATE product_skus SET active=false WHERE id IN ($1,$2)", totalA, totalB); err != nil {
 		t.Fatal(err)
 	}
 	blind, err := e.a.createBlindInventory(ctx, e.userID)
