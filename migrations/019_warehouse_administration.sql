@@ -131,3 +131,22 @@ $$;
 CREATE TRIGGER movement_lines_active_warehouse
 BEFORE INSERT OR UPDATE ON movement_lines
 FOR EACH ROW EXECUTE FUNCTION enforce_active_movement_warehouse();
+
+
+-- Warehouse names are historical identifiers. Renaming is intentionally
+-- unsupported for the same traceability reason as deletion.
+CREATE OR REPLACE FUNCTION prevent_warehouse_rename()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.name IS DISTINCT FROM OLD.name THEN
+        RAISE EXCEPTION 'warehouse names cannot be changed';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER warehouses_no_rename
+BEFORE UPDATE OF name ON warehouses
+FOR EACH ROW EXECUTE FUNCTION prevent_warehouse_rename();
