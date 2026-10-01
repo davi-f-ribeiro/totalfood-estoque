@@ -129,5 +129,5 @@ END;
 $$;
 
 CREATE TRIGGER movement_lines_active_warehouse
-BEFORE INSERT OR UPDATE OF warehouse_id ON movement_lines
+BEFORE INSERT OR UPDATE ON movement_lines
 FOR EACH ROW EXECUTE FUNCTION enforce_active_movement_warehouse();
