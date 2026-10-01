@@ -279,19 +279,20 @@ SELECT status FROM inventory_validations WHERE id=$1 FOR UPDATE`, validationID).
 	}
 
 	var currentQty sql.NullString
+	var currentCountedBy sql.NullInt64
 	var currentVersion int64
 	if err := tx.QueryRowContext(ctx, `
-SELECT physical_quantity::text,count_version
+SELECT physical_quantity::text,counted_by_user_id,count_version
 FROM inventory_validation_lines
 WHERE validation_id=$1 AND sku_id=$2
-FOR UPDATE`, validationID, skuID).Scan(&currentQty, &currentVersion); errors.Is(err, sql.ErrNoRows) {
+FOR UPDATE`, validationID, skuID).Scan(&currentQty, &currentCountedBy, &currentVersion); errors.Is(err, sql.ErrNoRows) {
 		return inventoryCountingLine{}, validationStatus, errInventoryLineNotFound
 	} else if err != nil {
 		return inventoryCountingLine{}, validationStatus, err
 	}
 
 	if currentVersion != expectedVersion {
-		if currentQty.Valid && currentQty.String == quantity && currentVersion == expectedVersion+1 {
+		if currentQty.Valid && currentQty.String == quantity && currentCountedBy.Valid && currentCountedBy.Int64 == userID && currentVersion == expectedVersion+1 {
 			line, err := inventoryCountingLineTx(ctx, tx, validationID, skuID)
 			if err != nil {
 				return inventoryCountingLine{}, validationStatus, err
