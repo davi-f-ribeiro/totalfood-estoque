@@ -50,6 +50,7 @@ type operationResult struct {
 	MovementID  int64  `json:"movement_id"`
 	Status      string `json:"status"`
 	Type        string `json:"type"`
+	UserID      int64  `json:"-"`
 }
 
 type stockSnapshot struct {
@@ -63,7 +64,7 @@ func (a *app) registerMovementHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/movements/entry", a.requireAuth("movement_entry", "write", a.handleEntry))
 	mux.HandleFunc("POST /api/movements/exit", a.requireAuth("movement_exit", "write", a.handleExit))
 	mux.HandleFunc("POST /api/movements/transfer", a.requireAuth("movement_transfer", "write", a.handleTransfer))
-	mux.HandleFunc("GET /api/operations/{operation_id}", a.requireAuth("operations", "read", a.handleGetOperation))
+	mux.HandleFunc("GET /api/operations/{operation_id}", a.requireAuthenticatedRead(a.handleGetOperation))
 }
 
 func (a *app) handleEntry(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +109,28 @@ func (a *app) handleGetOperation(w http.ResponseWriter, r *http.Request) {
 		log.Printf("operation_id=%s type=GET stage=lookup error=%v", operationID, err)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	u := userFromContext(r.Context())
+	global, err := a.hasPermission(r.Context(), u.ID, "operations", "read")
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if !global {
+		resource := map[string]string{"ENTRADA": "movement_entry", "SAIDA": "movement_exit", "TRANSFERENCIA": "movement_transfer"}[res.Type]
+		own := res.UserID > 0 && res.UserID == u.ID
+		allowed := false
+		if own && resource != "" {
+			allowed, err = a.hasPermission(r.Context(), u.ID, resource, "write")
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+		}
+		if !allowed {
+			writeJSONError(w, http.StatusForbidden, "forbidden")
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, res)
 }
