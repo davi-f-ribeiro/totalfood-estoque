@@ -135,6 +135,7 @@ func newHTTPServer(addr string, a *app) *http.Server {
 	mux.HandleFunc("GET /health", a.health)
 	a.registerUIHandlers(mux)
 	a.registerAdminHandlers(mux)
+	a.registerWarehouseAdminHandlers(mux)
 	a.registerCatalogHandlers(mux)
 	a.registerAssetHandlers(mux)
 	a.registerFiscalHandlers(mux)
