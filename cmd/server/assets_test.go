@@ -85,3 +85,73 @@ func TestAssetsPostgreSQLFlowAuthorizationAndIdempotency(t *testing.T) {
 	}
 	assertCount(t, db, `SELECT count(*) FROM asset_events WHERE asset_id=$1`, 4, assetID)
 }
+
+
+func TestAssetPatchCannotBypassOperationalEventHistory(t *testing.T) {
+	a, _, wh1, wh2 := newStockTestApp(t)
+	director := createTestUser(t, a, "asset-patch-director", "secret", "Diretor", true)
+	login := doLogin(t, a, "asset-patch-director", "secret")
+
+	var typeA, typeB int64
+	if err := a.db.QueryRow("INSERT INTO asset_types(name,active) VALUES('Patch Type A',true) RETURNING id").Scan(&typeA); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow("INSERT INTO asset_types(name,active) VALUES('Patch Type B',true) RETURNING id").Scan(&typeB); err != nil {
+		t.Fatal(err)
+	}
+
+	rr := authReq(a, http.MethodPost, "/api/assets", map[string]any{
+		"asset_type_id": typeA,
+		"tag": "PAT-PATCH-1",
+		"status": "ATIVO",
+		"warehouse_id": wh1,
+	}, login, "")
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var assetID int64
+	if err := a.db.QueryRow("SELECT id FROM assets WHERE tag='PAT-PATCH-1'").Scan(&assetID); err != nil {
+		t.Fatal(err)
+	}
+
+	rr = authReq(a, http.MethodPatch, "/api/assets/"+itoa(assetID), map[string]any{
+		"asset_type_id": typeB,
+		"tag": "PAT-PATCH-2",
+		"status": "EM_MANUTENCAO",
+		"warehouse_id": wh2,
+	}, login, "")
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("operational fields accepted by generic patch: status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var tag, status string
+	var warehouseID, typeID int64
+	if err := a.db.QueryRow("SELECT tag,status,current_warehouse_id,asset_type_id FROM assets WHERE id=$1", assetID).Scan(&tag, &status, &warehouseID, &typeID); err != nil {
+		t.Fatal(err)
+	}
+	if tag != "PAT-PATCH-1" || status != "ATIVO" || warehouseID != wh1 || typeID != typeA {
+		t.Fatalf("rejected patch changed asset: tag=%s status=%s warehouse=%d type=%d", tag, status, warehouseID, typeID)
+	}
+	assertCount(t, a.db, "SELECT count(*) FROM asset_events WHERE asset_id=$1", 0, assetID)
+
+	rr = authReq(a, http.MethodPatch, "/api/assets/"+itoa(assetID), map[string]any{
+		"asset_type_id": typeB,
+		"tag": "PAT-PATCH-2",
+	}, login, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("cadastral patch status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	if err := a.db.QueryRow("SELECT tag,status,current_warehouse_id,asset_type_id FROM assets WHERE id=$1", assetID).Scan(&tag, &status, &warehouseID, &typeID); err != nil {
+		t.Fatal(err)
+	}
+	if tag != "PAT-PATCH-2" || status != "ATIVO" || warehouseID != wh1 || typeID != typeB {
+		t.Fatalf("cadastral patch changed operational state: tag=%s status=%s warehouse=%d type=%d", tag, status, warehouseID, typeID)
+	}
+	assertCount(t, a.db, "SELECT count(*) FROM asset_events WHERE asset_id=$1", 0, assetID)
+
+	if director <= 0 {
+		t.Fatal("director not created")
+	}
+}
