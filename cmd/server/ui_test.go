@@ -183,3 +183,38 @@ func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 		}
 	}
 }
+
+
+func TestWarehouseAdminUIContracts(t *testing.T) {
+	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(htmlb) + string(jsb) + string(cssb)
+	checks := []string{
+		"Depósitos",
+		"O nome é único e permanente para preservar a rastreabilidade.",
+		"id=\"adminWarehouseStatus\" class=\"msg\" aria-live=\"polite\"",
+		"Vazio",
+		"SKU",
+		"action.disabled=true",
+		"submit.disabled=true",
+		"Não foi possível carregar os depósitos.",
+		"Este depósito está inativo. Atualize a página e selecione um depósito ativo.",
+		".admin{display:grid;gap:16px}",
+		".warehouse-row button{min-width:112px}",
+	}
+	for _, want := range checks {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("warehouse admin UI missing %q", want)
+		}
+	}
+}
