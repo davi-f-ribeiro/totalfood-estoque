@@ -322,3 +322,55 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 		}
 	}
 }
+
+
+func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assetsb, err := os.ReadFile(filepath.Join("templates", "assets.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fiscalb, err := os.ReadFile(filepath.Join("templates", "fiscal.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	combined := js + string(cssb) + string(assetsb) + string(adminb) + string(fiscalb)
+
+	for _, want := range []string{
+		"async function runLocked(control,fn)",
+		"function requireFields(form,feedback",
+		"dataset.busy==='1'",
+		"submit.disabled=true",
+		"reportValidity()",
+		`id="assetMoveWarehouse" required`,
+		`id="assetNewStatus" required`,
+		`id="assetUnitWarehouse" required`,
+		`id="fiscalWarehouse" required`,
+		"Ao baixar, a localização atual será removida",
+		"todos os usuários deste perfil terão as sessões atuais encerradas",
+		".impact-warning{",
+		"Selecione um depósito.",
+	} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("operational guardrail missing %q", want)
+		}
+	}
+
+	for _, forbidden := range []string{"confirm(", "alert("} {
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("guardrails must remain inline, found %q", forbidden)
+		}
+	}
+}
