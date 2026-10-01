@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -312,5 +313,131 @@ VALUES ($1,$2,'UN',0,true)`, name, catID); err != nil {
 	bad := authReq(a, http.MethodGet, "/api/catalog/items?paged=1&cursor=not-a-cursor", nil, director, "")
 	if bad.Code != http.StatusBadRequest {
 		t.Fatalf("invalid cursor status=%d body=%s", bad.Code, bad.Body.String())
+	}
+}
+
+
+func TestCatalogParentPaginationBoundaries(t *testing.T) {
+	for _, total := range []int{30, 31, 60, 61, 101} {
+		t.Run(fmt.Sprintf("total_%d", total), func(t *testing.T) {
+			a, _, _, _ := newStockTestApp(t)
+			loginName := fmt.Sprintf("director-catalog-boundary-%d", total)
+			createTestUser(t, a, loginName, "secret", "Diretor", true)
+			director := doLogin(t, a, loginName, "secret")
+			catID := lookupID(t, a, "SELECT id FROM categories WHERE name='Alimentos'")
+			prefix := fmt.Sprintf("Limite %03d Item ", total)
+			for i := 1; i <= total; i++ {
+				name := fmt.Sprintf("%s%03d", prefix, i)
+				if _, err := a.db.Exec("INSERT INTO inventory_items (name,category_id,unit_code,minimum_stock,active) VALUES ($1,$2,'UN',0,true)", name, catID); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			cursor := ""
+			seen := map[int64]bool{}
+			pageCount := 0
+			for {
+				path := "/api/catalog/items?paged=1&q=" + url.QueryEscape(prefix)
+				if cursor != "" {
+					path += "&cursor=" + url.QueryEscape(cursor)
+				}
+				rr := authReq(a, http.MethodGet, path, nil, director, "")
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+				}
+				var p map[string]any
+				if err := json.Unmarshal(rr.Body.Bytes(), &p); err != nil {
+					t.Fatal(err)
+				}
+				items, ok := p["items"].([]any)
+				if !ok {
+					t.Fatalf("missing items in %s", rr.Body.String())
+				}
+				pageCount++
+				if len(items) == 0 || len(items) > 30 {
+					t.Fatalf("page %d size=%d", pageCount, len(items))
+				}
+				for _, raw := range items {
+					item := raw.(map[string]any)
+					id := int64(item["id"].(float64))
+					if seen[id] {
+						t.Fatalf("duplicate id=%d", id)
+					}
+					seen[id] = true
+				}
+				hasMore, _ := p["has_more"].(bool)
+				next, _ := p["next_cursor"].(string)
+				if !hasMore {
+					if next != "" {
+						t.Fatalf("final page returned cursor=%q", next)
+					}
+					break
+				}
+				if next == "" {
+					t.Fatal("has_more without next_cursor")
+				}
+				cursor = next
+			}
+			if len(seen) != total {
+				t.Fatalf("items=%d want=%d", len(seen), total)
+			}
+			wantPages := (total + 29) / 30
+			if pageCount != wantPages {
+				t.Fatalf("pages=%d want=%d", pageCount, wantPages)
+			}
+		})
+	}
+}
+
+func TestCatalogParentPaginationActiveBeforeInactive(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "director-catalog-order", "secret", "Diretor", true)
+	director := doLogin(t, a, "director-catalog-order", "secret")
+	catID := lookupID(t, a, "SELECT id FROM categories WHERE name='Alimentos'")
+
+	for i := 1; i <= 35; i++ {
+		active := i > 5
+		name := fmt.Sprintf("Ordenacao Cursor %03d", i)
+		if _, err := a.db.Exec("INSERT INTO inventory_items (name,category_id,unit_code,minimum_stock,active) VALUES ($1,$2,'UN',0,$3)", name, catID, active); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first := authReq(a, http.MethodGet, "/api/catalog/items?paged=1&q=Ordenacao%20Cursor", nil, director, "")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status=%d body=%s", first.Code, first.Body.String())
+	}
+	var p1 map[string]any
+	if err := json.Unmarshal(first.Body.Bytes(), &p1); err != nil {
+		t.Fatal(err)
+	}
+	items1 := p1["items"].([]any)
+	if len(items1) != 30 || p1["has_more"] != true {
+		t.Fatalf("first page len=%d has_more=%v", len(items1), p1["has_more"])
+	}
+	for _, raw := range items1 {
+		item := raw.(map[string]any)
+		if item["active"] != true {
+			t.Fatalf("inactive item leaked into first active page id=%v", item["id"])
+		}
+	}
+	cursor := p1["next_cursor"].(string)
+	second := authReq(a, http.MethodGet, "/api/catalog/items?paged=1&q=Ordenacao%20Cursor&cursor="+url.QueryEscape(cursor), nil, director, "")
+	if second.Code != http.StatusOK {
+		t.Fatalf("second status=%d body=%s", second.Code, second.Body.String())
+	}
+	var p2 map[string]any
+	if err := json.Unmarshal(second.Body.Bytes(), &p2); err != nil {
+		t.Fatal(err)
+	}
+	items2 := p2["items"].([]any)
+	if len(items2) != 5 || p2["has_more"] != false {
+		t.Fatalf("second page len=%d has_more=%v", len(items2), p2["has_more"])
+	}
+	for _, raw := range items2 {
+		item := raw.(map[string]any)
+		if item["active"] != false {
+			t.Fatalf("expected inactive item, got active id=%v", item["id"])
+		}
 	}
 }
