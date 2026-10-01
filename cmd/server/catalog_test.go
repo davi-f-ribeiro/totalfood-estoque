@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -158,4 +159,72 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 
 	dup := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": " feijão teste pai b ", "category_id": catID, "unit_code": "KG", "minimum_stock": "0"}, director, "")
 	if dup.Code != http.StatusConflict { t.Fatalf("duplicate normalized parent status=%d body=%s", dup.Code, dup.Body.String()) }
+}
+
+
+func TestCatalogNormalizedNameUniqueAtDatabaseLayer(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "director-catalog-normalized-unique", "secret", "Diretor", true)
+	director := doLogin(t, a, "director-catalog-normalized-unique", "secret")
+	catID := lookupID(t, a, "SELECT id FROM categories WHERE name='Alimentos'")
+
+	start := make(chan struct{})
+	codes := make([]int, 2)
+	names := []string{"  Item Concorrente Final  ", "item concorrente final"}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := range names {
+		i := i
+		go func() {
+			defer wg.Done()
+			<-start
+			rr := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{
+				"name": names[i],
+				"category_id": catID,
+				"unit_code": "UN",
+				"minimum_stock": "0",
+			}, director, "")
+			codes[i] = rr.Code
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	created, conflicted := 0, 0
+	for _, code := range codes {
+		switch code {
+		case http.StatusCreated:
+			created++
+		case http.StatusConflict:
+			conflicted++
+		default:
+			t.Fatalf("unexpected concurrent normalized-name status=%d all=%v", code, codes)
+		}
+	}
+	if created != 1 || conflicted != 1 {
+		t.Fatalf("normalized concurrent create must be 1 created/1 conflict, got %v", codes)
+	}
+
+	var count int
+	if err := a.db.QueryRow(
+		"SELECT count(*) FROM inventory_items WHERE lower(btrim(name))=lower(btrim($1))",
+		"item concorrente final",
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("normalized duplicate count=%d want 1", count)
+	}
+
+	_, err := a.db.Exec(
+		"INSERT INTO inventory_items (name,category_id,unit_code,minimum_stock,active) VALUES ($1,$2,'UN',0,true)",
+		" ITEM CONCORRENTE FINAL ",
+		catID,
+	)
+	if err == nil {
+		t.Fatal("database accepted normalized duplicate item name")
+	}
+	if !strings.Contains(err.Error(), "idx_inventory_items_normalized_name_unique") {
+		t.Fatalf("unexpected duplicate database error: %v", err)
+	}
 }
