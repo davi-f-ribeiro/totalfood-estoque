@@ -75,6 +75,8 @@ func (a *app) writeOperationResponse(w http.ResponseWriter, typ, operationID str
 		status, msg = http.StatusConflict, "Depósito inativo."
 	case errors.Is(err, errDuplicateFiscalDocument):
 		status, msg = http.StatusConflict, "Nota fiscal já confirmada."
+	case errors.Is(err, errDuplicateEntrySKU):
+		status, msg = http.StatusBadRequest, "Um mesmo SKU não pode aparecer duas vezes na nota."
 	}
 	if status == http.StatusInternalServerError {
 		log.Printf("operation_id=%s type=%s stage=write error=%v", operationID, typ, err)
