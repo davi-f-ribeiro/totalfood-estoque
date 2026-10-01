@@ -36,9 +36,21 @@ jobs:
         with:
           go-version: '1.24.x'
           cache: true
+      - name: Toolchain versions
+        run: |
+          go version
+          node --version
+          psql --version
+          docker --version
       - name: JavaScript syntax
         run: node --check cmd/server/static/app.js
+      - name: Go vet
+        run: go vet ./...
       - name: Go tests with PostgreSQL 17
         run: go test -count=1 ./...
+      - name: Go race tests with PostgreSQL 17
+        run: go test -race -count=1 ./...
       - name: Go build
         run: go build ./...
+      - name: Docker build
+        run: docker build -t totalfood-estoque:gate08 .
