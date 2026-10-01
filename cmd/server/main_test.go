@@ -88,7 +88,7 @@ func TestCoreSchemaSupportsOperationalModel(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT id FROM warehouses WHERE name = $1", "VR").Scan(&warehouseID); err != nil {
 		t.Fatalf("select warehouse: %v", err)
 	}
-	if err := db.QueryRowContext(ctx, "INSERT INTO inventory_items (name, category_id, unit_code, minimum_stock) VALUES ($1, $2, $3, $4) RETURNING id", "Arroz Parboilizado", categoryID, "KG", 10).Scan(&itemID); err != nil {
+	if err := db.QueryRowContext(ctx, "INSERT INTO inventory_items (name, category_id, unit_code, minimum_stock) VALUES ($1, $2, $3, $4) RETURNING id", "Core Schema Generic Item 7890000000011", categoryID, "KG", 10).Scan(&itemID); err != nil {
 		t.Fatalf("insert generic item: %v", err)
 	}
 	if err := db.QueryRowContext(ctx, "INSERT INTO product_skus (item_id, brand, barcode) VALUES ($1, $2, $3) RETURNING id", itemID, "Panelaço", "7890000000011").Scan(&skuAID); err != nil {
