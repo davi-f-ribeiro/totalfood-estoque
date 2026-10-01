@@ -27,11 +27,18 @@ func (a *app) registerWarehouseAdminHandlers(mux *http.ServeMux) {
 
 func (a *app) handleAdminWarehouses(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
-		SELECT w.id,w.name,w.active,w.created_at::text,
-		       COALESCE(SUM(CASE ml.direction WHEN 'IN' THEN ml.quantity ELSE -ml.quantity END),0)::text
+		SELECT w.id,w.name,w.active,w.created_at::text,COALESCE(b.nonzero_skus,0)
 		FROM warehouses w
-		LEFT JOIN movement_lines ml ON ml.warehouse_id=w.id
-		GROUP BY w.id,w.name,w.active,w.created_at
+		LEFT JOIN (
+			SELECT warehouse_id,count(*)::bigint AS nonzero_skus
+			FROM (
+				SELECT warehouse_id,sku_id
+				FROM movement_lines
+				GROUP BY warehouse_id,sku_id
+				HAVING SUM(CASE direction WHEN 'IN' THEN quantity ELSE -quantity END) <> 0
+			) balances
+			GROUP BY warehouse_id
+		) b ON b.warehouse_id=w.id
 		ORDER BY w.name`)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -41,13 +48,14 @@ func (a *app) handleAdminWarehouses(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id int64
-		var name, created, balance string
+		var name, created string
 		var active bool
-		if err := rows.Scan(&id, &name, &active, &created, &balance); err != nil {
+		var nonZeroSKUs int64
+		if err := rows.Scan(&id, &name, &active, &created, &nonZeroSKUs); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		out = append(out, map[string]any{"id": id, "name": name, "active": active, "created_at": created, "balance": balance})
+		out = append(out, map[string]any{"id": id, "name": name, "active": active, "created_at": created, "nonzero_skus": nonZeroSKUs, "empty": nonZeroSKUs == 0})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
