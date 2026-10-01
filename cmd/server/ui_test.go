@@ -202,7 +202,7 @@ func TestWarehouseAdminUIContracts(t *testing.T) {
 	checks := []string{
 		"Depósitos",
 		"O nome é único e permanente para preservar a rastreabilidade.",
-		"id=\"adminWarehouseStatus\" class=\"msg\" aria-live=\"polite\"",
+		"id=\"adminWarehouseStatus\" class=\"operation-feedback\" role=\"status\" aria-live=\"polite\" hidden",
 		"Vazio",
 		"SKU",
 		"action.disabled=true",
@@ -219,5 +219,106 @@ func TestWarehouseAdminUIContracts(t *testing.T) {
 	}
 	if strings.Contains(combined, "confirm('Desativar este depósito?") {
 		t.Fatal("warehouse deactivation must use inline context/feedback, not a redundant modal")
+	}
+}
+
+
+func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
+	read := func(name string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join("templates", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	css := string(cssb)
+
+	for _, forbidden := range []string{
+		"confirm(",
+		"alert(",
+		".textContent=err.message",
+		".textContent=e.message",
+	} {
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("project UI reintroduced forbidden error/modal pattern %q", forbidden)
+		}
+	}
+
+	for _, want := range []string{
+		"function setFeedback(",
+		"function uiErrorMessage(",
+		"Sem conexão com o sistema.",
+		"Você não tem permissão para realizar esta ação.",
+		"O sistema não conseguiu concluir a operação.",
+		"list-action",
+	} {
+		if !strings.Contains(js+css, want) {
+			t.Fatalf("project UI missing shared UX contract %q", want)
+		}
+	}
+
+	feedback := map[string][]string{
+		"stock.html":           {"stockStatus"},
+		"movement.html":        {"status"},
+		"catalog.html":         {"catalogStatus"},
+		"fiscal.html":          {"fiscalStatus", "fiscalConfirmStatus"},
+		"assets.html":          {"assetLookupStatus", "assetOpStatus", "assetTypeStatus", "assetUnitStatusMsg"},
+		"inventory.html":       {"inventoryListMessage", "inventoryMessage"},
+		"admin.html":           {"adminWarehouseStatus", "adminUserStatus", "adminProfileStatus", "adminPermStatus"},
+		"change_password.html": {"forcedPasswordStatus"},
+	}
+	for file, ids := range feedback {
+		body := read(file)
+		for _, id := range ids {
+			needle := `id="` + id + `"`
+			pos := strings.Index(body, needle)
+			if pos < 0 {
+				t.Fatalf("%s missing feedback id %s", file, id)
+			}
+			end := pos + 220
+			if end > len(body) {
+				end = len(body)
+			}
+			fragment := body[pos:end]
+			if !strings.Contains(fragment, "operation-feedback") || !strings.Contains(fragment, "aria-live=") {
+				t.Fatalf("%s feedback %s is not standardized: %s", file, id, fragment)
+			}
+		}
+	}
+
+	inventory := read("inventory.html")
+	for _, forbidden := range []string{"warehouse escolhido", ">Criar TOTAL<", ">Criar BLIND<"} {
+		if strings.Contains(inventory, forbidden) {
+			t.Fatalf("inventory UI exposes internal terminology %q", forbidden)
+		}
+	}
+	for _, want := range []string{"Depósito ativo", "Criar inventário total", "Criar inventário cego"} {
+		if !strings.Contains(inventory, want) {
+			t.Fatalf("inventory UI missing business terminology %q", want)
+		}
+	}
+
+	for _, want := range []string{
+		"@media(min-width:1024px)",
+		"@media(min-width:768px) and (max-width:1023px)",
+		"@media(max-width:767px)",
+		".assets{grid-template-columns:repeat(2,minmax(0,1fr))",
+		".admin{grid-template-columns:repeat(2,minmax(0,1fr))",
+		".stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))",
+		".assets,.admin,.stock-shell,.fiscal-shell{grid-template-columns:1fr",
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("responsive UX missing %q", want)
+		}
 	}
 }
