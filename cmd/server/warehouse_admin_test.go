@@ -233,6 +233,15 @@ func TestInactiveWarehouseRejectedByAssetAssignment(t *testing.T) {
 	if err := a.db.QueryRow(`SELECT count(*) FROM assets WHERE tag='WH-INACTIVE-ASSET'`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("asset unexpectedly created count=%d err=%v", count, err)
 	}
+
+	source := warehouseFixture(t, a, "asset-move-source", true)
+	if _, err := a.db.Exec(`INSERT INTO assets(asset_type_id,tag,status,current_warehouse_id) VALUES($1,'WH-MOVE-INACTIVE','ATIVO',$2)`, typeID, source); err != nil {
+		t.Fatal(err)
+	}
+	move := authReq(a, http.MethodPost, "/api/assets/WH-MOVE-INACTIVE/move", map[string]any{"operation_id": "asset-move-inactive", "warehouse_id": whID}, director, "")
+	if move.Code != http.StatusConflict || !strings.Contains(move.Body.String(), "depósito inativo") {
+		t.Fatalf("inactive asset move status=%d body=%s", move.Code, move.Body.String())
+	}
 }
 
 
