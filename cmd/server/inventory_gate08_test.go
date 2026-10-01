@@ -58,3 +58,20 @@ func TestInventoryRecountSameQuantityStaleVersionFromDifferentOperatorConflicts(
 		t.Fatalf("stale same-quantity operator B error=%v want conflict", err)
 	}
 }
+
+func TestCancelledTotalDoesNotClassifyUncountedLineAsDivergent(t *testing.T) {
+	e := newInventoryTestEnv(t)
+	_, inv, _ := setupTotalCounting(t, e, 2, "10.000")
+	history, err := e.a.cancelInventory(context.Background(), inv.ID, e.userID, "Cancelamento antes da primeira contagem.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range history.Lines {
+		if line.FirstQuantity != nil {
+			t.Fatalf("line %d unexpectedly counted: %+v", line.SKUID, line)
+		}
+		if line.State != nil || line.EffectiveQuantity != nil || line.Difference != nil {
+			t.Fatalf("uncounted line %d was classified: %+v", line.SKUID, line)
+		}
+	}
+}
