@@ -71,6 +71,8 @@ func (a *app) writeOperationResponse(w http.ResponseWriter, typ, operationID str
 		}
 	case errors.Is(err, errOperationConflict):
 		status, msg = http.StatusConflict, "operation_id conflict"
+	case errors.Is(err, errWarehouseInactive):
+		status, msg = http.StatusConflict, "Depósito inativo."
 	case errors.Is(err, errDuplicateFiscalDocument):
 		status, msg = http.StatusConflict, "Nota fiscal já confirmada."
 	}
