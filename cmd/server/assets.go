@@ -26,6 +26,11 @@ type assetRequest struct {
 	WarehouseID int64  `json:"warehouse_id"`
 }
 
+type assetUpdateRequest struct {
+	AssetTypeID int64  `json:"asset_type_id"`
+	Tag         string `json:"tag"`
+}
+
 type assetMoveRequest struct {
 	OperationID string `json:"operation_id"`
 	WarehouseID int64  `json:"warehouse_id"`
@@ -194,35 +199,21 @@ func (a *app) handleUpdateAsset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req assetRequest
-	if !decodeJSON(w, r, &req) || !validAssetReq(req) {
-		writeJSONError(w, 400, "invalid request")
+	var req assetUpdateRequest
+	if !decodeJSON(w, r, &req) || req.AssetTypeID <= 0 || cleanBarcode(req.Tag) == "" {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	var wh any = req.WarehouseID
-	if req.Status == "BAIXADO" {
-		wh = nil
-	} else {
-		active, err := a.activeWarehouseExists(r.Context(), req.WarehouseID)
-		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		if !active {
-			writeJSONError(w, http.StatusConflict, "depósito inativo ou inexistente")
-			return
-		}
-	}
-	res, err := a.db.ExecContext(r.Context(), `UPDATE assets SET asset_type_id=$1,tag=$2,status=$3,current_warehouse_id=$4 WHERE id=$5`, req.AssetTypeID, cleanBarcode(req.Tag), req.Status, wh, id)
+	res, err := a.db.ExecContext(r.Context(), `UPDATE assets SET asset_type_id=$1,tag=$2 WHERE id=$3`, req.AssetTypeID, cleanBarcode(req.Tag), id)
 	if err != nil {
 		writeAssetError(w, err, "asset update failed")
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		writeJSONError(w, 404, "patrimônio não encontrado")
+		writeJSONError(w, http.StatusNotFound, "patrimônio não encontrado")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"id": id})
+	writeJSON(w, http.StatusOK, map[string]any{"id": id})
 }
 
 func validAssetReq(req assetRequest) bool {
