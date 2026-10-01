@@ -159,6 +159,9 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 	for _, want := range []string{
 		`if(card)card.after(detail)`,
 		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
+		`let openItem=null,detailSeq=0`,
+		`let seq=++detailSeq`,
+		`if(seq!==detailSeq||openItem!==id)return`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
 		if !strings.Contains(js+css, want) {
@@ -279,6 +282,24 @@ func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 	}
 	if strings.Count(js, `function startNewSKU(prefillBarcode='')`) != 1 {
 		t.Fatal("catalog must keep a single new-SKU entry point")
+	}
+}
+
+func TestCatalogIgnoresStaleParentAndSKUResponses(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	for _, want := range []string{
+		`function resetSKUForm(clearFeedback=true){editingSKUVersion=0;skuParentSeq++`,
+		`async function loadSKUs(item=currentItem){if(!item)return false`,
+		`if(!currentItem||+currentItem.id!==+item.id)return false`,
+		`if(!await loadSKUs(r))return`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("catalog stale-response guard missing %q", want)
+		}
 	}
 }
 
