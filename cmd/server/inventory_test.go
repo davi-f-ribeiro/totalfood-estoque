@@ -367,7 +367,7 @@ func TestInventorySelectionAtomicity(t *testing.T) {
 	_, err = persistInventorySelection(ctx, tx, "TOTAL", e.userID, wh, time.Now(), []inventorySnapshotLine{
 		{SKUID: sku, Quantity: "1.000"},
 		{SKUID: sku, Quantity: "1.000"},
-	})
+	}, "", "")
 	if err == nil {
 		t.Fatal("expected duplicate SKU insertion to fail")
 	}
