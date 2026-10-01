@@ -445,7 +445,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"setCrudMode(itemForm,false,'Criar item pai','Atualizar item pai')",
 		"setCrudMode(skuForm,true,'Criar SKU','Atualizar SKU')",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
-		"setCrudMode(unitForm,true,'Criar unidade','Atualizar unidade')",
+		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(form,true,'Criar usuário','Atualizar usuário')",
 		"true,'Criar perfil','Atualizar perfil'",
 		"Formulário pronto para um novo cadastro.",
@@ -574,5 +574,34 @@ func TestAdminSafetyAtomicUserUpdateAndExplicitPermissionTarget(t *testing.T) {
 		if !strings.Contains(js+html, want) {
 			t.Fatalf("admin safety contract missing %q", want)
 		}
+	}
+}
+
+func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	htmlb, err := os.ReadFile(filepath.Join("templates", "assets.html"))
+	if err != nil { t.Fatal(err) }
+	js, html := string(jsb), string(htmlb)
+
+	checks := []string{
+		"function setAssetUnitEditMode(editing)",
+		"unitStatus.disabled=editing",
+		"unitWarehouse.disabled=editing",
+		"setAssetUnitEditMode(true)",
+		"setAssetUnitEditMode(false)",
+		"let body=id?{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value}:{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
+		"Dados cadastrais atualizados. Estado e localização permanecem inalterados.",
+		"id=\"assetUnitOperationalHint\"",
+		"Estado e localização preservam histórico.",
+		"altere-os somente pelos controles",
+	}
+	for _, want := range checks {
+		if !strings.Contains(js+html, want) {
+			t.Fatalf("asset audited edit contract missing %q", want)
+		}
+	}
+	if strings.Contains(js, "let body={asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,status:assetUnitStatus.value,warehouse_id:+assetUnitWarehouse.value}") {
+		t.Fatal("generic asset edit still sends operational fields")
 	}
 }
