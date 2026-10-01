@@ -282,14 +282,21 @@ func TestWarehouseAdminPanelFollowsWarehousePermission(t *testing.T) {
 	}
 }
 
-func TestWarehouseCannotBeDeleted(t *testing.T) {
+func TestWarehouseCannotBeDeletedOrRenamed(t *testing.T) {
 	a, _, wh, _ := newStockTestApp(t)
+	var original string
+	if err := a.db.QueryRow(`SELECT name FROM warehouses WHERE id=$1`, wh).Scan(&original); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.db.Exec(`DELETE FROM warehouses WHERE id=$1`, wh); err == nil {
 		t.Fatal("warehouse delete unexpectedly succeeded")
 	}
-	var exists bool
-	if err := a.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM warehouses WHERE id=$1)`, wh).Scan(&exists); err != nil || !exists {
-		t.Fatalf("warehouse missing after rejected delete exists=%v err=%v", exists, err)
+	if _, err := a.db.Exec(`UPDATE warehouses SET name=$2 WHERE id=$1`, wh, original+" alterado"); err == nil || !strings.Contains(err.Error(), "warehouse names cannot be changed") {
+		t.Fatalf("warehouse rename err=%v", err)
+	}
+	var got string
+	if err := a.db.QueryRow(`SELECT name FROM warehouses WHERE id=$1`, wh).Scan(&got); err != nil || got != original {
+		t.Fatalf("warehouse changed after rejected mutation got=%q want=%q err=%v", got, original, err)
 	}
 }
 
@@ -389,10 +396,10 @@ func TestWarehouseMigration019IncrementalAndIdempotent(t *testing.T) {
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pg_indexes WHERE tablename='warehouses' AND indexname='warehouses_name_tracking_unique'").Scan(&indexCount); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname IN ('warehouses_no_delete','warehouses_deactivate_only_empty','assets_active_warehouse','movement_lines_active_warehouse')").Scan(&triggerCount); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname IN ('warehouses_no_delete','warehouses_no_rename','warehouses_deactivate_only_empty','assets_active_warehouse','movement_lines_active_warehouse')").Scan(&triggerCount); err != nil {
 		t.Fatal(err)
 	}
-	if permissionCount != 1 || indexCount != 1 || triggerCount != 4 {
+	if permissionCount != 1 || indexCount != 1 || triggerCount != 5 {
 		t.Fatalf("migration 019 contract permission=%d index=%d triggers=%d", permissionCount, indexCount, triggerCount)
 	}
 }
