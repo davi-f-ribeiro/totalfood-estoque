@@ -110,11 +110,20 @@ func TestWarehouseWithNegativeBalanceCannotBeDeactivated(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	userID := createTestUser(t, a, "warehouse-negative-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "warehouse-negative-director", "secret")
-	var movementID int64
-	if err := a.db.QueryRow(`INSERT INTO movements(operation_id,request_hash,movement_type,user_id) VALUES('negative-balance-fixture','fixture','SAIDA',$1) RETURNING id`, userID).Scan(&movementID); err != nil {
+	tx, err := a.db.Begin()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.db.Exec(`INSERT INTO movement_lines(movement_id,sku_id,warehouse_id,direction,quantity,unit_cost) VALUES($1,$2,$3,'OUT',1,0)`, movementID, sku, wh); err != nil {
+	var movementID int64
+	if err := tx.QueryRow(`INSERT INTO movements(operation_id,request_hash,movement_type,user_id) VALUES('negative-balance-fixture','fixture','SAIDA',$1) RETURNING id`, userID).Scan(&movementID); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`INSERT INTO movement_lines(movement_id,sku_id,warehouse_id,direction,quantity,unit_cost) VALUES($1,$2,$3,'OUT',1,0)`, movementID, sku, wh); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	rr := authReq(a, http.MethodPost, "/api/admin/warehouses/"+itoa(wh)+"/deactivate", nil, director, "")
