@@ -27,7 +27,7 @@ func (a *app) registerWarehouseAdminHandlers(mux *http.ServeMux) {
 
 func (a *app) handleAdminWarehouses(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
-		SELECT w.id,w.name,w.active,w.created_at::text,COALESCE(b.nonzero_skus,0)
+		SELECT w.id,w.name,w.active,w.created_at::text,COALESCE(b.nonzero_skus,0),COALESCE(a.asset_count,0)
 		FROM warehouses w
 		LEFT JOIN (
 			SELECT warehouse_id,count(*)::bigint AS nonzero_skus
@@ -39,6 +39,12 @@ func (a *app) handleAdminWarehouses(w http.ResponseWriter, r *http.Request) {
 			) balances
 			GROUP BY warehouse_id
 		) b ON b.warehouse_id=w.id
+		LEFT JOIN (
+			SELECT current_warehouse_id AS warehouse_id,count(*)::bigint AS asset_count
+			FROM assets
+			WHERE current_warehouse_id IS NOT NULL
+			GROUP BY current_warehouse_id
+		) a ON a.warehouse_id=w.id
 		ORDER BY w.name`)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -50,12 +56,12 @@ func (a *app) handleAdminWarehouses(w http.ResponseWriter, r *http.Request) {
 		var id int64
 		var name, created string
 		var active bool
-		var nonZeroSKUs int64
-		if err := rows.Scan(&id, &name, &active, &created, &nonZeroSKUs); err != nil {
+		var nonZeroSKUs, assetCount int64
+		if err := rows.Scan(&id, &name, &active, &created, &nonZeroSKUs, &assetCount); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		out = append(out, map[string]any{"id": id, "name": name, "active": active, "created_at": created, "nonzero_skus": nonZeroSKUs, "empty": nonZeroSKUs == 0})
+		out = append(out, map[string]any{"id": id, "name": name, "active": active, "created_at": created, "nonzero_skus": nonZeroSKUs, "asset_count": assetCount, "empty": nonZeroSKUs == 0 && assetCount == 0})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -143,6 +149,15 @@ func (a *app) setWarehouseActive(w http.ResponseWriter, r *http.Request, active 
 			return
 		}
 		if nonZero {
+			writeJSONError(w, http.StatusConflict, "warehouse_not_empty")
+			return
+		}
+		var hasAssets bool
+		if err = tx.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM assets WHERE current_warehouse_id=$1)`, id).Scan(&hasAssets); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if hasAssets {
 			writeJSONError(w, http.StatusConflict, "warehouse_not_empty")
 			return
 		}
