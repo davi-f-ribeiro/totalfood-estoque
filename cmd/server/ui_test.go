@@ -211,7 +211,7 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 		`if(pendingNewSKUBarcode)startNewSKU(pendingNewSKUBarcode)`,
 		`document.getElementById('newCatalogSku').onclick=()=>startNewSKU(pendingNewSKUBarcode)`,
 		`barcode.value=normalizeBarcode(prefillBarcode)`,
-		`if(!wasEditing&&pendingNewSKUBarcode&&returnTo&&body.barcode===pendingNewSKUBarcode)`,
+		`if(!wasEditing&&pendingNewSKUBarcode&&returnTo&&body.barcode===pendingNewSKUBarcode&&+body.item_id===+currentItem.id)`,
 		`sku_id:String(saved.id)`,
 		`location.href=returnTo+'?'+back.toString()`,
 	} {
