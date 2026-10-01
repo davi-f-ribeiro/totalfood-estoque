@@ -44,10 +44,10 @@ func TestAdminUsersProfilesPermissionsAndSessions(t *testing.T) {
 	}
 
 	gerenteID := profileID(t, a, "Gerente")
-	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(managedID), map[string]any{"login": "managed", "profile_id": gerenteID, "active": true}, director, ""); rr.Code != http.StatusOK {
+	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(managedID), map[string]any{"login": "managed", "profile_id": gerenteID, "active": true, "version": crudVersion(t, a, "users", managedID)}, director, ""); rr.Code != http.StatusOK {
 		t.Fatalf("change profile status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(managedID)+"/password", map[string]any{"password": "newpass"}, director, ""); rr.Code != http.StatusOK {
+	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(managedID)+"/password", map[string]any{"password": "newpass", "version": crudVersion(t, a, "users", managedID)}, director, ""); rr.Code != http.StatusOK {
 		t.Fatalf("reset password status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	if rr := authReq(a, http.MethodGet, "/api/me", nil, managed, ""); rr.Code != http.StatusUnauthorized {
@@ -57,7 +57,7 @@ func TestAdminUsersProfilesPermissionsAndSessions(t *testing.T) {
 		t.Fatalf("old password status=%d", rr.Code)
 	}
 	managed = doLogin(t, a, "managed", "newpass")
-	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(managedID), map[string]any{"login": "managed", "profile_id": gerenteID, "active": false}, director, ""); rr.Code != http.StatusOK {
+	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(managedID), map[string]any{"login": "managed", "profile_id": gerenteID, "active": false, "version": crudVersion(t, a, "users", managedID)}, director, ""); rr.Code != http.StatusOK {
 		t.Fatalf("deactivate status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	if rr := authReq(a, http.MethodGet, "/api/me", nil, managed, ""); rr.Code != http.StatusUnauthorized {
@@ -73,7 +73,7 @@ func TestAdminUsersProfilesPermissionsAndSessions(t *testing.T) {
 	}
 	profID := jsonID(t, profResp.Body.Bytes())
 	stockReadID := permissionID(t, a, "stock", "read")
-	if rr := authReq(a, http.MethodPut, "/api/admin/profiles/"+itoa(profID)+"/permissions", map[string]any{"permission_ids": []int64{stockReadID}}, director, ""); rr.Code != http.StatusOK {
+	if rr := authReq(a, http.MethodPut, "/api/admin/profiles/"+itoa(profID)+"/permissions", map[string]any{"permission_ids": []int64{stockReadID}, "version": crudVersion(t, a, "profiles", profID)}, director, ""); rr.Code != http.StatusOK {
 		t.Fatalf("permissions status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	createTestUserWithProfileID(t, a, "stockonly", "secret", profID, true)
@@ -85,10 +85,10 @@ func TestAdminUsersProfilesPermissionsAndSessions(t *testing.T) {
 		t.Fatalf("stockonly admin status=%d", rr.Code)
 	}
 
-	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(directorID), map[string]any{"login": "admin-dir", "profile_id": profileID(t, a, "Vendas"), "active": true}, director, ""); rr.Code != http.StatusConflict {
+	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(directorID), map[string]any{"login": "admin-dir", "profile_id": profileID(t, a, "Vendas"), "active": true, "version": crudVersion(t, a, "users", directorID)}, director, ""); rr.Code != http.StatusConflict {
 		t.Fatalf("self remove admin status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(directorID), map[string]any{"login": "admin-dir", "profile_id": profileID(t, a, "Diretor"), "active": false}, director, ""); rr.Code != http.StatusConflict {
+	if rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(directorID), map[string]any{"login": "admin-dir", "profile_id": profileID(t, a, "Diretor"), "active": false, "version": crudVersion(t, a, "users", directorID)}, director, ""); rr.Code != http.StatusConflict {
 		t.Fatalf("self deactivate status=%d body=%s", rr.Code, rr.Body.String())
 	}
 }
@@ -135,7 +135,7 @@ func TestAdminUserUpdateWithPasswordIsAtomic(t *testing.T) {
 	gerenteID := profileID(t, a, "Gerente")
 
 	rr := authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(managedID), map[string]any{
-		"login": "atomic-managed", "password": "newpass", "profile_id": gerenteID, "active": true,
+		"login": "atomic-managed", "password": "newpass", "profile_id": gerenteID, "active": true, "version": crudVersion(t, a, "users", managedID),
 	}, director, "")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("atomic update status=%d body=%s", rr.Code, rr.Body.String())
@@ -160,7 +160,7 @@ func TestAdminUserUpdateWithPasswordIsAtomic(t *testing.T) {
 	// Force the cadastral UPDATE to fail on the unique login. Password and
 	// profile must roll back with it; the endpoint is one atomic mutation.
 	rr = authReq(a, http.MethodPatch, "/api/admin/users/"+itoa(managedID), map[string]any{
-		"login": "atomic-dir", "password": "must-not-apply", "profile_id": profileID(t, a, "Vendas"), "active": true,
+		"login": "atomic-dir", "password": "must-not-apply", "profile_id": profileID(t, a, "Vendas"), "active": true, "version": crudVersion(t, a, "users", managedID),
 	}, director, "")
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("failing atomic update status=%d body=%s", rr.Code, rr.Body.String())
@@ -209,7 +209,7 @@ func TestAdminPermissionsRequireValidExplicitSetAndPreserveOnFailure(t *testing.
 	// A malformed permission set must be rejected before the existing set is
 	// destroyed. This specifically protects against INSERT ... SELECT(0 rows).
 	rr := authReq(a, http.MethodPut, "/api/admin/profiles/"+itoa(targetProfile)+"/permissions", map[string]any{
-		"permission_ids": []int64{stockRead, 99999999},
+		"permission_ids": []int64{stockRead, 99999999}, "version": crudVersion(t, a, "profiles", targetProfile),
 	}, admin, "")
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("invalid permission status=%d body=%s", rr.Code, rr.Body.String())
@@ -225,7 +225,7 @@ func TestAdminPermissionsRequireValidExplicitSetAndPreserveOnFailure(t *testing.
 	// The current operator cannot remove the permissions that authorize their
 	// own administration session.
 	rr = authReq(a, http.MethodPut, "/api/admin/profiles/"+itoa(adminProfile)+"/permissions", map[string]any{
-		"permission_ids": []int64{stockRead},
+		"permission_ids": []int64{stockRead}, "version": crudVersion(t, a, "profiles", adminProfile),
 	}, admin, "")
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("self permission removal status=%d body=%s", rr.Code, rr.Body.String())
@@ -267,6 +267,8 @@ func TestConcurrentCrossDemotionsCannotRemoveAllAdministrators(t *testing.T) {
 	createTestUserWithProfileID(t, a, "concurrent-admin-b", "secret", profileB, true)
 	loginA := doLogin(t, a, "concurrent-admin-a", "secret")
 	loginB := doLogin(t, a, "concurrent-admin-b", "secret")
+	versionA := crudVersion(t, a, "profiles", profileA)
+	versionB := crudVersion(t, a, "profiles", profileB)
 
 	start := make(chan struct{})
 	codes := make([]int, 2)
@@ -275,12 +277,12 @@ func TestConcurrentCrossDemotionsCannotRemoveAllAdministrators(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		<-start
-		codes[0] = authReq(a, http.MethodPut, "/api/admin/profiles/"+itoa(profileB)+"/permissions", map[string]any{"permission_ids": []int64{}}, loginA, "").Code
+		codes[0] = authReq(a, http.MethodPut, "/api/admin/profiles/"+itoa(profileB)+"/permissions", map[string]any{"permission_ids": []int64{}, "version": versionB}, loginA, "").Code
 	}()
 	go func() {
 		defer wg.Done()
 		<-start
-		codes[1] = authReq(a, http.MethodPut, "/api/admin/profiles/"+itoa(profileA)+"/permissions", map[string]any{"permission_ids": []int64{}}, loginB, "").Code
+		codes[1] = authReq(a, http.MethodPut, "/api/admin/profiles/"+itoa(profileA)+"/permissions", map[string]any{"permission_ids": []int64{}, "version": versionA}, loginB, "").Code
 	}()
 	close(start)
 	wg.Wait()
