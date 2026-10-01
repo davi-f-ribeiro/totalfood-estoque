@@ -194,6 +194,39 @@ func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 }
 
 
+func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	for _, want := range []string{
+		`Cadastrar produto`,
+		`new_sku_barcode=`,
+		`return_to=%2Fentry`,
+		`catalogParams=new URLSearchParams(location.search)`,
+		`pendingNewSKUBarcode=normalizeBarcode(catalogParams.get('new_sku_barcode'))`,
+		`returnTo=catalogParams.get('return_to')==='/entry'?'/entry':''`,
+		`function startNewSKU(prefillBarcode='')`,
+		`if(pendingNewSKUBarcode)startNewSKU(pendingNewSKUBarcode)`,
+		`document.getElementById('newCatalogSku').onclick=()=>startNewSKU(pendingNewSKUBarcode)`,
+		`barcode.value=normalizeBarcode(prefillBarcode)`,
+		`if(!wasEditing&&pendingNewSKUBarcode&&returnTo&&body.barcode===pendingNewSKUBarcode)`,
+		`sku_id:String(saved.id)`,
+		`location.href=returnTo+'?'+back.toString()`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("unknown entry barcode continuation missing %q", want)
+		}
+	}
+	if strings.Contains(js, `returnTo=catalogParams.get('return_to')||`) {
+		t.Fatal("catalog continuation must not accept an arbitrary return target")
+	}
+	if strings.Count(js, `function startNewSKU(prefillBarcode='')`) != 1 {
+		t.Fatal("catalog must keep a single new-SKU entry point")
+	}
+}
+
 func TestWarehouseAdminUIContracts(t *testing.T) {
 	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
 	if err != nil {
