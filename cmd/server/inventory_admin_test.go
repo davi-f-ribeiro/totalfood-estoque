@@ -179,7 +179,7 @@ func TestInventoryGate07UIRoutesAndNoDuplication(t *testing.T){
 	hb,err:=os.ReadFile(filepath.Join("templates","inventory.html"));if err!=nil{t.Fatal(err)}
 	cb,err:=os.ReadFile(filepath.Join("static","app.css"));if err!=nil{t.Fatal(err)}
 	js,page,css:=string(jsb),string(hb),string(cb)
-	for _,want:=range []string{"Validação de Estoque","inventoryCreateTotal","inventoryCreateBlind","inventoryListFilters","inventoryList","Warehouse e itens serão escolhidos automaticamente","quantidades esperadas permanecerão ocultas","Continuar contagem","Revisar inventário","Ver histórico","CanInventoryWrite"}{if !strings.Contains(page+js,want){t.Fatalf("UI missing %q",want)}}
+	for _,want:=range []string{"Validação de Estoque","inventoryCreateTotal","inventoryCreateBlind","inventoryListFilters","inventoryList","Depósito e itens serão escolhidos automaticamente","quantidades esperadas permanecerão ocultas","Continuar contagem","Revisar inventário","Ver histórico","CanInventoryWrite"}{if !strings.Contains(page+js,want){t.Fatalf("UI missing %q",want)}}
 	if strings.Count(js,"initScanner('scanInventory'")!=1{t.Fatal("inventory must reuse one scanner callback")}
 	start:=strings.Index(js,"function initInventory(){");end:=strings.Index(js[start:],"function initForcedPassword()");if start<0||end<0{t.Fatal("inventory JS boundary missing")};invJS:=js[start:start+end]
 	for _,bad:=range []string{"system_quantity_snapshot","createEntry","createExit","createTransfer","stock_locks","Ajustar estoque","/api/movements"}{if strings.Contains(invJS,bad){t.Fatalf("inventory JS contains %q",bad)}}
