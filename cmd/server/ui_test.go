@@ -297,6 +297,7 @@ func TestCatalogIgnoresStaleParentAndSKUResponses(t *testing.T) {
 		`async function loadSKUs(item=currentItem){if(!item)return false`,
 		`if(!currentItem||+currentItem.id!==+item.id)return false`,
 		`if(!await loadSKUs(r))return`,
+		`if(!await loadSKUs())return`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("catalog stale-response guard missing %q", want)
