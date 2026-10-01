@@ -103,7 +103,7 @@ func (a *app) handleGetOperation(w http.ResponseWriter, r *http.Request) {
 	res, err := a.getOperation(r.Context(), operationID)
 	if err != nil {
 		if errors.Is(err, errOperationNotFound) {
-			writeJSONError(w, http.StatusNotFound, "operation not found")
+			writeJSONError(w, http.StatusNotFound, "Operação não encontrada.")
 			return
 		}
 		log.Printf("operation_id=%s type=GET stage=lookup error=%v", operationID, err)
@@ -142,7 +142,7 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 	dec.DisallowUnknownFields()
 	var req movementRequest
 	if err := dec.Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid json")
+		writeJSONError(w, http.StatusBadRequest, "Os dados da movimentação enviados são inválidos.")
 		return req, "", false
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
@@ -151,11 +151,11 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 	body, _ := json.Marshal(req)
 	h := sha256.Sum256(body)
 	if req.OperationID == "" || req.SKUID <= 0 || !positiveDecimal(req.Quantity) {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Revise produto, depósito e valores da movimentação.")
 		return req, "", false
 	}
 	if requireCost && !nonNegativeDecimal(req.UnitCost) {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Revise produto, depósito e valores da movimentação.")
 		return req, "", false
 	}
 	return req, hex.EncodeToString(h[:]), true

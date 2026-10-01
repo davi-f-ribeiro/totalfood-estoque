@@ -131,7 +131,8 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`warehouse_id`,
 		`Quantidade acima do saldo disponível.`,
 		`Destino deve ser diferente da origem.`,
-		`Saldo atualizado`,
+		`function movementConfirmed(msg)`,
+		`registrada.`,
 	}
 	for _, want := range checks {
 		if !strings.Contains(combined, want) {
@@ -429,6 +430,10 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 		"alert(",
 		".textContent=err.message",
 		".textContent=e.message",
+		"Formulário pronto para um novo cadastro.",
+		"Formulário pronto para uma nova movimentação.",
+		"Nota fiscal já estava confirmada. Formulário pronto para uma nova nota.",
+		"O sistema não conseguiu concluir a operação.",
 	} {
 		if strings.Contains(js, forbidden) {
 			t.Fatalf("project UI reintroduced forbidden error/modal pattern %q", forbidden)
@@ -440,7 +445,7 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 		"function uiErrorMessage(",
 		"Sem conexão com o sistema.",
 		"Você não tem permissão para realizar esta ação.",
-		"O sistema não conseguiu concluir a operação.",
+		"A operação não pôde ser concluída.",
 		"list-action",
 	} {
 		if !strings.Contains(js+css, want) {
@@ -629,7 +634,9 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(form,true,'Criar usuário','Atualizar usuário')",
 		"true,'Criar perfil','Atualizar perfil'",
-		"Formulário pronto para um novo cadastro.",
+		"body.name+(id?' atualizado.':' criado.')",
+		"body.login+(id?' atualizado.':' criado.')",
+		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')",
 		"itemForm.reset()",
 		"typeForm.reset()",
 		"unitForm.reset()",
@@ -687,7 +694,7 @@ func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 		"function verifyPending()",
 		"async function retryPending()",
 		"Existe uma operação pendente",
-		"Formulário pronto para uma nova movimentação.",
+		"A movimentação pendente já estava confirmada.",
 		"sessionStorage.getItem('pendingOp')",
 		"sessionStorage.removeItem('pendingOp')",
 		"await api('/api/operations/'+encodeURIComponent(p.body.operation_id))",
@@ -772,7 +779,7 @@ func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
 		"setAssetUnitEditMode(true)",
 		"setAssetUnitEditMode(false)",
 		"let body=id?{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,version:editingAssetVersion}:{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
-		"Dados cadastrais atualizados. Estado e localização permanecem inalterados.",
+		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')" ,
 		"id=\"assetUnitOperationalHint\"",
 		"Estado e localização preservam histórico.",
 		"altere-os somente pelos controles",
@@ -803,7 +810,7 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 		"lines.textContent=''",
 		"Este SKU já foi adicionado à nota.",
 		"Cada item deve ter um SKU selecionado e sem duplicidade.",
-		"Nota fiscal já estava confirmada. Formulário pronto para uma nova nota.",
+		"Nota fiscal já estava confirmada.",
 		"const inventoryCreatePendingKey='pendingInventoryCreate'",
 		"function readInventoryCreatePending()",
 		"function saveInventoryCreatePending(p)",

@@ -79,7 +79,7 @@ func (a *app) handleAssetTypes(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleCreateAssetType(w http.ResponseWriter, r *http.Request) {
 	var req assetTypeRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.Name) == "" {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, 400, "Dados informados são inválidos.")
 		return
 	}
 	active := true
@@ -102,7 +102,7 @@ func (a *app) handleUpdateAssetType(w http.ResponseWriter, r *http.Request) {
 	}
 	var req assetTypeRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.Name) == "" {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, 400, "Dados informados são inválidos.")
 		return
 	}
 	active := true
@@ -170,7 +170,7 @@ func (a *app) handleAssetLookup(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
 	var req assetRequest
 	if !decodeJSON(w, r, &req) || !validAssetReq(req) {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, 400, "Dados informados são inválidos.")
 		return
 	}
 	var wh any = req.WarehouseID
@@ -202,7 +202,7 @@ func (a *app) handleUpdateAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	var req assetUpdateRequest
 	if !decodeJSON(w, r, &req) || req.AssetTypeID <= 0 || cleanBarcode(req.Tag) == "" || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
 		return
 	}
 	var currentVersion int64
@@ -254,7 +254,7 @@ func writeAssetError(w http.ResponseWriter, err error, prefix string) {
 func (a *app) handleMoveAsset(w http.ResponseWriter, r *http.Request) {
 	var req assetMoveRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.OperationID) == "" || req.WarehouseID <= 0 {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, 400, "Dados informados são inválidos.")
 		return
 	}
 	if err := a.changeAssetLocation(r.Context(), cleanBarcode(r.PathValue("tag")), req, userFromContext(r.Context()).ID, requestHash(req)); err != nil {
@@ -267,7 +267,7 @@ func (a *app) handleMoveAsset(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleAssetStatus(w http.ResponseWriter, r *http.Request) {
 	var req assetStatusRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.OperationID) == "" || !validAssetStatus(req.Status) {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, 400, "Dados informados são inválidos.")
 		return
 	}
 	if err := a.changeAssetStatus(r.Context(), cleanBarcode(r.PathValue("tag")), req, userFromContext(r.Context()).ID, requestHash(req)); err != nil {

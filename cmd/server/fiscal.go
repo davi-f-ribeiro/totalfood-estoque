@@ -104,7 +104,7 @@ func (a *app) handleFiscalConfirm(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	var req fiscalConfirmRequest
 	if err := dec.Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid json")
+		writeJSONError(w, http.StatusBadRequest, "Os dados da nota fiscal enviados são inválidos.")
 		return
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
@@ -115,7 +115,7 @@ func (a *app) handleFiscalConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.OperationID == "" || req.WarehouseID <= 0 || len(req.Lines) == 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Revise a chave e os itens da nota fiscal.")
 		return
 	}
 	body, _ := json.Marshal(req)

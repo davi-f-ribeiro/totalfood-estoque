@@ -82,7 +82,7 @@ func (a *app) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	login := strings.TrimSpace(req.Login)
 	if login == "" || req.Password == "" || req.ProfileID <= 0 {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, 400, "Dados informados são inválidos.")
 		return
 	}
 	active := true
@@ -90,7 +90,7 @@ func (a *app) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		active = *req.Active
 	}
 	if !a.profileExists(r, req.ProfileID) {
-		writeJSONError(w, 400, "invalid profile")
+		writeJSONError(w, 400, "Perfil informado é inválido.")
 		return
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
@@ -102,7 +102,7 @@ func (a *app) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	err = a.db.QueryRowContext(r.Context(), `INSERT INTO users (login,password_hash,profile_id,active) VALUES ($1,$2,$3,$4) RETURNING id`, login, string(h), req.ProfileID, active).Scan(&id)
 	if err != nil {
 		log.Printf("admin user create failed: %v", err)
-		writeJSONError(w, 409, "user not created")
+		writeJSONError(w, 409, "Usuário não pôde ser criado com os dados informados.")
 		return
 	}
 	writeJSON(w, 201, map[string]any{"id": id, "login": login, "profile_id": req.ProfileID, "active": active, "version": int64(1)})
@@ -119,7 +119,7 @@ func (a *app) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	login := strings.TrimSpace(req.Login)
 	if login == "" || req.ProfileID <= 0 || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
 		return
 	}
 	active := true
@@ -175,7 +175,7 @@ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=$1),
 		return
 	}
 	if !profileExists {
-		writeJSONError(w, http.StatusBadRequest, "invalid profile")
+		writeJSONError(w, http.StatusBadRequest, "Perfil informado é inválido.")
 		return
 	}
 
@@ -201,7 +201,7 @@ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=$1),
 	}
 	if err != nil {
 		log.Printf("admin user update failed user_id=%d error=%v", id, err)
-		writeJSONError(w, http.StatusConflict, "user not updated")
+		writeJSONError(w, http.StatusConflict, "Usuário não pôde ser atualizado com os dados informados.")
 		return
 	}
 
@@ -241,7 +241,7 @@ func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Password == "" || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
 		return
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
@@ -330,12 +330,12 @@ func (a *app) handleAdminCreateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, 400, "Dados informados são inválidos.")
 		return
 	}
 	var id int64
 	if err := a.db.QueryRowContext(r.Context(), `INSERT INTO profiles (name) VALUES ($1) RETURNING id`, name).Scan(&id); err != nil {
-		writeJSONError(w, 409, "profile not created")
+		writeJSONError(w, 409, "Perfil não pôde ser criado com os dados informados.")
 		return
 	}
 	writeJSON(w, 201, map[string]any{"id": id, "name": name, "version": int64(1)})
@@ -352,7 +352,7 @@ func (a *app) handleAdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
 		return
 	}
 	var old string
@@ -379,7 +379,7 @@ func (a *app) handleAdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeJSONError(w, http.StatusConflict, "profile not updated")
+		writeJSONError(w, http.StatusConflict, "Perfil não pôde ser atualizado com os dados informados.")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "version": newVersion})
@@ -412,7 +412,7 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
 		return
 	}
 
@@ -454,13 +454,13 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	newUsersWrite, newProfilesWrite := false, false
 	for _, pid := range req.PermissionIDs {
 		if pid <= 0 || seen[pid] {
-			writeJSONError(w, http.StatusBadRequest, "invalid permission")
+			writeJSONError(w, http.StatusBadRequest, "Permissão informada é inválida.")
 			return
 		}
 		seen[pid] = true
 		var resource, action string
 		if err = tx.QueryRowContext(r.Context(), `SELECT resource,action FROM permissions WHERE id=$1`, pid).Scan(&resource, &action); errors.Is(err, sql.ErrNoRows) {
-			writeJSONError(w, http.StatusBadRequest, "invalid permission")
+			writeJSONError(w, http.StatusBadRequest, "Permissão informada é inválida.")
 			return
 		} else if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -487,11 +487,11 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	for _, pid := range req.PermissionIDs {
 		res, execErr := tx.ExecContext(r.Context(), `INSERT INTO profile_permissions (profile_id,permission_id) VALUES ($1,$2)`, id, pid)
 		if execErr != nil {
-			writeJSONError(w, http.StatusBadRequest, "invalid permission")
+			writeJSONError(w, http.StatusBadRequest, "Permissão informada é inválida.")
 			return
 		}
 		if n, _ := res.RowsAffected(); n != 1 {
-			writeJSONError(w, http.StatusBadRequest, "invalid permission")
+			writeJSONError(w, http.StatusBadRequest, "Permissão informada é inválida.")
 			return
 		}
 	}
@@ -537,7 +537,7 @@ func decodeAdminJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		writeJSONError(w, 400, "invalid request")
+		writeJSONError(w, 400, "Dados informados são inválidos.")
 		return false
 	}
 	return true
