@@ -162,7 +162,8 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 		`let openItem=null,detailSeq=0`,
 		`let seq=++detailSeq`,
 		`if(seq!==detailSeq||openItem!==id)return`,
-		`detailSeq++;detail.hidden=true;detail.textContent='';openItem=null`,
+		`detailSeq++;detail.classList.remove('error');detail.hidden=true;detail.textContent='';openItem=null`,
+		`detail.textContent=uiErrorMessage(err,'Não foi possível carregar os detalhes do estoque.');detail.classList.add('error')`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
 		if !strings.Contains(js+css, want) {
@@ -174,6 +175,9 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 	}
 	if strings.Count(js, `id="stockDetail"`) > 0 {
 		t.Fatal("stock detail element must remain template-owned, not duplicated in JavaScript")
+	}
+	if strings.Contains(js, `setFeedback(stockStatus,'error',uiErrorMessage(err,'Não foi possível carregar os detalhes do estoque.'))`) {
+		t.Fatal("stock detail errors must stay beside the selected item")
 	}
 }
 
