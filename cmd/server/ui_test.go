@@ -779,7 +779,7 @@ func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
 		"setAssetUnitEditMode(true)",
 		"setAssetUnitEditMode(false)",
 		"let body=id?{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,version:editingAssetVersion}:{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
-		"body.tag+(id?\' atualizado. Estado e localização permanecem inalterados.\':\' criado.\')" ,
+		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')" ,
 		"id=\"assetUnitOperationalHint\"",
 		"Estado e localização preservam histórico.",
 		"altere-os somente pelos controles",
