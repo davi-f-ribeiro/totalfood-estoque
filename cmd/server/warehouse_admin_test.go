@@ -108,10 +108,10 @@ func TestInactiveWarehouseRejectedAcrossStockOperationsAndSelectors(t *testing.T
 
 func TestWarehouseWithNegativeBalanceCannotBeDeactivated(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
-	createTestUser(t, a, "warehouse-negative-director", "secret", "Diretor", true)
+	userID := createTestUser(t, a, "warehouse-negative-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "warehouse-negative-director", "secret")
 	var movementID int64
-	if err := a.db.QueryRow(`INSERT INTO movements(operation_id,request_hash,movement_type,user_id) VALUES('negative-balance-fixture','fixture','SAIDA',$1) RETURNING id`, director.UserID).Scan(&movementID); err != nil {
+	if err := a.db.QueryRow(`INSERT INTO movements(operation_id,request_hash,movement_type,user_id) VALUES('negative-balance-fixture','fixture','SAIDA',$1) RETURNING id`, userID).Scan(&movementID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.db.Exec(`INSERT INTO movement_lines(movement_id,sku_id,warehouse_id,direction,quantity,unit_cost) VALUES($1,$2,$3,'OUT',1,0)`, movementID, sku, wh); err != nil {
