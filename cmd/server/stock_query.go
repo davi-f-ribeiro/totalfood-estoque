@@ -44,7 +44,7 @@ func quantityAtLeast(ctx context.Context, tx *sql.Tx, have, want string) bool {
 
 func (a *app) getOperation(ctx context.Context, operationID string) (operationResult, error) {
 	var r operationResult
-	err := a.db.QueryRowContext(ctx, `SELECT operation_id, id, 'confirmed', movement_type FROM movements WHERE operation_id=$1`, operationID).Scan(&r.OperationID, &r.MovementID, &r.Status, &r.Type)
+	err := a.db.QueryRowContext(ctx, `SELECT operation_id, id, 'confirmed', movement_type, COALESCE(user_id,0) FROM movements WHERE operation_id=$1`, operationID).Scan(&r.OperationID, &r.MovementID, &r.Status, &r.Type, &r.UserID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, errOperationNotFound
 	}
