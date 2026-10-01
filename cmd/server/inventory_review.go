@@ -251,15 +251,16 @@ FOR UPDATE`, validationID, skuID).Scan(&firstQty, &snapshot, &version); errors.I
 	}
 
 	var existingQty sql.NullString
+	var existingUserID int64
 	err = tx.QueryRowContext(ctx, `
-SELECT quantity::text
+SELECT quantity::text,recounted_by_user_id
 FROM inventory_validation_recounts
-WHERE validation_id=$1 AND sku_id=$2`, validationID, skuID).Scan(&existingQty)
+WHERE validation_id=$1 AND sku_id=$2`, validationID, skuID).Scan(&existingQty, &existingUserID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return inventoryReviewLine{}, err
 	}
 	if existingQty.Valid {
-		if version == expectedVersion+1 && existingQty.String == quantity {
+		if version == expectedVersion+1 && existingQty.String == quantity && existingUserID == userID {
 			line, err := inventoryReviewLineTx(ctx, tx, validationID, skuID)
 			if err != nil {
 				return inventoryReviewLine{}, err
