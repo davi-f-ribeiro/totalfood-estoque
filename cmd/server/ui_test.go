@@ -146,6 +146,33 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 	}
 }
 
+func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, css := string(jsb), string(cssb)
+	for _, want := range []string{
+		`if(card)card.after(detail)`,
+		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
+		`.stock-shell #stockDetail{grid-column:1/-1}`,
+	} {
+		if !strings.Contains(js+css, want) {
+			t.Fatalf("stock contextual detail missing %q", want)
+		}
+	}
+	if strings.Count(css, `.stock-shell #stockDetail{grid-column:1/-1}`) != 1 {
+		t.Fatal("stock detail grid placement must have a single shared rule")
+	}
+	if strings.Count(js, `id="stockDetail"`) > 0 {
+		t.Fatal("stock detail element must remain template-owned, not duplicated in JavaScript")
+	}
+}
+
 func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil {
