@@ -16,6 +16,7 @@ type adminUserRequest struct {
 	Password  string `json:"password,omitempty"`
 	ProfileID int64  `json:"profile_id"`
 	Active    *bool  `json:"active"`
+	Version   int64  `json:"version"`
 }
 
 type adminCreateUserRequest struct {
@@ -27,14 +28,17 @@ type adminCreateUserRequest struct {
 
 type adminPasswordRequest struct {
 	Password string `json:"password"`
+	Version  int64  `json:"version"`
 }
 
 type adminProfileRequest struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
+	Version int64  `json:"version,omitempty"`
 }
 
 type adminProfilePermissionsRequest struct {
 	PermissionIDs []int64 `json:"permission_ids"`
+	Version       int64   `json:"version"`
 }
 
 func (a *app) registerAdminHandlers(mux *http.ServeMux) {
@@ -51,7 +55,7 @@ func (a *app) registerAdminHandlers(mux *http.ServeMux) {
 }
 
 func (a *app) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), `SELECT u.id,u.login,u.profile_id,p.name,u.active,u.created_at::text FROM users u JOIN profiles p ON p.id=u.profile_id ORDER BY u.login`)
+	rows, err := a.db.QueryContext(r.Context(), `SELECT u.id,u.login,u.profile_id,p.name,u.active,u.created_at::text,u.version FROM users u JOIN profiles p ON p.id=u.profile_id ORDER BY u.login`)
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
@@ -59,14 +63,14 @@ func (a *app) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, pid int64
+		var id, pid, version int64
 		var login, pname, created string
 		var active bool
-		if err := rows.Scan(&id, &login, &pid, &pname, &active, &created); err != nil {
+		if err := rows.Scan(&id, &login, &pid, &pname, &active, &created, &version); err != nil {
 			writeJSONError(w, 500, "internal error")
 			return
 		}
-		out = append(out, map[string]any{"id": id, "login": login, "profile_id": pid, "profile": pname, "active": active, "created_at": created})
+		out = append(out, map[string]any{"id": id, "login": login, "profile_id": pid, "profile": pname, "active": active, "created_at": created, "version": version})
 	}
 	writeJSON(w, 200, out)
 }
@@ -101,7 +105,7 @@ func (a *app) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 409, "user not created")
 		return
 	}
-	writeJSON(w, 201, map[string]any{"id": id, "login": login, "profile_id": req.ProfileID, "active": active})
+	writeJSON(w, 201, map[string]any{"id": id, "login": login, "profile_id": req.ProfileID, "active": active, "version": int64(1)})
 }
 
 func (a *app) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +118,7 @@ func (a *app) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	login := strings.TrimSpace(req.Login)
-	if login == "" || req.ProfileID <= 0 {
+	if login == "" || req.ProfileID <= 0 || req.Version <= 0 {
 		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
@@ -139,7 +143,6 @@ func (a *app) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	// Serialize changes that can affect the effective administrator set.
 	if _, err = tx.ExecContext(r.Context(), `LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -149,13 +152,17 @@ func (a *app) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var currentProfileID int64
+	var currentProfileID, currentVersion int64
 	var currentActive bool
-	if err = tx.QueryRowContext(r.Context(), `SELECT profile_id,active FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentProfileID, &currentActive); errors.Is(err, sql.ErrNoRows) {
+	if err = tx.QueryRowContext(r.Context(), `SELECT profile_id,active,version FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentProfileID, &currentActive, &currentVersion); errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "user not found")
 		return
 	} else if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if currentVersion != req.Version {
+		writeConcurrentEditError(w)
 		return
 	}
 
@@ -182,10 +189,15 @@ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=$1),
 		return
 	}
 
+	var newVersion int64
 	if passwordHash != "" {
-		_, err = tx.ExecContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3,password_hash=$4 WHERE id=$5`, login, req.ProfileID, active, passwordHash, id)
+		err = tx.QueryRowContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3,password_hash=$4,version=version+1 WHERE id=$5 AND version=$6 RETURNING version`, login, req.ProfileID, active, passwordHash, id, req.Version).Scan(&newVersion)
 	} else {
-		_, err = tx.ExecContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3 WHERE id=$4`, login, req.ProfileID, active, id)
+		err = tx.QueryRowContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3,version=version+1 WHERE id=$4 AND version=$5 RETURNING version`, login, req.ProfileID, active, id, req.Version).Scan(&newVersion)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		writeConcurrentEditError(w)
+		return
 	}
 	if err != nil {
 		log.Printf("admin user update failed user_id=%d error=%v", id, err)
@@ -216,7 +228,7 @@ WHERE u.active=true
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == u.ID, "profile_id": req.ProfileID, "active": active, "previous_profile_id": currentProfileID, "previous_active": currentActive})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == u.ID, "profile_id": req.ProfileID, "active": active, "previous_profile_id": currentProfileID, "previous_active": currentActive, "version": newVersion})
 }
 
 func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +240,7 @@ func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
 	if !decodeAdminJSON(w, r, &req) {
 		return
 	}
-	if req.Password == "" {
+	if req.Password == "" || req.Version <= 0 {
 		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
@@ -243,15 +255,25 @@ func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(r.Context(), `UPDATE users SET password_hash=$1 WHERE id=$2`, string(h), id)
-	if err != nil {
-		log.Printf("admin password reset failed user_id=%d error=%v", id, err)
+	var currentVersion int64
+	if err = tx.QueryRowContext(r.Context(), `SELECT version FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentVersion); errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusNotFound, "user not found")
+		return
+	} else if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		writeJSONError(w, http.StatusNotFound, "user not found")
+	if currentVersion != req.Version {
+		writeConcurrentEditError(w)
+		return
+	}
+	var newVersion int64
+	if err = tx.QueryRowContext(r.Context(), `UPDATE users SET password_hash=$1,version=version+1 WHERE id=$2 AND version=$3 RETURNING version`, string(h), id, req.Version).Scan(&newVersion); errors.Is(err, sql.ErrNoRows) {
+		writeConcurrentEditError(w)
+		return
+	} else if err != nil {
+		log.Printf("admin password reset failed user_id=%d error=%v", id, err)
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	if _, err = tx.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, id); err != nil {
@@ -262,11 +284,11 @@ func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == userFromContext(r.Context()).ID})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == userFromContext(r.Context()).ID, "version": newVersion})
 }
 
 func (a *app) handleAdminProfiles(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), `SELECT id,name FROM profiles ORDER BY name`)
+	rows, err := a.db.QueryContext(r.Context(), `SELECT id,name,version FROM profiles ORDER BY name`)
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
@@ -274,9 +296,12 @@ func (a *app) handleAdminProfiles(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id int64
+		var id, version int64
 		var name string
-		rows.Scan(&id, &name)
+		if err := rows.Scan(&id, &name, &version); err != nil {
+			writeJSONError(w, 500, "internal error")
+			return
+		}
 		prows, err := a.db.QueryContext(r.Context(), `SELECT permission_id FROM profile_permissions WHERE profile_id=$1 ORDER BY permission_id`, id)
 		if err != nil {
 			writeJSONError(w, 500, "internal error")
@@ -285,11 +310,15 @@ func (a *app) handleAdminProfiles(w http.ResponseWriter, r *http.Request) {
 		ids := []int64{}
 		for prows.Next() {
 			var pid int64
-			prows.Scan(&pid)
+			if err := prows.Scan(&pid); err != nil {
+				prows.Close()
+				writeJSONError(w, 500, "internal error")
+				return
+			}
 			ids = append(ids, pid)
 		}
 		prows.Close()
-		out = append(out, map[string]any{"id": id, "name": name, "permission_ids": ids})
+		out = append(out, map[string]any{"id": id, "name": name, "permission_ids": ids, "version": version})
 	}
 	writeJSON(w, 200, out)
 }
@@ -309,7 +338,7 @@ func (a *app) handleAdminCreateProfile(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 409, "profile not created")
 		return
 	}
-	writeJSON(w, 201, map[string]any{"id": id, "name": name})
+	writeJSON(w, 201, map[string]any{"id": id, "name": name, "version": int64(1)})
 }
 
 func (a *app) handleAdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
@@ -317,32 +346,43 @@ func (a *app) handleAdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var old string
-	if err := a.db.QueryRowContext(r.Context(), `SELECT name FROM profiles WHERE id=$1`, id).Scan(&old); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, 404, "profile not found")
-		return
-	} else if err != nil {
-		writeJSONError(w, 500, "internal error")
-		return
-	}
-	if old == "Diretor" {
-		writeJSONError(w, 409, "perfil Diretor não pode ser renomeado")
-		return
-	}
 	var req adminProfileRequest
 	if !decodeAdminJSON(w, r, &req) {
 		return
 	}
 	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		writeJSONError(w, 400, "invalid request")
+	if name == "" || req.Version <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if _, err := a.db.ExecContext(r.Context(), `UPDATE profiles SET name=$1 WHERE id=$2`, name, id); err != nil {
-		writeJSONError(w, 409, "profile not updated")
+	var old string
+	var currentVersion int64
+	if err := a.db.QueryRowContext(r.Context(), `SELECT name,version FROM profiles WHERE id=$1`, id).Scan(&old, &currentVersion); errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusNotFound, "profile not found")
+		return
+	} else if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"status": "ok"})
+	if currentVersion != req.Version {
+		writeConcurrentEditError(w)
+		return
+	}
+	if old == "Diretor" {
+		writeJSONError(w, http.StatusConflict, "perfil Diretor não pode ser renomeado")
+		return
+	}
+	var newVersion int64
+	err := a.db.QueryRowContext(r.Context(), `UPDATE profiles SET name=$1,version=version+1 WHERE id=$2 AND version=$3 RETURNING version`, name, id, req.Version).Scan(&newVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeConcurrentEditError(w)
+		return
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusConflict, "profile not updated")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "version": newVersion})
 }
 
 func (a *app) handleAdminPermissions(w http.ResponseWriter, r *http.Request) {
@@ -371,6 +411,10 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	if !decodeAdminJSON(w, r, &req) {
 		return
 	}
+	if req.Version <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
 
 	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -379,8 +423,6 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	}
 	defer tx.Rollback()
 
-	// Same lock order as user updates: this serializes all changes that can
-	// remove effective administrators, including concurrent cross-demotions.
 	if _, err = tx.ExecContext(r.Context(), `LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -391,11 +433,16 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	}
 
 	var name string
-	if err = tx.QueryRowContext(r.Context(), `SELECT name FROM profiles WHERE id=$1 FOR UPDATE`, id).Scan(&name); errors.Is(err, sql.ErrNoRows) {
+	var currentVersion int64
+	if err = tx.QueryRowContext(r.Context(), `SELECT name,version FROM profiles WHERE id=$1 FOR UPDATE`, id).Scan(&name, &currentVersion); errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "profile not found")
 		return
 	} else if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if currentVersion != req.Version {
+		writeConcurrentEditError(w)
 		return
 	}
 	if name == "Diretor" {
@@ -464,6 +511,15 @@ WHERE u.active=true
 		return
 	}
 
+	var newVersion int64
+	if err = tx.QueryRowContext(r.Context(), `UPDATE profiles SET version=version+1 WHERE id=$1 AND version=$2 RETURNING version`, id, req.Version).Scan(&newVersion); errors.Is(err, sql.ErrNoRows) {
+		writeConcurrentEditError(w)
+		return
+	} else if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
 	if _, err = tx.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE user_id IN (SELECT id FROM users WHERE profile_id=$1) AND revoked_at IS NULL`, id); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -472,7 +528,7 @@ WHERE u.active=true
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == u.ProfileID})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "reauth_required": id == u.ProfileID, "version": newVersion})
 }
 
 func decodeAdminJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
