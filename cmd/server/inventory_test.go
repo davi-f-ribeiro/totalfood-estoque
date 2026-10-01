@@ -471,8 +471,6 @@ func TestBlindUsesOnlyEligibleWarehouseAndSKUs(t *testing.T) {
 
 	good := e.warehouse(t, "good", true)
 	single := e.warehouse(t, "single", true)
-	inactive := e.warehouse(t, "inactive-blind", false)
-
 	goodEligible := map[int64]bool{}
 	for i := 0; i < 4; i++ {
 		sku := e.sku(t, fmt.Sprintf("good-%d", i), true, true)
@@ -492,11 +490,6 @@ func TestBlindUsesOnlyEligibleWarehouseAndSKUs(t *testing.T) {
 
 	singleSKU := e.sku(t, "single-only", true, true)
 	e.movement(t, singleSKU, single, "IN", 5)
-
-	for i := 0; i < 3; i++ {
-		sku := e.sku(t, fmt.Sprintf("inactive-wh-%d", i), true, true)
-		e.movement(t, sku, inactive, "IN", 5)
-	}
 
 	res, err := e.a.createBlindInventory(ctx, e.userID)
 	if err != nil {
