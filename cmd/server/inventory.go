@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -48,7 +49,12 @@ type inventorySelection struct {
 }
 
 type totalInventoryRequest struct {
-	WarehouseID int64 `json:"warehouse_id"`
+	OperationID string `json:"operation_id"`
+	WarehouseID int64  `json:"warehouse_id"`
+}
+
+type blindInventoryRequest struct {
+	OperationID string `json:"operation_id"`
 }
 
 func (a *app) registerInventoryHandlers(mux *http.ServeMux) {
@@ -66,20 +72,26 @@ func (a *app) handleCreateTotalInventory(w http.ResponseWriter, r *http.Request)
 	if !decodeInventoryJSON(w, r, &req, false) {
 		return
 	}
-	if req.WarehouseID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "warehouse_id inválido.")
+	req.OperationID = strings.TrimSpace(req.OperationID)
+	if req.OperationID == "" || req.WarehouseID <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "operation_id ou warehouse_id inválido.")
 		return
 	}
-	res, err := a.createTotalInventory(r.Context(), userFromContext(r.Context()).ID, req.WarehouseID)
+	res, err := a.createTotalInventory(r.Context(), userFromContext(r.Context()).ID, req.WarehouseID, req.OperationID)
 	writeInventoryResponse(w, res, err)
 }
 
 func (a *app) handleCreateBlindInventory(w http.ResponseWriter, r *http.Request) {
-	var req struct{}
-	if !decodeInventoryJSON(w, r, &req, true) {
+	var req blindInventoryRequest
+	if !decodeInventoryJSON(w, r, &req, false) {
 		return
 	}
-	res, err := a.createBlindInventory(r.Context(), userFromContext(r.Context()).ID)
+	req.OperationID = strings.TrimSpace(req.OperationID)
+	if req.OperationID == "" {
+		writeJSONError(w, http.StatusBadRequest, "operation_id inválido.")
+		return
+	}
+	res, err := a.createBlindInventory(r.Context(), userFromContext(r.Context()).ID, req.OperationID)
 	writeInventoryResponse(w, res, err)
 }
 
@@ -135,21 +147,38 @@ func writeInventoryResponse(w http.ResponseWriter, res inventorySelection, err e
 		writeJSONError(w, http.StatusConflict, "Warehouse sem SKUs elegíveis para inventário.")
 	case errors.Is(err, errInventoryNoBlindWarehouse):
 		writeJSONError(w, http.StatusConflict, "Nenhum warehouse elegível para inventário BLIND.")
+	case errors.Is(err, errOperationConflict):
+		writeJSONError(w, http.StatusConflict, "operation_id conflict")
 	default:
 		log.Printf("inventory create failed error=%v", err)
 		writeJSONError(w, http.StatusInternalServerError, "Erro interno.")
 	}
 }
 
-func (a *app) createTotalInventory(ctx context.Context, responsibleUserID, warehouseID int64) (inventorySelection, error) {
+func (a *app) createTotalInventory(ctx context.Context, responsibleUserID, warehouseID int64, operationIDs ...string) (inventorySelection, error) {
+	operationID := ""
+	if len(operationIDs) > 0 {
+		operationID = strings.TrimSpace(operationIDs[0])
+	}
+	hash := ""
+	if operationID != "" {
+		hash = requestHash(map[string]any{"type": "TOTAL", "warehouse_id": warehouseID, "responsible_user_id": responsibleUserID})
+	}
 	tx, snapshotAt, err := a.beginInventorySnapshotTx(ctx)
 	if err != nil {
 		return inventorySelection{}, err
 	}
 	defer tx.Rollback()
 
-	if err := lockInventorySelection(ctx, tx); err != nil {
-		return inventorySelection{}, err
+	if operationID != "" {
+		if existing, found, err := inventorySelectionByOperationTx(ctx, tx, operationID, hash); err != nil {
+			return inventorySelection{}, err
+		} else if found {
+			if err := tx.Commit(); err != nil {
+				return inventorySelection{}, err
+			}
+			return existing, nil
+		}
 	}
 	if err := validateInventoryWarehouse(ctx, tx, warehouseID); err != nil {
 		return inventorySelection{}, err
@@ -169,7 +198,7 @@ func (a *app) createTotalInventory(ctx context.Context, responsibleUserID, wareh
 	}
 	sort.Slice(lines, func(i, j int) bool { return lines[i].SKUID < lines[j].SKUID })
 
-	res, err := persistInventorySelection(ctx, tx, "TOTAL", responsibleUserID, warehouseID, snapshotAt, lines)
+	res, err := persistInventorySelection(ctx, tx, "TOTAL", responsibleUserID, warehouseID, snapshotAt, lines, operationID, hash)
 	if err != nil {
 		return inventorySelection{}, err
 	}
@@ -179,15 +208,30 @@ func (a *app) createTotalInventory(ctx context.Context, responsibleUserID, wareh
 	return res, nil
 }
 
-func (a *app) createBlindInventory(ctx context.Context, responsibleUserID int64) (inventorySelection, error) {
+func (a *app) createBlindInventory(ctx context.Context, responsibleUserID int64, operationIDs ...string) (inventorySelection, error) {
+	operationID := ""
+	if len(operationIDs) > 0 {
+		operationID = strings.TrimSpace(operationIDs[0])
+	}
+	hash := ""
+	if operationID != "" {
+		hash = requestHash(map[string]any{"type": "BLIND", "responsible_user_id": responsibleUserID})
+	}
 	tx, snapshotAt, err := a.beginInventorySnapshotTx(ctx)
 	if err != nil {
 		return inventorySelection{}, err
 	}
 	defer tx.Rollback()
 
-	if err := lockInventorySelection(ctx, tx); err != nil {
-		return inventorySelection{}, err
+	if operationID != "" {
+		if existing, found, err := inventorySelectionByOperationTx(ctx, tx, operationID, hash); err != nil {
+			return inventorySelection{}, err
+		} else if found {
+			if err := tx.Commit(); err != nil {
+				return inventorySelection{}, err
+			}
+			return existing, nil
+		}
 	}
 	warehouseID, eligibleCount, err := selectBlindWarehouse(ctx, tx)
 	if err != nil {
@@ -204,7 +248,7 @@ func (a *app) createBlindInventory(ctx context.Context, responsibleUserID int64)
 	if len(lines) != sampleSize {
 		return inventorySelection{}, errInventoryNoEligibleSKUs
 	}
-	res, err := persistInventorySelection(ctx, tx, "BLIND", responsibleUserID, warehouseID, snapshotAt, lines)
+	res, err := persistInventorySelection(ctx, tx, "BLIND", responsibleUserID, warehouseID, snapshotAt, lines, operationID, hash)
 	if err != nil {
 		return inventorySelection{}, err
 	}
@@ -219,6 +263,10 @@ func (a *app) beginInventorySnapshotTx(ctx context.Context) (*sql.Tx, time.Time,
 	if err != nil {
 		return nil, time.Time{}, err
 	}
+	if err := lockInventorySelection(ctx, tx); err != nil {
+		_ = tx.Rollback()
+		return nil, time.Time{}, err
+	}
 	var snapshotAt time.Time
 	var snapshotID string
 	if err := tx.QueryRowContext(ctx, `SELECT statement_timestamp(), pg_current_snapshot()::text`).Scan(&snapshotAt, &snapshotID); err != nil {
@@ -226,6 +274,40 @@ func (a *app) beginInventorySnapshotTx(ctx context.Context) (*sql.Tx, time.Time,
 		return nil, time.Time{}, err
 	}
 	return tx, snapshotAt, nil
+}
+
+func inventorySelectionByOperationTx(ctx context.Context, tx *sql.Tx, operationID, hash string) (inventorySelection, bool, error) {
+	var res inventorySelection
+	var existingHash string
+	err := tx.QueryRowContext(ctx, `
+SELECT id,type,warehouse_id,status,request_hash
+FROM inventory_validations
+WHERE operation_id=$1`, operationID).Scan(&res.ID, &res.Type, &res.WarehouseID, &res.Status, &existingHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return inventorySelection{}, false, nil
+	}
+	if err != nil {
+		return inventorySelection{}, false, err
+	}
+	if existingHash != hash {
+		return inventorySelection{}, false, errOperationConflict
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT sku_id FROM inventory_validation_lines WHERE validation_id=$1 ORDER BY id`, res.ID)
+	if err != nil {
+		return inventorySelection{}, false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var skuID int64
+		if err := rows.Scan(&skuID); err != nil {
+			return inventorySelection{}, false, err
+		}
+		res.SKUIDs = append(res.SKUIDs, skuID)
+	}
+	if err := rows.Err(); err != nil {
+		return inventorySelection{}, false, err
+	}
+	return res, true, nil
 }
 
 func lockInventorySelection(ctx context.Context, tx *sql.Tx) error {
@@ -399,15 +481,15 @@ LIMIT $2`, warehouseID, sampleSize)
 	return out, rows.Err()
 }
 
-func persistInventorySelection(ctx context.Context, tx *sql.Tx, typ string, responsibleUserID, warehouseID int64, snapshotAt time.Time, lines []inventorySnapshotLine) (inventorySelection, error) {
+func persistInventorySelection(ctx context.Context, tx *sql.Tx, typ string, responsibleUserID, warehouseID int64, snapshotAt time.Time, lines []inventorySnapshotLine, operationID, hash string) (inventorySelection, error) {
 	if len(lines) == 0 {
 		return inventorySelection{}, errInventoryNoEligibleSKUs
 	}
 	var id int64
 	if err := tx.QueryRowContext(ctx, `
-INSERT INTO inventory_validations (type,warehouse_id,status,responsible_user_id,started_at,snapshot_at)
-VALUES ($1,$2,'OPEN',$3,$4,$4)
-RETURNING id`, typ, warehouseID, responsibleUserID, snapshotAt).Scan(&id); err != nil {
+INSERT INTO inventory_validations (type,warehouse_id,status,responsible_user_id,started_at,snapshot_at,operation_id,request_hash)
+VALUES ($1,$2,'OPEN',$3,$4,$4,NULLIF($5,''),NULLIF($6,''))
+RETURNING id`, typ, warehouseID, responsibleUserID, snapshotAt, operationID, hash).Scan(&id); err != nil {
 		return inventorySelection{}, err
 	}
 	skuIDs := make([]int64, 0, len(lines))
