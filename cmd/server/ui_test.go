@@ -197,6 +197,10 @@ func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 		`lookup.hidden=true`,
 		`normalizeBarcode(q).length<2`,
 		`function skuLabel`,
+		`function clearMovementProduct(clearSearch=false)`,
+		`function bindChangeProduct()`,
+		`clearMovementProduct(false);search.value=normalized`,
+		`let q=search.value,seq=++manualSeq;clearMovementProduct(false)`,
 		`Produto selecionado`,
 		`id="changeProduct"`,
 		`productMsg('error','<strong>Código de barras não cadastrado.</strong>`,
@@ -223,6 +227,9 @@ func TestMovementProductSelectionUXStateContracts(t *testing.T) {
 	}
 	if strings.Count(combined, "productLookup(normalized)") != 1 {
 		t.Fatal("movement barcode resolution must have a single product lookup path")
+	}
+	if strings.Count(combined, "document.getElementById('changeProduct')?.addEventListener") != 1 {
+		t.Fatal("movement product change must use one canonical handler")
 	}
 }
 
