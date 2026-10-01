@@ -65,3 +65,58 @@
 }
 
 .admin{display:grid;gap:16px}.warehouse-row{align-items:center}.warehouse-row button{min-width:112px}@media(max-width:720px){.admin{gap:10px}.warehouse-row button{width:100%}}
+
+
+/* Shared selectable rows: semantic button, desktop and keyboard friendly. */
+.list-action{width:100%;text-align:left;background:var(--surface);color:var(--text-primary);border:0;border-bottom:1px solid var(--border);border-radius:0;font-weight:400}
+.list-action:hover,.list-action:focus{background:var(--brand-primary-soft)}
+.list-action strong{justify-self:end}
+
+/* Module layouts intentionally differ by viewport; mobile is not a shrunken desktop. */
+.assets,.admin,.stock-shell,.fiscal-shell{display:grid;gap:16px}
+
+@media(min-width:1024px){
+  .main{max-width:1200px;padding:24px}
+  .stock-shell{grid-template-columns:minmax(0,1fr)}
+  .stock-shell>.panel{padding:22px}
+  .stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}
+  .stock-shell .stock-card{min-height:72px}
+
+  .assets{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+  .assets>.panel:first-child{grid-column:1/-1}
+  .assets>.panel{padding:20px}
+  .assets #assetOps>.grid,.assets #assetUnitForm>.grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+  .admin{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+  .admin-intro,.admin-warehouses,.admin-permissions{grid-column:1/-1}
+  .admin>.panel{padding:20px}
+  .admin-warehouses #adminWarehouseForm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}
+  .admin-warehouses #adminWarehouseForm label{margin:0}
+  .admin-warehouses #adminWarehouseForm .operation-feedback{grid-column:1/-1}
+
+  .fiscal-shell{grid-template-columns:minmax(0,1fr)}
+  .fiscal{padding:22px}
+  .fiscal #fiscalManualForm{display:grid;grid-template-columns:minmax(220px,.6fr) minmax(0,1.4fr);gap:14px 18px;align-items:start}
+  .fiscal #fiscalManualForm>label,.fiscal #fiscalManualForm>#fiscalAccessKey,.fiscal #fiscalManualForm>#fiscalLines,.fiscal #fiscalManualForm>#fiscalConfirmStatus{grid-column:1/-1}
+  .fiscal #fiscalManualForm>#addFiscalLine{justify-self:start}
+  .fiscal #fiscalManualForm>button[type="submit"]{justify-self:end}
+}
+
+@media(min-width:768px) and (max-width:1023px){
+  .main{max-width:900px;padding:18px}
+  .assets,.admin{grid-template-columns:1fr}
+  .stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px}
+  .fiscal .line{grid-template-columns:minmax(0,1fr) 120px 120px auto}
+}
+
+@media(max-width:767px){
+  .main{padding:12px}
+  .assets,.admin,.stock-shell,.fiscal-shell{grid-template-columns:1fr;gap:12px}
+  .stock-shell #stockList{display:block}
+  .assets>.panel,.admin>.panel,.fiscal{padding:12px}
+  .list-action{grid-template-columns:1fr;width:100%}
+  .list-action strong{justify-self:start}
+  .admin-warehouses #adminWarehouseForm button,
+  .assets form>button[type="submit"],
+  .fiscal form>button[type="submit"]{width:100%}
+}
