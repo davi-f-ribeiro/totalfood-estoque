@@ -72,3 +72,34 @@ $$;
 CREATE TRIGGER assets_active_warehouse
 BEFORE INSERT OR UPDATE OF current_warehouse_id ON assets
 FOR EACH ROW EXECUTE FUNCTION enforce_active_asset_warehouse();
+
+
+-- Deactivation is a database invariant, not only an HTTP rule.
+CREATE OR REPLACE FUNCTION enforce_warehouse_deactivation_empty()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF OLD.active AND NOT NEW.active THEN
+        IF EXISTS (
+            SELECT 1
+            FROM movement_lines
+            WHERE warehouse_id = OLD.id
+            GROUP BY sku_id
+            HAVING SUM(CASE direction WHEN 'IN' THEN quantity ELSE -quantity END) <> 0
+        ) OR EXISTS (
+            SELECT 1
+            FROM assets
+            WHERE current_warehouse_id = OLD.id
+        ) THEN
+            RAISE EXCEPTION 'warehouse not empty';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER warehouses_deactivate_only_empty
+BEFORE UPDATE OF active ON warehouses
+FOR EACH ROW EXECUTE FUNCTION enforce_warehouse_deactivation_empty();
