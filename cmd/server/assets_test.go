@@ -120,6 +120,7 @@ func TestAssetPatchCannotBypassOperationalEventHistory(t *testing.T) {
 		"tag": "PAT-PATCH-2",
 		"status": "EM_MANUTENCAO",
 		"warehouse_id": wh2,
+		"version": crudVersion(t, a, "assets", assetID),
 	}, login, "")
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("operational fields accepted by generic patch: status=%d body=%s", rr.Code, rr.Body.String())
@@ -138,6 +139,7 @@ func TestAssetPatchCannotBypassOperationalEventHistory(t *testing.T) {
 	rr = authReq(a, http.MethodPatch, "/api/assets/"+itoa(assetID), map[string]any{
 		"asset_type_id": typeB,
 		"tag": "PAT-PATCH-2",
+		"version": crudVersion(t, a, "assets", assetID),
 	}, login, "")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("cadastral patch status=%d body=%s", rr.Code, rr.Body.String())
