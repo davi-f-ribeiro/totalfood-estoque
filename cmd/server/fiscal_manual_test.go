@@ -90,3 +90,31 @@ func createFiscalTestSKU(t *testing.T, a *app, login loginData, itemName, skuNam
 	}
 	return int64(out["id"].(float64))
 }
+
+func TestFiscalManualRejectsDuplicateSKUWithinSameNote(t *testing.T) {
+	a, _, wh, _ := newStockTestApp(t)
+	createTestUser(t, a, "director-fiscal-duplicate-line", "secret", "Diretor", true)
+	director := doLogin(t, a, "director-fiscal-duplicate-line", "secret")
+	sku := createFiscalTestSKU(t, a, director, "Duplicate Fiscal Item", "Duplicate Fiscal SKU", "7898000002015")
+	key := validAccessKeyForTest("2326090372088200341665007000039196107125040")
+	beforeMovements := tableCount(t, a, "movements")
+	beforeDocs := tableCount(t, a, "fiscal_documents")
+	payload := map[string]any{
+		"operation_id": "fiscal-duplicate-sku",
+		"access_key": key,
+		"warehouse_id": wh,
+		"lines": []map[string]any{
+			{"sku_id": sku, "quantity": "2", "unit_cost": "10"},
+			{"sku_id": sku, "quantity": "3", "unit_cost": "10"},
+		},
+	}
+	rr := authReq(a, http.MethodPost, "/api/fiscal/confirm", payload, director, "")
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "mesmo SKU") {
+		t.Fatalf("duplicate SKU status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := tableCount(t, a, "movements"); got != beforeMovements { t.Fatalf("duplicate SKU created movement: %d -> %d", beforeMovements, got) }
+	if got := tableCount(t, a, "fiscal_documents"); got != beforeDocs { t.Fatalf("duplicate SKU created fiscal document: %d -> %d", beforeDocs, got) }
+	stock, err := getStockSnapshot(context.Background(), a.db, sku, wh)
+	if err != nil { t.Fatal(err) }
+	if stock.Quantity != "0" { t.Fatalf("duplicate SKU changed stock: %+v", stock) }
+}
