@@ -32,7 +32,7 @@ JOIN (
 ) bal ON bal.warehouse_id=w.id
 JOIN product_skus s ON s.id=$1
 JOIN inventory_items i ON i.id=s.item_id
-WHERE bal.quantity > 0
+WHERE w.active=true AND bal.quantity > 0
 ORDER BY w.name`, skuID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
