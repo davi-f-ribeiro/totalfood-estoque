@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,65 @@ func TestWarehouseAdministrationLifecycleAndMovementGuard(t *testing.T) {
 	}
 }
 
+
+func TestInactiveWarehouseRejectedAcrossStockOperationsAndSelectors(t *testing.T) {
+	a, sku, wh1, wh2 := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.createEntry(ctx, movementRequest{OperationID: "guard-seed-source", SKUID: sku, WarehouseID: wh1, Quantity: "3", UnitCost: "1"}, "guard-seed-source"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createEntry(ctx, movementRequest{OperationID: "guard-seed-inactive", SKUID: sku, WarehouseID: wh2, Quantity: "2", UnitCost: "1"}, "guard-seed-inactive"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createEntry(ctx, movementRequest{OperationID: "guard-entry", SKUID: sku, WarehouseID: wh2, Quantity: "1", UnitCost: "1"}, "guard-entry"); !errors.Is(err, errWarehouseInactive) {
+		t.Fatalf("inactive entry err=%v", err)
+	}
+	if _, err := a.createExit(ctx, movementRequest{OperationID: "guard-exit", SKUID: sku, WarehouseID: wh2, Quantity: "1"}, "guard-exit"); !errors.Is(err, errWarehouseInactive) {
+		t.Fatalf("inactive exit err=%v", err)
+	}
+	if _, err := a.createTransfer(ctx, movementRequest{OperationID: "guard-transfer-source", SKUID: sku, FromWarehouseID: wh2, ToWarehouseID: wh1, Quantity: "1"}, "guard-transfer-source"); !errors.Is(err, errWarehouseInactive) {
+		t.Fatalf("inactive transfer source err=%v", err)
+	}
+	if _, err := a.createTransfer(ctx, movementRequest{OperationID: "guard-transfer-destination", SKUID: sku, FromWarehouseID: wh1, ToWarehouseID: wh2, Quantity: "1"}, "guard-transfer-destination"); !errors.Is(err, errWarehouseInactive) {
+		t.Fatalf("inactive transfer destination err=%v", err)
+	}
+
+	createTestUser(t, a, "warehouse-selector-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "warehouse-selector-director", "secret")
+	for _, path := range []string{"/api/warehouses", "/api/inventory-validations/warehouses", "/api/stock/availability?sku_id=" + itoa(sku)} {
+		rr := authReq(a, http.MethodGet, path, nil, director, "")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("selector %s status=%d body=%s", path, rr.Code, rr.Body.String())
+		}
+		if strings.Contains(rr.Body.String(), `"id":`+itoa(wh2)) || strings.Contains(rr.Body.String(), `"warehouse_id":`+itoa(wh2)) {
+			t.Fatalf("inactive warehouse leaked from selector %s body=%s", path, rr.Body.String())
+		}
+	}
+}
+
+func TestWarehouseWithNegativeBalanceCannotBeDeactivated(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	createTestUser(t, a, "warehouse-negative-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "warehouse-negative-director", "secret")
+	var movementID int64
+	if err := a.db.QueryRow(`INSERT INTO movements(operation_id,request_hash,movement_type,user_id) VALUES('negative-balance-fixture','fixture','SAIDA',$1) RETURNING id`, director.UserID).Scan(&movementID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO movement_lines(movement_id,sku_id,warehouse_id,direction,quantity,unit_cost) VALUES($1,$2,$3,'OUT',1,0)`, movementID, sku, wh); err != nil {
+		t.Fatal(err)
+	}
+	rr := authReq(a, http.MethodPost, "/api/admin/warehouses/"+itoa(wh)+"/deactivate", nil, director, "")
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("negative balance deactivate status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var active bool
+	if err := a.db.QueryRow(`SELECT active FROM warehouses WHERE id=$1`, wh).Scan(&active); err != nil || !active {
+		t.Fatalf("warehouse deactivated with negative balance active=%v err=%v", active, err)
+	}
+}
 
 func TestWarehouseNameIsUniqueForTracking(t *testing.T) {
 	a, _, _, _ := newStockTestApp(t)
