@@ -180,6 +180,21 @@ func TestWarehouseDatabaseInvariantsRejectDirectBypass(t *testing.T) {
 		t.Fatalf("direct movement into inactive warehouse err=%v", err)
 	}
 	tx.Rollback()
+
+	wh3 := warehouseFixture(t, a, "inactive-history-edit", true)
+	entry, err := a.createEntry(ctx, movementRequest{OperationID: "db-history-entry", SKUID: sku, WarehouseID: wh3, Quantity: "1", UnitCost: "1"}, "db-history-entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createExit(ctx, movementRequest{OperationID: "db-history-exit", SKUID: sku, WarehouseID: wh3, Quantity: "1"}, "db-history-exit"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh3); err != nil {
+		t.Fatalf("deactivate zero-balance warehouse: %v", err)
+	}
+	if _, err := a.db.Exec(`UPDATE movement_lines SET quantity=2 WHERE movement_id=$1 AND warehouse_id=$2`, entry.MovementID, wh3); err == nil || !strings.Contains(err.Error(), "movement warehouse inactive or not found") {
+		t.Fatalf("direct history edit in inactive warehouse err=%v", err)
+	}
 }
 
 func TestWarehouseNameIsUniqueForTracking(t *testing.T) {
