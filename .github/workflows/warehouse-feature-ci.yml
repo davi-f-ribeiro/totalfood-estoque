@@ -1,9 +1,9 @@
-name: warehouse-feature-ci
+name: feature-ci
 
 on:
   push:
     branches:
-      - feature/warehouse-administration
+      - 'feature/**'
 
 permissions:
   contents: read
@@ -45,4 +45,4 @@ jobs:
       - name: Go build
         run: go build ./...
       - name: Docker build
-        run: docker build -t totalfood-estoque:warehouse-gate .
+        run: docker build -t totalfood-estoque:feature-gate .
