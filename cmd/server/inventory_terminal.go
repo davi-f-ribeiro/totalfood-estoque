@@ -371,7 +371,7 @@ SELECT l.sku_id,
        l.system_quantity_snapshot::text,
        COALESCE(r.quantity,l.physical_quantity)::text,
        (COALESCE(r.quantity,l.physical_quantity)-l.system_quantity_snapshot)::text,
-       CASE WHEN COALESCE(r.quantity,l.physical_quantity)=l.system_quantity_snapshot THEN 'MATCH' ELSE 'DIVERGENT' END
+       CASE WHEN COALESCE(r.quantity,l.physical_quantity) IS NULL THEN NULL WHEN COALESCE(r.quantity,l.physical_quantity)=l.system_quantity_snapshot THEN 'MATCH' ELSE 'DIVERGENT' END
 FROM inventory_validation_lines l
 JOIN product_skus s ON s.id=l.sku_id
 JOIN inventory_items i ON i.id=s.item_id
