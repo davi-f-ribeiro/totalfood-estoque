@@ -605,3 +605,46 @@ func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
 		t.Fatal("generic asset edit still sends operational fields")
 	}
 }
+
+func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil { t.Fatal(err) }
+		return string(b)
+	}
+	js := read(filepath.Join("static", "app.js"))
+	stock := read("stock_engine.go")
+	migration := read(filepath.Join("..", "..", "migrations", "020_inventory_creation_idempotency.sql"))
+
+	for _, want := range []string{
+		"function resetFiscalAfterSuccess()",
+		"lines.textContent=''",
+		"Este SKU já foi adicionado à nota.",
+		"Cada item deve ter um SKU selecionado e sem duplicidade.",
+		"Nota fiscal já estava confirmada. Formulário pronto para uma nova nota.",
+		"const inventoryCreatePendingKey='pendingInventoryCreate'",
+		"function readInventoryCreatePending()",
+		"function saveInventoryCreatePending(p)",
+		"function clearInventoryCreatePending()",
+		"Reenviar criação pendente",
+		"operation_id:pending.operation_id",
+		"definitiveInventoryCreateError(err)",
+		"sort.Slice(skuIDs",
+		"for _, skuID := range skuIDs",
+		"ADD COLUMN operation_id text",
+		"ADD COLUMN request_hash text",
+		"inventory_validations_operation_id_unique",
+	} {
+		if !strings.Contains(js+stock+migration, want) {
+			t.Fatalf("fiscal/inventory safety contract missing %q", want)
+		}
+	}
+
+	if strings.Contains(js, "body:JSON.stringify({warehouse_id:warehouseId})") {
+		t.Fatal("inventory total creation reintroduced request without operation_id")
+	}
+	if strings.Contains(js, "body:'{}'});setListMessage('Inventário cego criado.") {
+		t.Fatal("inventory blind creation reintroduced request without operation_id")
+	}
+}
