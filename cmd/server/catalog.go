@@ -203,8 +203,7 @@ func (a *app) handleCreateCatalogItem(w http.ResponseWriter, r *http.Request) {
 	var id int64
 	err = a.db.QueryRowContext(r.Context(), `INSERT INTO inventory_items (name,category_id,unit_code,minimum_stock,notes,active) VALUES ($1,$2,$3,$4,NULLIF($5,''),$6) RETURNING id`, req.Name, req.CategoryID, req.UnitCode, req.MinimumStock, req.Notes, active).Scan(&id)
 	if err != nil {
-		log.Printf("catalog item create failed error=%v", err)
-		writeJSONError(w, http.StatusBadRequest, "Não foi possível criar o item pai.")
+		writeCatalogItemError(w, err, "catalog item create failed")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
@@ -272,8 +271,7 @@ RETURNING version`, req.Name, req.CategoryID, req.UnitCode, req.MinimumStock, re
 		return
 	}
 	if err != nil {
-		log.Printf("catalog item update failed item_id=%d error=%v", id, err)
-		writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o item pai.")
+		writeCatalogItemError(w, err, "catalog item update failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "version": newVersion})
@@ -367,6 +365,15 @@ RETURNING version`, req.ItemID, req.Name, req.Barcode, active, id, req.Version).
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "item_id": req.ItemID, "moved": currentItem != req.ItemID, "version": newVersion})
+}
+
+func writeCatalogItemError(w http.ResponseWriter, err error, logPrefix string) {
+	log.Printf("%s error=%v", logPrefix, err)
+	if strings.Contains(err.Error(), "idx_inventory_items_normalized_name_unique") {
+		writeJSONError(w, http.StatusConflict, "Já existe um item pai com este nome.")
+		return
+	}
+	writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o item pai.")
 }
 
 func writeCatalogSKUError(w http.ResponseWriter, err error, logPrefix string) {
