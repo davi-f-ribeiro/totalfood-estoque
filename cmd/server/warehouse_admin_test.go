@@ -74,9 +74,6 @@ func TestInactiveWarehouseRejectedAcrossStockOperationsAndSelectors(t *testing.T
 	if _, err := a.createEntry(ctx, movementRequest{OperationID: "guard-seed-source", SKUID: sku, WarehouseID: wh1, Quantity: "3", UnitCost: "1"}, "guard-seed-source"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.createEntry(ctx, movementRequest{OperationID: "guard-seed-inactive", SKUID: sku, WarehouseID: wh2, Quantity: "2", UnitCost: "1"}, "guard-seed-inactive"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh2); err != nil {
 		t.Fatal(err)
 	}
