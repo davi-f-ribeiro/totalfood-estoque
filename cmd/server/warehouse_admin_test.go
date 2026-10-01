@@ -137,6 +137,40 @@ func TestWarehouseWithNegativeBalanceCannotBeDeactivated(t *testing.T) {
 	}
 }
 
+
+func TestWarehouseDatabaseInvariantsRejectDirectBypass(t *testing.T) {
+	a, sku, wh1, wh2 := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.createEntry(ctx, movementRequest{OperationID: "db-bypass-seed", SKUID: sku, WarehouseID: wh1, Quantity: "1", UnitCost: "1"}, "db-bypass-seed"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh1); err == nil || !strings.Contains(err.Error(), "warehouse not empty") {
+		t.Fatalf("direct non-empty deactivation err=%v", err)
+	}
+	var active bool
+	if err := a.db.QueryRow(`SELECT active FROM warehouses WHERE id=$1`, wh1).Scan(&active); err != nil || !active {
+		t.Fatalf("direct deactivation changed occupied warehouse active=%v err=%v", active, err)
+	}
+	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh2); err != nil {
+		t.Fatal(err)
+	}
+	userID := createTestUser(t, a, "warehouse-db-bypass", "secret", "Diretor", true)
+	tx, err := a.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var movementID int64
+	if err := tx.QueryRow(`INSERT INTO movements(operation_id,request_hash,movement_type,user_id) VALUES('db-inactive-line','fixture','ENTRADA',$1) RETURNING id`, userID).Scan(&movementID); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(`INSERT INTO movement_lines(movement_id,sku_id,warehouse_id,direction,quantity,unit_cost) VALUES($1,$2,$3,'IN',1,1)`, movementID, sku, wh2); err == nil || !strings.Contains(err.Error(), "movement warehouse inactive or not found") {
+		tx.Rollback()
+		t.Fatalf("direct movement into inactive warehouse err=%v", err)
+	}
+	tx.Rollback()
+}
+
 func TestWarehouseNameIsUniqueForTracking(t *testing.T) {
 	a, _, _, _ := newStockTestApp(t)
 	createTestUser(t, a, "warehouse-name-director", "secret", "Diretor", true)
