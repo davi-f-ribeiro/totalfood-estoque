@@ -217,4 +217,7 @@ func TestWarehouseAdminUIContracts(t *testing.T) {
 			t.Fatalf("warehouse admin UI missing %q", want)
 		}
 	}
+	if strings.Contains(combined, "confirm('Desativar este depósito?") {
+		t.Fatal("warehouse deactivation must use inline context/feedback, not a redundant modal")
+	}
 }
