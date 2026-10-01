@@ -84,6 +84,27 @@ func TestWarehouseNameIsUniqueForTracking(t *testing.T) {
 	}
 }
 
+func TestInactiveWarehouseRejectedByAssetAssignment(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	var typeID, whID int64
+	if err := a.db.QueryRow(`INSERT INTO asset_types(name) VALUES('Tipo Warehouse Inativo') RETURNING id`).Scan(&typeID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`INSERT INTO warehouses(name,active) VALUES('Depósito Patrimônio Inativo',false) RETURNING id`).Scan(&whID); err != nil {
+		t.Fatal(err)
+	}
+	createTestUser(t, a, "asset-warehouse-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "asset-warehouse-director", "secret")
+	rr := authReq(a, http.MethodPost, "/api/assets", map[string]any{"asset_type_id": typeID, "tag": "WH-INACTIVE-ASSET", "status": "ATIVO", "warehouse_id": whID}, director, "")
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("inactive asset warehouse status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var count int
+	if err := a.db.QueryRow(`SELECT count(*) FROM assets WHERE tag='WH-INACTIVE-ASSET'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("asset unexpectedly created count=%d err=%v", count, err)
+	}
+}
+
 func TestWarehouseCannotBeDeleted(t *testing.T) {
 	a, _, wh, _ := newStockTestApp(t)
 	if _, err := a.db.Exec(`DELETE FROM warehouses WHERE id=$1`, wh); err == nil {
