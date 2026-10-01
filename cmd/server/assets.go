@@ -219,6 +219,10 @@ func writeAssetError(w http.ResponseWriter, err error, prefix string) {
 		writeJSONError(w, 409, "Esta plaqueta já está cadastrada.")
 		return
 	}
+	if strings.Contains(err.Error(), "asset warehouse inactive or not found") {
+		writeJSONError(w, 409, "depósito inativo ou inexistente")
+		return
+	}
 	writeJSONError(w, 400, "patrimônio não salvo")
 }
 
@@ -259,6 +263,10 @@ func writeAssetMutationError(w http.ResponseWriter, err error) {
 	}
 	if errors.Is(err, errValidation) {
 		writeJSONError(w, 400, "operação inválida")
+		return
+	}
+	if strings.Contains(err.Error(), "asset warehouse inactive or not found") {
+		writeJSONError(w, 409, "depósito inativo ou inexistente")
 		return
 	}
 	log.Printf("asset mutation failed error=%v", err)
