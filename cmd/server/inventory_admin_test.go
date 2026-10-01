@@ -86,7 +86,7 @@ func TestInventoryGate07ACLNavigationAndAdminPermissions(t *testing.T) {
 	rwProfile := g7profile(t,e,"rw",stockRead)
 	dirToken,dirCSRF := inventorySession(t,e.db,e.userID)
 	adminMux:=http.NewServeMux(); e.a.registerAdminHandlers(adminMux)
-	adminReq:=inventoryRequest(http.MethodPut,fmt.Sprintf("/api/admin/profiles/%d/permissions",rwProfile),fmt.Sprintf("{\"permission_ids\":[%d,%d,%d]}",stockRead,invRead,invWrite),dirToken,dirCSRF)
+	adminReq:=inventoryRequest(http.MethodPut,fmt.Sprintf("/api/admin/profiles/%d/permissions",rwProfile),fmt.Sprintf("{\"permission_ids\":[%d,%d,%d],\"version\":%d}",stockRead,invRead,invWrite,crudVersion(t,e.a,"profiles",rwProfile)),dirToken,dirCSRF)
 	adminRec:=httptest.NewRecorder(); adminMux.ServeHTTP(adminRec,adminReq)
 	if adminRec.Code!=http.StatusOK { t.Fatalf("existing admin permission update=%d body=%s",adminRec.Code,adminRec.Body.String()) }
 	rwUser:=g7user(t,e,rwProfile,"rw")
