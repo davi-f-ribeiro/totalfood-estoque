@@ -423,3 +423,54 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 		}
 	}
 }
+
+
+func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	js := read(filepath.Join("static", "app.js"))
+	catalog := read(filepath.Join("templates", "catalog.html"))
+	assets := read(filepath.Join("templates", "assets.html"))
+	admin := read(filepath.Join("templates", "admin.html"))
+
+	for _, want := range []string{
+		"function setCrudMode(form,editing,createLabel,updateLabel)",
+		"setCrudMode(itemForm,true,'Criar item pai','Atualizar item pai')",
+		"setCrudMode(itemForm,false,'Criar item pai','Atualizar item pai')",
+		"setCrudMode(skuForm,true,'Criar SKU','Atualizar SKU')",
+		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
+		"setCrudMode(unitForm,true,'Criar unidade','Atualizar unidade')",
+		"setCrudMode(form,true,'Criar usuário','Atualizar usuário')",
+		"true,'Criar perfil','Atualizar perfil'",
+		"Formulário pronto para um novo cadastro.",
+		"itemForm.reset()",
+		"typeForm.reset()",
+		"unitForm.reset()",
+		"form.reset()",
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("CRUD safety state missing %q", want)
+		}
+	}
+	for _, want := range []string{"Criar item pai", "Criar SKU"} {
+		if !strings.Contains(catalog, want) {
+			t.Fatalf("catalog initial create mode missing %q", want)
+		}
+	}
+	for _, want := range []string{"Criar tipo", "Criar unidade"} {
+		if !strings.Contains(assets, want) {
+			t.Fatalf("assets initial create mode missing %q", want)
+		}
+	}
+	for _, want := range []string{"Criar usuário", "Criar perfil"} {
+		if !strings.Contains(admin, want) {
+			t.Fatalf("admin initial create mode missing %q", want)
+		}
+	}
+}
