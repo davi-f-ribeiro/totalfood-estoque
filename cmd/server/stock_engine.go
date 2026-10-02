@@ -33,8 +33,14 @@ func (a *app) createEntry(ctx context.Context, req movementRequest, hash string)
 		if err != nil {
 			return 0, err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5)`, m, req.SKUID, req.WarehouseID, quantity, unitCost)
-		return m, err
+		var lineID int64
+		if err := tx.QueryRowContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5) RETURNING id`, m, req.SKUID, req.WarehouseID, quantity, unitCost).Scan(&lineID); err != nil {
+			return 0, err
+		}
+		if err := createEntryLot(ctx, tx, lineID); err != nil {
+			return 0, err
+		}
+		return m, nil
 	})
 }
 
@@ -107,7 +113,11 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 			if err != nil {
 				return 0, err
 			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5)`, m, line.SKUID, req.WarehouseID, quantity, unitCost); err != nil {
+			var lineID int64
+			if err := tx.QueryRowContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5) RETURNING id`, m, line.SKUID, req.WarehouseID, quantity, unitCost).Scan(&lineID); err != nil {
+				return 0, err
+			}
+			if err := createEntryLot(ctx, tx, lineID); err != nil {
 				return 0, err
 			}
 		}
@@ -152,8 +162,14 @@ func (a *app) createExit(ctx context.Context, req movementRequest, hash string) 
 		if err != nil {
 			return 0, err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'OUT',$4,$5)`, m, req.SKUID, req.WarehouseID, quantity, s.AvgCost)
-		return m, err
+		var lineID int64
+		if err := tx.QueryRowContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'OUT',$4,$5) RETURNING id`, m, req.SKUID, req.WarehouseID, quantity, s.AvgCost).Scan(&lineID); err != nil {
+			return 0, err
+		}
+		if err := allocateLots(ctx, tx, lineID); err != nil {
+			return 0, err
+		}
+		return m, nil
 	})
 }
 
@@ -205,8 +221,20 @@ func (a *app) createTransfer(ctx context.Context, req movementRequest, hash stri
 		if err != nil {
 			return 0, err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'OUT',$4,$5),($1,$2,$6,'IN',$4,$5)`, m, req.SKUID, req.FromWarehouseID, quantity, s.AvgCost, req.ToWarehouseID)
-		return m, err
+		var outLineID, inLineID int64
+		if err := tx.QueryRowContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'OUT',$4,$5) RETURNING id`, m, req.SKUID, req.FromWarehouseID, quantity, s.AvgCost).Scan(&outLineID); err != nil {
+			return 0, err
+		}
+		if err := tx.QueryRowContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5) RETURNING id`, m, req.SKUID, req.ToWarehouseID, quantity, s.AvgCost).Scan(&inLineID); err != nil {
+			return 0, err
+		}
+		if err := allocateLots(ctx, tx, outLineID); err != nil {
+			return 0, err
+		}
+		if err := createTransferLots(ctx, tx, outLineID, inLineID); err != nil {
+			return 0, err
+		}
+		return m, nil
 	})
 }
 
@@ -243,6 +271,89 @@ func insertMovement(ctx context.Context, tx *sql.Tx, typ string, req movementReq
 	var id int64
 	err := tx.QueryRowContext(ctx, `INSERT INTO movements (operation_id, request_hash, movement_type, document_number, supplier_name, user_id, notes) VALUES ($1,$2,$3,NULLIF($4,''),NULLIF($5,''),NULLIF($6,0),NULLIF($7,'')) RETURNING id`, req.OperationID, hash, typ, req.DocumentNumber, req.SupplierName, req.UserID, req.Notes).Scan(&id)
 	return id, err
+}
+
+func createEntryLot(ctx context.Context, tx *sql.Tx, movementLineID int64) error {
+	_, err := tx.ExecContext(ctx, `
+INSERT INTO stock_lots (item_id,warehouse_id,source_movement_line_id,initial_quantity)
+SELECT item_id,warehouse_id,id,quantity
+FROM movement_lines
+WHERE id=$1 AND direction='IN'`, movementLineID)
+	return err
+}
+
+func allocateLots(ctx context.Context, tx *sql.Tx, movementLineID int64) error {
+	res, err := tx.ExecContext(ctx, `
+WITH target AS (
+    SELECT item_id,warehouse_id,quantity
+    FROM movement_lines
+    WHERE id=$1 AND direction='OUT'
+),
+lot_balances AS (
+    SELECT l.id,l.received_at,l.expires_at,
+           l.initial_quantity-COALESCE(sum(a.quantity),0) AS remaining
+    FROM stock_lots l
+    JOIN target t ON t.item_id=l.item_id AND t.warehouse_id=l.warehouse_id
+    LEFT JOIN stock_lot_allocations a ON a.stock_lot_id=l.id
+    GROUP BY l.id,l.received_at,l.expires_at,l.initial_quantity
+    HAVING l.initial_quantity-COALESCE(sum(a.quantity),0) > 0
+),
+ordered AS (
+    SELECT id,remaining,
+           COALESCE(sum(remaining) OVER (
+               ORDER BY (expires_at IS NULL),expires_at,received_at,id
+               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+           ),0) AS consumed_before
+    FROM lot_balances
+),
+chosen AS (
+    SELECT o.id AS stock_lot_id,
+           LEAST(o.remaining,GREATEST(0,t.quantity-o.consumed_before)) AS quantity
+    FROM ordered o CROSS JOIN target t
+    WHERE o.consumed_before < t.quantity
+)
+INSERT INTO stock_lot_allocations (movement_line_id,stock_lot_id,quantity)
+SELECT $1,stock_lot_id,quantity
+FROM chosen
+WHERE quantity > 0`, movementLineID)
+	if err != nil {
+		return err
+	}
+	_ = res
+
+	var requested, allocated string
+	if err := tx.QueryRowContext(ctx, `
+SELECT ml.quantity::text,
+       COALESCE(sum(a.quantity),0)::text
+FROM movement_lines ml
+LEFT JOIN stock_lot_allocations a ON a.movement_line_id=ml.id
+WHERE ml.id=$1
+GROUP BY ml.id`, movementLineID).Scan(&requested, &allocated); err != nil {
+		return err
+	}
+	var complete bool
+	if err := tx.QueryRowContext(ctx, `SELECT $1::numeric=$2::numeric`, requested, allocated).Scan(&complete); err != nil {
+		return err
+	}
+	if !complete {
+		return errors.New("lot allocation does not cover movement quantity")
+	}
+	return nil
+}
+
+func createTransferLots(ctx context.Context, tx *sql.Tx, outLineID, inLineID int64) error {
+	_, err := tx.ExecContext(ctx, `
+INSERT INTO stock_lots (
+    item_id,warehouse_id,source_movement_line_id,source_lot_id,initial_quantity,
+    manufacturer_lot_code,manufactured_at,expires_at
+)
+SELECT dest.item_id,dest.warehouse_id,dest.id,a.stock_lot_id,a.quantity,
+       src.manufacturer_lot_code,src.manufactured_at,src.expires_at
+FROM stock_lot_allocations a
+JOIN stock_lots src ON src.id=a.stock_lot_id
+JOIN movement_lines dest ON dest.id=$2 AND dest.direction='IN'
+WHERE a.movement_line_id=$1`, outLineID, inLineID)
+	return err
 }
 
 func normalizePresentation(ctx context.Context, tx *sql.Tx, skuID int64, quantity, unitCost string, withCost bool) (string, string, error) {
