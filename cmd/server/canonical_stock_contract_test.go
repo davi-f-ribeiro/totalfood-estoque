@@ -223,3 +223,117 @@ WHERE validation_id=$1`, res.ID).Scan(&snapshot); err != nil {
 	}
 	_ = skuB
 }
+
+
+func TestPresentationNormalizationAlhoThreeKg(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.db.Exec(`UPDATE product_skus SET content_quantity=3 WHERE id=$1`, sku); err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.createEntry(ctx, movementRequest{
+		OperationID: "alho-3kg-entry",
+		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "39.90",
+	}, "alho-3kg-entry-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var qty, unitCost string
+	if err := a.db.QueryRow(`
+SELECT quantity::text,unit_cost::text FROM movement_lines
+WHERE movement_id=$1`, res.MovementID).Scan(&qty, &unitCost); err != nil {
+		t.Fatal(err)
+	}
+	if qty != "3.000" || unitCost != "13.3000" {
+		t.Fatalf("alho ledger qty=%s cost=%s want 3.000 and 13.3000", qty, unitCost)
+	}
+	var total string
+	if err := a.db.QueryRow(`SELECT (quantity*unit_cost)::numeric(14,2)::text FROM movement_lines WHERE movement_id=$1`, res.MovementID).Scan(&total); err != nil {
+		t.Fatal(err)
+	}
+	if total != "39.90" {
+		t.Fatalf("alho ledger total=%s want 39.90", total)
+	}
+}
+
+func TestPresentationNormalizationBigBagEntryPackExit(t *testing.T) {
+	a, bigBag, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, bigBag).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE product_skus SET content_quantity=10 WHERE id=$1`, bigBag); err != nil {
+		t.Fatal(err)
+	}
+	var pack int64
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus (item_id,brand,name,barcode,content_quantity)
+VALUES ($1,'Marca','Pacote 1kg',$2,1)
+RETURNING id`, itemID, t.Name()+"-pack").Scan(&pack); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "bigbag-entry",
+		SKUID: bigBag, WarehouseID: wh, Quantity: "1", UnitCost: "50",
+	}, "bigbag-entry-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createExit(ctx, movementRequest{
+		OperationID: "pack-exit",
+		SKUID: pack, WarehouseID: wh, Quantity: "1",
+	}, "pack-exit-hash"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := getStockSnapshot(ctx, a.db, pack, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Quantity != "9.000" || s.AvgCost != "5.0000" {
+		t.Fatalf("rice stock qty=%s avg=%s want 9.000 and 5.0000", s.Quantity, s.AvgCost)
+	}
+	var inQty, inCost, outQty, outCost string
+	if err := a.db.QueryRow(`
+SELECT
+  max(quantity::text) FILTER (WHERE direction='IN'),
+  max(unit_cost::text) FILTER (WHERE direction='IN'),
+  max(quantity::text) FILTER (WHERE direction='OUT'),
+  max(unit_cost::text) FILTER (WHERE direction='OUT')
+FROM movement_lines
+WHERE sku_id IN ($1,$2)`, bigBag, pack).Scan(&inQty, &inCost, &outQty, &outCost); err != nil {
+		t.Fatal(err)
+	}
+	if inQty != "10.000" || inCost != "5.0000" || outQty != "1.000" || outCost != "5.0000" {
+		t.Fatalf("rice ledger in=%s@%s out=%s@%s", inQty, inCost, outQty, outCost)
+	}
+}
+
+func TestPresentationNormalizationTransferUsesCanonicalQuantity(t *testing.T) {
+	a, sku, fromWH, _ := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.db.Exec(`UPDATE product_skus SET content_quantity=10 WHERE id=$1`, sku); err != nil {
+		t.Fatal(err)
+	}
+	var toWH int64
+	if err := a.db.QueryRow(`INSERT INTO warehouses (name,active) VALUES ($1,true) RETURNING id`, t.Name()+"-dest").Scan(&toWH); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "transfer-seed", SKUID: sku, WarehouseID: fromWH, Quantity: "2", UnitCost: "50",
+	}, "transfer-seed-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createTransfer(ctx, movementRequest{
+		OperationID: "transfer-one-bag", SKUID: sku, FromWarehouseID: fromWH, ToWarehouseID: toWH, Quantity: "1",
+	}, "transfer-one-bag-hash"); err != nil {
+		t.Fatal(err)
+	}
+	from, err := getStockSnapshot(ctx, a.db, sku, fromWH)
+	if err != nil { t.Fatal(err) }
+	to, err := getStockSnapshot(ctx, a.db, sku, toWH)
+	if err != nil { t.Fatal(err) }
+	if from.Quantity != "10.000" || to.Quantity != "10.000" {
+		t.Fatalf("transfer canonical balances from=%s to=%s want 10.000/10.000", from.Quantity, to.Quantity)
+	}
+}
