@@ -59,6 +59,10 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 	if len(lines) == 0 {
 		return operationResult{}, errMovementProductRequired
 	}
+	for i := range lines {
+		lines[i].Quantity = normalizeDecimalInput(lines[i].Quantity)
+		lines[i].UnitCost = normalizeDecimalInput(lines[i].UnitCost)
+	}
 	seen := make(map[int64]struct{}, len(lines))
 	skuIDs := make([]int64, 0, len(lines))
 	for _, line := range lines {
