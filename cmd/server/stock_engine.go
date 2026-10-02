@@ -345,10 +345,10 @@ func createTransferLots(ctx context.Context, tx *sql.Tx, outLineID, inLineID int
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO stock_lots (
     item_id,warehouse_id,source_movement_line_id,source_lot_id,initial_quantity,
-    manufacturer_lot_code,manufactured_at,expires_at
+    manufacturer_lot_code,manufactured_at,expires_at,received_at
 )
 SELECT dest.item_id,dest.warehouse_id,dest.id,a.stock_lot_id,a.quantity,
-       src.manufacturer_lot_code,src.manufactured_at,src.expires_at
+       src.manufacturer_lot_code,src.manufactured_at,src.expires_at,src.received_at
 FROM stock_lot_allocations a
 JOIN stock_lots src ON src.id=a.stock_lot_id
 JOIN movement_lines dest ON dest.id=$2 AND dest.direction='IN'
