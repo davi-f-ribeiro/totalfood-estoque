@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -103,5 +104,63 @@ RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
 		if s.Quantity != "20.000" || s.AvgCost != "12.0000" {
 			t.Fatalf("%s canonical stock got qty=%s avg=%s want qty=20.000 avg=12.0000", label, s.Quantity, s.AvgCost)
 		}
+	}
+}
+
+
+func TestCanonicalStockSiblingSKUsCannotDoubleSpendSharedBalance(t *testing.T) {
+	a, skuA, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuA).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	var skuB int64
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus (item_id,brand,name,barcode)
+VALUES ($1,'Outra Marca','SKU irmão',$2)
+RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "canonical-concurrency-seed",
+		SKUID: skuA, WarehouseID: wh, Quantity: "10", UnitCost: "10",
+	}, "canonical-concurrency-seed-hash"); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i, skuID := range []int64{skuA, skuB} {
+		wg.Add(1)
+		go func(i int, skuID int64) {
+			defer wg.Done()
+			_, errs[i] = a.createExit(ctx, movementRequest{
+				OperationID: []string{"canonical-concurrency-a", "canonical-concurrency-b"}[i],
+				SKUID: skuID, WarehouseID: wh, Quantity: "7",
+			}, []string{"canonical-concurrency-a-hash", "canonical-concurrency-b-hash"}[i])
+		}(i, skuID)
+	}
+	wg.Wait()
+
+	success := 0
+	for _, err := range errs {
+		if err == nil {
+			success++
+			continue
+		}
+		if !errors.Is(err, errInsufficientStock) {
+			t.Fatalf("unexpected sibling concurrent exit error: %v", err)
+		}
+	}
+	if success != 1 {
+		t.Fatalf("expected exactly one sibling exit to succeed, got %d (%v)", success, errs)
+	}
+	s, err := getStockSnapshot(ctx, a.db, skuA, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Quantity != "3.000" {
+		t.Fatalf("shared stock after concurrent exits=%s want 3.000", s.Quantity)
 	}
 }
