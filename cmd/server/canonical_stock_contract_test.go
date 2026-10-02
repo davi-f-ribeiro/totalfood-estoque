@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -755,6 +756,12 @@ func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testin
 	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, sku).Scan(&itemID); err != nil {
 		t.Fatal(err)
 	}
+	var sibling int64
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus(item_id,brand,name,barcode,content_quantity,active)
+VALUES($1,'Marca B','Pacote alternativo',$2,2,true) RETURNING id`, itemID, t.Name()+"-detail-sibling").Scan(&sibling); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.db.QueryRow(`
 SELECT l.id
 FROM stock_lots l
@@ -773,6 +780,22 @@ WHERE ml.movement_id=$1`, entry.MovementID).Scan(&lotID); err != nil {
 	if !strings.Contains(body, `"quantity":"4.000"`) || !strings.Contains(body, `"id":`+itoa(lotID)) {
 		t.Fatalf("remaining lot trace missing from detail: %s", body)
 	}
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	details, ok := payload["details"].([]any)
+	if !ok || len(details) != 1 {
+		t.Fatalf("canonical detail balances=%v want one warehouse balance", payload["details"])
+	}
+	if _, exists := details[0].(map[string]any)["sku_id"]; exists {
+		t.Fatalf("canonical warehouse balance must not be attributed to a SKU: %v", details[0])
+	}
+	presentations, ok := payload["presentations"].([]any)
+	if !ok || len(presentations) != 2 {
+		t.Fatalf("presentations=%v want both sibling SKUs", payload["presentations"])
+	}
+	_ = sibling
 	s, err := getStockSnapshot(ctx, a.db, sku, wh)
 	if err != nil {
 		t.Fatal(err)
