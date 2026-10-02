@@ -159,12 +159,14 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 		`if(seq!==detailSeq||openKey!==key)return`,
 		`card.after(detail)`,
 		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
-		`Detalhes das embalagens`,
+		`sum.textContent='Embalagens'`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
 		if !strings.Contains(js+css,want) { t.Fatalf("brand stock contextual detail missing %q",want) }
 	}
-	if strings.Contains(js,"Composição do saldo") { t.Fatal("stock detail must not duplicate balance composition") }
+	for _, forbidden := range []string{"Composição do saldo","detail-head","movementURL(path,d,x)","['Entrada','/entry']","x.warehouse"} {
+		if strings.Contains(js,forbidden) { t.Fatalf("stock detail repeats context or movement actions: %q",forbidden) }
+	}
 }
 
 func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T) {
@@ -203,7 +205,7 @@ func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 func TestCatalogIgnoresStaleParentAndSKUResponses(t *testing.T) {
 	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
 	js:=string(pb)
-	for _, want := range []string{`editing=x`,`body.version=editing.version`,`await load()`,`form.hidden=true`} {
+	for _, want := range []string{`editing=x`,`body.version=editing.version`,`requestSeq++`,`search.value=''`,`await loadProducts('')`} {
 		if !strings.Contains(js,want) { t.Fatalf("Product/Item edit safety missing %q",want) }
 	}
 }
@@ -215,8 +217,8 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 	for _, want := range []string{
 		`id="productStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
 		`function msg(type,text){setFeedback(status,type,text)}`,
-		`msg('loading',(editing?'Atualizando ':'Criando ')+label+'…')`,
-		`msg('success',label+(editing?' atualizado.':' criado.'))`,
+		`msg('loading',(wasEditing?'Atualizando ':'Criando ')+label+'…')`,
+		`msg('success',label+(wasEditing?' atualizado.':' criado.'))`,
 	} {
 		if !strings.Contains(combined,want) { t.Fatalf("Product/Item feedback missing %q",want) }
 	}
@@ -316,7 +318,7 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 	feedback := map[string][]string{
 		"stock.html":           {"stockStatus"},
 		"movement.html":        {"status"},
-		"catalog.html":         {"masterStatus"},
+		"catalog.html":         {"masterItemListStatus","masterItemStatus","masterBrandListStatus","masterBrandStatus"},
 		"products.html":        {"productStatus"},
 		"fiscal.html":          {"fiscalStatus", "fiscalConfirmStatus"},
 		"assets.html":          {"assetLookupStatus", "assetOpStatus", "assetTypeStatus", "assetUnitStatusMsg"},
@@ -453,6 +455,15 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 	if !strings.Contains(catalog,"Cadastros mestres de item pai e marca.") || strings.Contains(catalog,"Produtos/SKUs vinculados") {
 		t.Fatal("catalog must contain only item and brand masters")
 	}
+	mastersb, err := os.ReadFile(filepath.Join("static","catalog_masters.js")); if err != nil { t.Fatal(err) }
+	masters := string(mastersb)
+	for _, want := range []string{
+		"nextCursor","hasMore","loadingItems","itemSeq","Digite ao menos 2 caracteres.",
+		"itemList.addEventListener('scroll'","itemSearch.value=''","brandSearch.value=''",
+		"catalog-parent-card'+(currentItem","itemMsg('success'","brandMsg('success'",
+	} {
+		if !strings.Contains(masters,want) { t.Fatalf("catalog list/UX contract missing %q",want) }
+	}
 }
 
 func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
@@ -474,7 +485,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"function setCrudMode(form,editing,createLabel,updateLabel)",
 		"itemForm.reset()","brandForm.reset()","form.reset()",
 		"body.version=itemVersion","body.version=brandVersion","body.version=editing.version",
-		"msg('success',label+(editing?' atualizado.':' criado.'))",
+		"msg('success',label+(wasEditing?' atualizado.':' criado.'))",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
 		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(userForm,true,'Criar usuário','Atualizar usuário')",
@@ -740,7 +751,8 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 
 	for _, want := range []string{
 		`card.after(detail)`,
-		`id="masterStatus" class="operation-feedback"`,
+		`id="masterItemStatus" class="operation-feedback"`,
+		`id="masterBrandStatus" class="operation-feedback"`,
 		`id="productStatus" class="operation-feedback"`,
 		`id="inventoryCreateMessage" class="operation-feedback"`,
 		`function setCreateMessage(text,kind='')`,
