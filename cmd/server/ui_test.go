@@ -484,9 +484,9 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 		"@media(min-width:768px) and (max-width:1023px)",
 		"@media(max-width:767px)",
 		".assets{grid-template-columns:repeat(2,minmax(0,1fr))",
-		".admin{grid-template-columns:repeat(2,minmax(0,1fr))",
+		".admin-master-detail{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
 		".stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))",
-		".assets,.admin,.stock-shell,.fiscal-shell{grid-template-columns:1fr",
+		".admin-master-detail{grid-template-columns:1fr;gap:18px",
 	} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("responsive UX missing %q", want)
@@ -530,7 +530,7 @@ func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 		`id="assetUnitWarehouse" required`,
 		`id="fiscalWarehouse" required`,
 		"Ao baixar, a localização atual será removida",
-		"todos os usuários deste perfil terão as sessões atuais encerradas",
+		"as sessões atuais dos usuários deste perfil serão encerradas",
 		".impact-warning{",
 		"Selecione um depósito.",
 	} {
@@ -1348,9 +1348,9 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 		"@media(min-width:768px) and (max-width:1023px)",
 		"@media(max-width:767px)",
 		".assets{grid-template-columns:repeat(2,minmax(0,1fr))",
-		".admin{grid-template-columns:repeat(2,minmax(0,1fr))",
+		".admin-master-detail{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
 		".stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))",
-		".assets,.admin,.stock-shell,.fiscal-shell{grid-template-columns:1fr",
+		".admin-master-detail{grid-template-columns:1fr;gap:18px",
 	} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("responsive UX missing %q", want)
@@ -1394,7 +1394,7 @@ func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 		`id="assetUnitWarehouse" required`,
 		`id="fiscalWarehouse" required`,
 		"Ao baixar, a localização atual será removida",
-		"todos os usuários deste perfil terão as sessões atuais encerradas",
+		"as sessões atuais dos usuários deste perfil serão encerradas",
 		".impact-warning{",
 		"Selecione um depósito.",
 	} {
