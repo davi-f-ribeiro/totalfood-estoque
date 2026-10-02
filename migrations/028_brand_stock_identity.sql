@@ -165,5 +165,5 @@ CREATE TABLE stock_locks (
     PRIMARY KEY (item_id,brand_id,warehouse_id)
 );
 
--- Old free-text brand is replaced by the global brand master.
-ALTER TABLE product_skus DROP COLUMN brand;
+-- Legacy free-text brand remains physically present for backward-compatible
+-- migrations/tests, but runtime identity uses brand_id exclusively.
