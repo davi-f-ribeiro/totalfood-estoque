@@ -29,6 +29,7 @@ type uiData struct {
 	CanWarehouseAdmin bool
 	CanInventory      bool
 	CanInventoryWrite bool
+	CanReports        bool
 }
 
 func (a *app) registerUIHandlers(mux *http.ServeMux) {
@@ -133,7 +134,8 @@ func (a *app) uiPage(tmpl, title, res, act string) http.HandlerFunc {
 		canWarehouseAdmin, _ := a.hasPermission(r.Context(), u.ID, "warehouses", "write")
 		canInventory, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "read")
 		canInventoryWrite, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "write")
-		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin, CanWarehouseAdmin: canWarehouseAdmin, CanInventory: canInventory, CanInventoryWrite: canInventoryWrite})
+		canReports, _ := a.hasPermission(r.Context(), u.ID, "operations", "read")
+		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin, CanWarehouseAdmin: canWarehouseAdmin, CanInventory: canInventory, CanInventoryWrite: canInventoryWrite, CanReports: canReports})
 	}
 }
 
