@@ -339,7 +339,6 @@ WITH sku_rep AS (
            COALESCE(min(id) FILTER (WHERE active),min(id)) AS sku_id,
            bool_or(active) AS sku_active
     FROM product_skus
-    WHERE brand_id<>0
     GROUP BY item_id,brand_id
 ),
 balances AS (
@@ -423,7 +422,6 @@ func selectBlindWarehouse(ctx context.Context, tx *sql.Tx) (int64, int, error) {
 WITH sku_rep AS (
     SELECT item_id,brand_id,bool_or(active) AS sku_active
     FROM product_skus
-    WHERE brand_id<>0
     GROUP BY item_id,brand_id
 ),
 balances AS (
@@ -467,7 +465,6 @@ WITH sku_rep AS (
            min(id) FILTER (WHERE active) AS sku_id,
            bool_or(active) AS sku_active
     FROM product_skus
-    WHERE brand_id<>0
     GROUP BY item_id,brand_id
 ),
 balances AS (
