@@ -326,14 +326,14 @@ func (a *app) handleStock(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, brandID int64
-		var brand, name, unit, min, qty string
+		var id int64
+		var name, unit, min, qty string
 		var below bool
-		if err := rows.Scan(&id,&brandID,&brand,&name,&unit,&min,&qty,&below); err != nil {
+		if err := rows.Scan(&id,&name,&unit,&min,&qty,&below); err != nil {
 			writeJSONError(w, 500, "internal error")
 			return
 		}
-		out = append(out, map[string]any{"item_id": id, "brand_id": brandID, "brand": brand, "name": name, "unit": unit, "minimum": min, "quantity": qty, "below_minimum": below})
+		out = append(out, map[string]any{"item_id": id, "name": name, "unit": unit, "minimum": min, "quantity": qty, "below_minimum": below})
 	}
 	writeJSON(w, 200, out)
 }
