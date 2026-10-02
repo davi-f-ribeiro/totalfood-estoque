@@ -113,6 +113,9 @@ WHERE l.source_movement_line_id IS NULL
   AND l.item_id=o.item_id
   AND l.brand_id IS NULL;
 
+ALTER TABLE stock_lots
+    ALTER COLUMN brand_id SET NOT NULL;
+
 CREATE INDEX idx_stock_lots_item_brand_warehouse_fefo
     ON stock_lots(item_id,brand_id,warehouse_id,expires_at,received_at,id);
 
