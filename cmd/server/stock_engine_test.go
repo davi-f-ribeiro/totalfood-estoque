@@ -277,7 +277,7 @@ ON CONFLICT DO NOTHING`); err != nil {
 }
 
 
-func TestLedgerReconstructsHistoricalQuantityAndAverageCostWithoutNewStockEngine(t *testing.T) {
+func TestCanonicalStockSnapshotReconstructsHistoricalQuantityAndAverageCost(t *testing.T) {
 	a, sku, wh1, wh2 := newStockTestApp(t)
 	ctx := context.Background()
 	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
@@ -302,50 +302,32 @@ func TestLedgerReconstructsHistoricalQuantityAndAverageCostWithoutNewStockEngine
 		}
 	}
 
-	assertHistoricalLedger := func(cutoff string, warehouseID int64, wantQty, wantAvg string) {
+	assertAt := func(cutoff string, warehouseID int64, wantQty, wantAvg string) {
 		t.Helper()
-		var qty, avg string
-		err := a.db.QueryRow(`
-SELECT
-  COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text,
-  CASE WHEN COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)=0
-       THEN '0'
-       ELSE (COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity*ml.unit_cost ELSE -ml.quantity*ml.unit_cost END),0)
-          / COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0))::numeric(14,4)::text
-  END
-FROM movement_lines ml
-JOIN movements m ON m.id=ml.movement_id
-WHERE ml.sku_id=$1 AND ml.warehouse_id=$2 AND m.occurred_at < $3::timestamptz`, sku, warehouseID, cutoff).Scan(&qty, &avg)
+		at, err := time.Parse(time.RFC3339, cutoff)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if qty != wantQty || avg != wantAvg {
-			t.Fatalf("cutoff=%s warehouse=%d got qty=%s avg=%s want qty=%s avg=%s", cutoff, warehouseID, qty, avg, wantQty, wantAvg)
+		s, err := getStockSnapshotAt(ctx, a.db, sku, warehouseID, &at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Quantity != wantQty || s.AvgCost != wantAvg {
+			t.Fatalf("cutoff=%s warehouse=%d got qty=%s avg=%s want qty=%s avg=%s", cutoff, warehouseID, s.Quantity, s.AvgCost, wantQty, wantAvg)
 		}
 	}
 
-	assertHistoricalLedger("2026-09-05T00:00:00Z", wh1, "10.000", "10.0000")
-	assertHistoricalLedger("2026-09-15T00:00:00Z", wh1, "20.000", "12.0000")
-	assertHistoricalLedger("2026-09-22T00:00:00Z", wh1, "15.000", "12.0000")
-	assertHistoricalLedger("2026-09-26T00:00:00Z", wh1, "10.000", "12.0000")
-	assertHistoricalLedger("2026-09-26T00:00:00Z", wh2, "5.000", "12.0000")
+	assertAt("2026-09-05T00:00:00Z", wh1, "10.000", "10.0000")
+	assertAt("2026-09-15T00:00:00Z", wh1, "20.000", "12.0000")
+	assertAt("2026-09-22T00:00:00Z", wh1, "15.000", "12.0000")
+	assertAt("2026-09-26T00:00:00Z", wh1, "10.000", "12.0000")
+	assertAt("2026-09-26T00:00:00Z", wh2, "5.000", "12.0000")
 
-	var totalQty, totalValue string
-	if err := a.db.QueryRow(`
-SELECT
-  COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text,
-  COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity*ml.unit_cost ELSE -ml.quantity*ml.unit_cost END),0)::text
-FROM movement_lines ml
-JOIN movements m ON m.id=ml.movement_id
-WHERE ml.sku_id=$1 AND m.occurred_at < $2::timestamptz`, sku, "2026-09-26T00:00:00Z").Scan(&totalQty, &totalValue); err != nil {
+	current, err := getStockSnapshot(ctx, a.db, sku, wh1)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if totalQty != "15.000" || totalValue != "180.0000000" {
-		t.Fatalf("transfer changed general stock: qty=%s value=%s", totalQty, totalValue)
-	}
-
-	// Guard against accidental dependence on wall-clock time in this proof.
-	if _, err := time.Parse(time.RFC3339, "2026-09-26T00:00:00Z"); err != nil {
-		t.Fatal(err)
+	if current.Quantity != "10.000" || current.AvgCost != "12.0000" {
+		t.Fatalf("current snapshot changed semantics: qty=%s avg=%s", current.Quantity, current.AvgCost)
 	}
 }
