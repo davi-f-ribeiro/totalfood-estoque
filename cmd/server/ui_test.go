@@ -875,12 +875,22 @@ func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
 		"Mês até hoje (MTD)",
 		`data-period="custom"`,
 		"WTD considera domingo como início da semana.",
+		`id="reportStartLabel"`,
+		"startLabel.hidden=balance",
+		"endLabelText.textContent=balance?'Data de corte':'Até'",
+		`let csv='\uFEFF'`,
+		`.join('\r\n')`,
+		"/^[=+\\-@]/",
+		"csvText(r.barcode)",
 	} {
 		if !strings.Contains(js+html, want) {
-			t.Fatalf("reports WTD/MTD contract missing %q", want)
+			t.Fatalf("reports WTD/MTD/export contract missing %q", want)
 		}
 	}
 	if strings.Contains(js, "(a.getDay()+6)%7") {
 		t.Fatal("week-to-date must start on Sunday, not Monday")
+	}
+	if strings.Contains(js, `let csv='\\uFEFF'`) || strings.Contains(js, `.join('\\r\\n')`) {
+		t.Fatal("CSV must emit real BOM and CRLF, not escaped text")
 	}
 }
