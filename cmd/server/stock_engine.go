@@ -9,8 +9,14 @@ import (
 )
 
 func (a *app) createEntry(ctx context.Context, req movementRequest, hash string) (operationResult, error) {
-	if req.WarehouseID <= 0 || !positiveDecimal(req.Quantity) || !nonNegativeDecimal(req.UnitCost) {
-		return operationResult{}, errValidation
+	if req.WarehouseID <= 0 {
+		return operationResult{}, errMovementWarehouseRequired
+	}
+	if !positiveDecimal(req.Quantity) {
+		return operationResult{}, errMovementQuantityInvalid
+	}
+	if !nonNegativeDecimal(req.UnitCost) {
+		return operationResult{}, errMovementCostInvalid
 	}
 	return a.writeMovement(ctx, "ENTRADA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		if err := ensureRefs(ctx, tx, req.SKUID, req.WarehouseID); err != nil {
@@ -37,14 +43,23 @@ type entryLineRequest struct {
 }
 
 func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines []entryLineRequest, hash string, fiscalKey string) (operationResult, error) {
-	if req.WarehouseID <= 0 || len(lines) == 0 {
-		return operationResult{}, errValidation
+	if req.WarehouseID <= 0 {
+		return operationResult{}, errMovementWarehouseRequired
+	}
+	if len(lines) == 0 {
+		return operationResult{}, errMovementProductRequired
 	}
 	seen := make(map[int64]struct{}, len(lines))
 	skuIDs := make([]int64, 0, len(lines))
 	for _, line := range lines {
-		if line.SKUID <= 0 || !positiveDecimal(line.Quantity) || !nonNegativeDecimal(line.UnitCost) {
-			return operationResult{}, errValidation
+		if line.SKUID <= 0 {
+			return operationResult{}, errMovementProductRequired
+		}
+		if !positiveDecimal(line.Quantity) {
+			return operationResult{}, errMovementQuantityInvalid
+		}
+		if !nonNegativeDecimal(line.UnitCost) {
+			return operationResult{}, errMovementCostInvalid
 		}
 		if _, exists := seen[line.SKUID]; exists {
 			return operationResult{}, errDuplicateEntrySKU
@@ -86,8 +101,11 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 }
 
 func (a *app) createExit(ctx context.Context, req movementRequest, hash string) (operationResult, error) {
-	if req.WarehouseID <= 0 || !positiveDecimal(req.Quantity) {
-		return operationResult{}, errValidation
+	if req.WarehouseID <= 0 {
+		return operationResult{}, errMovementWarehouseRequired
+	}
+	if !positiveDecimal(req.Quantity) {
+		return operationResult{}, errMovementQuantityInvalid
 	}
 	return a.writeMovement(ctx, "SAIDA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		if err := ensureRefs(ctx, tx, req.SKUID, req.WarehouseID); err != nil {
@@ -113,8 +131,14 @@ func (a *app) createExit(ctx context.Context, req movementRequest, hash string) 
 }
 
 func (a *app) createTransfer(ctx context.Context, req movementRequest, hash string) (operationResult, error) {
-	if req.FromWarehouseID <= 0 || req.ToWarehouseID <= 0 || req.FromWarehouseID == req.ToWarehouseID || !positiveDecimal(req.Quantity) {
-		return operationResult{}, errValidation
+	if req.FromWarehouseID <= 0 || req.ToWarehouseID <= 0 {
+		return operationResult{}, errTransferWarehousesRequired
+	}
+	if req.FromWarehouseID == req.ToWarehouseID {
+		return operationResult{}, errTransferSameWarehouse
+	}
+	if !positiveDecimal(req.Quantity) {
+		return operationResult{}, errMovementQuantityInvalid
 	}
 	return a.writeMovement(ctx, "TRANSFERENCIA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		if err := ensureSKU(ctx, tx, req.SKUID); err != nil {
