@@ -443,4 +443,56 @@ WHERE p.name='Estoquista' ON CONFLICT DO NOTHING`);err!=nil{t.Fatal(err)}
 	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only movement report status=%d body=%s",rr.Code,rr.Body.String())}
 	rr=authReq(a,http.MethodGet,"/api/reports/balance?before=2026-10-01T00:00:00Z",nil,login,"")
 	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only balance report status=%d body=%s",rr.Code,rr.Body.String())}
+	rr=authReq(a,http.MethodGet,"/api/reports/warehouses",nil,login,"")
+	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only report warehouses status=%d body=%s",rr.Code,rr.Body.String())}
+
+	if _,err:=a.db.Exec(`
+DELETE FROM profile_permissions pp
+USING profiles p, permissions perm
+WHERE pp.profile_id=p.id AND pp.permission_id=perm.id
+  AND p.name='Estoquista' AND perm.resource='stock' AND perm.action='read';
+INSERT INTO profile_permissions(profile_id,permission_id)
+SELECT p.id,perm.id FROM profiles p JOIN permissions perm ON perm.resource='operations' AND perm.action='read'
+WHERE p.name='Estoquista' ON CONFLICT DO NOTHING`);err!=nil{t.Fatal(err)}
+	createTestUser(t,a,"report-operations-only","secret","Estoquista",true)
+	reportOnly:=doLogin(t,a,"report-operations-only","secret")
+	rr=authReq(a,http.MethodGet,"/api/reports/warehouses",nil,reportOnly,"")
+	if rr.Code!=http.StatusOK{t.Fatalf("operations-only report warehouses status=%d body=%s",rr.Code,rr.Body.String())}
+	rr=authReq(a,http.MethodGet,"/api/warehouses",nil,reportOnly,"")
+	if rr.Code!=http.StatusForbidden{t.Fatalf("operations-only stock warehouses must remain forbidden, status=%d body=%s",rr.Code,rr.Body.String())}
+	rr=authReq(a,http.MethodGet,"/reports",nil,reportOnly,"")
+	if rr.Code!=http.StatusOK{t.Fatalf("operations-only reports page status=%d body=%s",rr.Code,rr.Body.String())}
+}
+
+
+func TestMovementValidationMessagesAreSpecific(t *testing.T) {
+	a := &app{}
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"product", errMovementProductRequired, "Selecione um produto antes de registrar a movimentação."},
+		{"quantity", errMovementQuantityInvalid, "Informe uma quantidade maior que zero"},
+		{"cost", errMovementCostInvalid, "Informe um custo unitário válido"},
+		{"warehouse", errMovementWarehouseRequired, "Selecione um depósito antes de registrar a movimentação."},
+		{"transfer warehouses", errTransferWarehousesRequired, "Selecione os depósitos de origem e destino."},
+		{"same warehouse", errTransferSameWarehouse, "O depósito de destino deve ser diferente da origem."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			a.writeOperationResponse(rr, "TESTE", "op-validation", operationResult{}, tc.err)
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+			}
+			body := rr.Body.String()
+			if !strings.Contains(body, tc.want) {
+				t.Fatalf("body=%s want %q", body, tc.want)
+			}
+			if strings.Contains(strings.ToLower(body), "validation rejected") || strings.Contains(body, "Revise") {
+				t.Fatalf("generic validation message leaked: %s", body)
+			}
+		})
+	}
 }

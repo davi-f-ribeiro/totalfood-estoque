@@ -114,8 +114,16 @@ func (a *app) handleFiscalConfirm(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "chave fiscal inválida")
 		return
 	}
-	if req.OperationID == "" || req.WarehouseID <= 0 || len(req.Lines) == 0 {
-		writeJSONError(w, http.StatusBadRequest, "Revise a chave e os itens da nota fiscal.")
+	if req.OperationID == "" {
+		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar esta confirmação fiscal. Recarregue a página antes de tentar novamente.")
+		return
+	}
+	if req.WarehouseID <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "Selecione um depósito para a entrada da nota fiscal.")
+		return
+	}
+	if len(req.Lines) == 0 {
+		writeJSONError(w, http.StatusBadRequest, "Adicione pelo menos um item à nota fiscal.")
 		return
 	}
 	body, _ := json.Marshal(req)

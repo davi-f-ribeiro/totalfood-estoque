@@ -17,8 +17,8 @@ Este documento fixa o contrato antes da implementação. Não cria endpoint, tab
 Todos os intervalos de movimentação são semiabertos: `[início, fim)`.
 
 - Hoje: início do dia local até início do próximo dia.
-- Esta semana: segunda-feira 00:00 local até início da próxima segunda-feira.
-- Este mês: primeiro dia 00:00 local até primeiro dia do mês seguinte.
+- Semana até hoje (WTD): domingo 00:00 local até o início do dia seguinte ao atual. Domingo é o primeiro dia da semana para este produto.
+- Mês até hoje (MTD): primeiro dia do mês 00:00 local até o início do dia seguinte ao atual.
 - Personalizado: datas informadas pelo usuário convertidas para o mesmo modelo `[início, próximo-dia-do-fim)`.
 
 O backend recebe limites temporais inequívocos; não fabrica 23:59:59.999.
