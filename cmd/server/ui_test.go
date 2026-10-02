@@ -277,27 +277,29 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 
 func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	js := string(jsb)
+	if err != nil { t.Fatal(err) }
+	hb, err := os.ReadFile(filepath.Join("templates", "catalog.html"))
+	if err != nil { t.Fatal(err) }
+	js, html := string(jsb), string(hb)
 	for _, want := range []string{
-		`skuParentSearch.closest('label').hidden=true`,
-		`skuParentId.disabled=true`,
-		`Item pai definido pelo contexto selecionado.`,
-		`skuParentSearch.closest('label').hidden=false`,
-		`skuParentId.disabled=false`,
-		`Alterar este campo reatribui o SKU. Com histórico, a unidade do novo pai deve ser a mesma.`,
+		`id="skuParentContext" class="context-note" hidden`,
+		`id="skuParentSearchWrap"`,
+		`id="skuParentSelectWrap"`,
+		`skuParentSearchWrap.hidden=true`,
+		`skuParentSelectWrap.hidden=true`,
+		`skuParentContext.textContent='Item pai: '+currentItem.name`,
+		`skuParentSearchWrap.hidden=false`,
+		`skuParentSelectWrap.hidden=false`,
 	} {
-		if !strings.Contains(js, want) {
-			t.Fatalf("catalog SKU parent context missing %q", want)
-		}
+		if !strings.Contains(js+html, want) { t.Fatalf("catalog SKU parent context missing %q", want) }
+	}
+	if strings.Contains(js, `skuParentId.disabled=true`) {
+		t.Fatal("new SKU flow must not expose a redundant disabled parent selector")
 	}
 	if strings.Count(js, `function startNewSKU(prefillBarcode='')`) != 1 {
 		t.Fatal("catalog must keep a single new-SKU entry point")
 	}
 }
-
 func TestCatalogIgnoresStaleParentAndSKUResponses(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil {
@@ -441,10 +443,10 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 	feedback := map[string][]string{
 		"stock.html":           {"stockStatus"},
 		"movement.html":        {"status"},
-		"catalog.html":         {"catalogStatus"},
+		"catalog.html":         {"catalogStatus", "catalogItemStatus"},
 		"fiscal.html":          {"fiscalStatus", "fiscalConfirmStatus"},
 		"assets.html":          {"assetLookupStatus", "assetOpStatus", "assetTypeStatus", "assetUnitStatusMsg"},
-		"inventory.html":       {"inventoryListMessage", "inventoryMessage"},
+		"inventory.html":       {"inventoryCreateMessage", "inventoryListMessage", "inventoryMessage"},
 		"admin.html":           {"adminWarehouseStatus", "adminUserStatus", "adminProfileStatus", "adminPermStatus"},
 		"change_password.html": {"forcedPasswordStatus"},
 	}
@@ -858,5 +860,42 @@ func TestReportsNavigationIsPermissionAwareAcrossPages(t *testing.T) {
 	html := string(b)
 	if strings.Count(html, `{{if .CanReports}}<a href="/reports">Relatórios</a>{{end}}`) != 1 {
 		t.Fatal("Reports must be exposed exactly once by the canonical permission-aware navigation")
+	}
+}
+
+func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil { t.Fatal(err) }
+		return string(b)
+	}
+	js := read(filepath.Join("static", "app.js"))
+	css := read(filepath.Join("static", "app.css"))
+	assets := read(filepath.Join("templates", "assets.html"))
+	fiscal := read(filepath.Join("templates", "fiscal.html"))
+	inventory := read(filepath.Join("templates", "inventory.html"))
+	catalog := read(filepath.Join("templates", "catalog.html"))
+
+	for _, want := range []string{
+		`card.after(detail)`,
+		`id="catalogItemStatus" class="operation-feedback"`,
+		`function itemMsg(type,text){setFeedback(itemStatus,type,text)}`,
+		`id="inventoryCreateMessage" class="operation-feedback"`,
+		`function setCreateMessage(text,kind='')`,
+		`id="assetUnitOperations"`,
+		`renderAsset(r,true)`,
+		`ops.parentElement===unitOpsHost`,
+		`className='operation-feedback fiscal-line-feedback'`,
+		`Selecione um produto/SKU nesta linha.`,
+		".asset-unit-layout{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
+		".fiscal-line-feedback{grid-column:1/-1",
+	} {
+		if !strings.Contains(js+css+assets+fiscal+inventory+catalog, want) {
+			t.Fatalf("selected-object context contract missing %q", want)
+		}
+	}
+	if strings.Contains(js, `if(createTotal)if(createTotal)`) {
+		t.Fatal("inventory creation must not retain duplicated guards")
 	}
 }
