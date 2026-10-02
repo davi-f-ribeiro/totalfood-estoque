@@ -71,19 +71,19 @@ func (a *app) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
-SELECT rep.id,COALESCE(rep.name,''),COALESCE(rep.barcode,''),w.id,w.name,
+SELECT rep.id,COALESCE(rep.name,''),COALESCE(rep.barcode,''),rep.content_quantity::text,w.id,w.name,
        sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text
 FROM movement_lines ml
 JOIN warehouses w ON w.id=ml.warehouse_id
 JOIN LATERAL (
-    SELECT s.id,s.name,s.barcode
+    SELECT s.id,s.name,s.barcode,s.content_quantity
     FROM product_skus s
     WHERE s.item_id=$1 AND s.active=true
     ORDER BY s.id
     LIMIT 1
 ) rep ON true
 WHERE ml.item_id=$1
-GROUP BY rep.id,rep.name,rep.barcode,w.id,w.name
+GROUP BY rep.id,rep.name,rep.barcode,rep.content_quantity,w.id,w.name
 HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) <> 0
 ORDER BY w.name`, itemID)
 	if err != nil {
@@ -94,12 +94,12 @@ ORDER BY w.name`, itemID)
 	details := []map[string]any{}
 	for rows.Next() {
 		var skuID, whID sql.NullInt64
-		var sku, barcode, wh, qty string
-		if err := rows.Scan(&skuID, &sku, &barcode, &whID, &wh, &qty); err != nil {
+		var sku, barcode, contentQuantity, wh, qty string
+		if err := rows.Scan(&skuID, &sku, &barcode, &contentQuantity, &whID, &wh, &qty); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		details = append(details, map[string]any{"sku_id": skuID.Int64, "sku": sku, "barcode": barcode, "warehouse_id": whID.Int64, "warehouse": wh, "quantity": qty})
+		details = append(details, map[string]any{"sku_id": skuID.Int64, "sku": sku, "barcode": barcode, "content_quantity": contentQuantity, "warehouse_id": whID.Int64, "warehouse": wh, "quantity": qty})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": head.ID, "name": head.Name, "unit": head.Unit, "minimum": head.Minimum, "details": details})
 }
