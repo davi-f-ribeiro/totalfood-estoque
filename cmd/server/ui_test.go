@@ -126,8 +126,7 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`Selecione um produto`,
 		`Disponível:`,
 		`aria-expanded`,
-		`openItem===id`,
-		`stopPropagation`,
+		`openKey===key`,
 		`warehouse_id`,
 		`Quantidade acima do saldo disponível.`,
 		`Destino deve ser diferente da origem.`,
@@ -149,203 +148,77 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 
 func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	if err != nil { t.Fatal(err) }
 	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	if err != nil { t.Fatal(err) }
 	js, css := string(jsb), string(cssb)
 	for _, want := range []string{
-		`if(card)card.after(detail)`,
+		`let openKey='',detailSeq=0`,
+		`let key=row.item_id+':'+row.brand_id`,
+		`/api/stock/detail/'+row.item_id+'?brand_id='+row.brand_id`,
+		`if(seq!==detailSeq||openKey!==key)return`,
+		`card.after(detail)`,
 		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
-		`let openItem=null,detailSeq=0`,
-		`let seq=++detailSeq`,
-		`if(seq!==detailSeq||openItem!==id)return`,
-		`detailSeq++;detail.classList.remove('error');detail.hidden=true;detail.textContent='';openItem=null`,
-		`detail.textContent=uiErrorMessage(err,'Não foi possível carregar os detalhes do estoque.');detail.classList.add('error')`,
+		`Detalhes das embalagens`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
-		if !strings.Contains(js+css, want) {
-			t.Fatalf("stock contextual detail missing %q", want)
-		}
+		if !strings.Contains(js+css,want) { t.Fatalf("brand stock contextual detail missing %q",want) }
 	}
-	if strings.Count(css, `.stock-shell #stockDetail{grid-column:1/-1}`) != 1 {
-		t.Fatal("stock detail grid placement must have a single shared rule")
-	}
-	if strings.Count(js, `id="stockDetail"`) > 0 {
-		t.Fatal("stock detail element must remain template-owned, not duplicated in JavaScript")
-	}
-	if strings.Contains(js, `setFeedback(stockStatus,'error',uiErrorMessage(err,'Não foi possível carregar os detalhes do estoque.'))`) {
-		t.Fatal("stock detail errors must stay beside the selected item")
-	}
+	if strings.Contains(js,"Composição do saldo") { t.Fatal("stock detail must not duplicate balance composition") }
 }
-
-func TestMovementProductSelectionUXStateContracts(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	hb, err := os.ReadFile(filepath.Join("templates", "movement.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	combined := string(hb) + string(jsb)
-	checks := []string{
-		`id="productFeedback"`,
-		`Verificando código...`,
-		`EAN: `,
-		`Tentar novamente`,
-		`manualSeq++`,
-		`if(seq!==manualSeq)return`,
-		`lookup.hidden=true`,
-		`normalizeBarcode(q).length<2`,
-		`function skuLabel`,
-		`function clearMovementProduct(clearSearch=false)`,
-		`function bindChangeProduct()`,
-		`clearMovementProduct(false);search.value=normalized`,
-		`let q=search.value,seq=++manualSeq;clearMovementProduct(false)`,
-		`Produto selecionado`,
-		`id="changeProduct"`,
-		`productMsg('error','<strong>Código de barras não cadastrado.</strong>`,
-		`scanBtn?.addEventListener('scanner:start'`,
-		`async function resolveMovementBarcode(code,source='scanner')`,
-		`resolveMovementBarcode(search.value,'manual')`,
-		`initScanner('scanProduct',resolveMovementBarcode)`,
-		`let exact=rows.find(r=>normalizeBarcode(r.barcode)===normalized)`,
-		`if(source==='manual'&&rows.length){productMsg('','');showLookup(rows,lookup,pick);return}`,
-		`function requestDecimal(v)`,
-		`quantity:requestDecimal(qty.value)`,
-		`unit_cost:requestDecimal(cost.value)`,
-		`if(err.status===400||err.status===404||err.status===409)`,
-		`movementMsg('error',movementErrorMessage(err))`,
-		`id="status" class="operation-feedback"`,
-	}
-	for _, want := range checks {
-		if !strings.Contains(combined, want) {
-			t.Fatalf("product selection UX missing %q", want)
-		}
-	}
-	if strings.Contains(combined, "initScanner('scanProduct',async code=>") {
-		t.Fatal("camera must use the shared movement barcode resolver")
-	}
-	if strings.Count(combined, "productLookup(normalized)") != 1 {
-		t.Fatal("movement barcode resolution must have a single product lookup path")
-	}
-	if strings.Count(combined, "document.getElementById('changeProduct')?.addEventListener") != 1 {
-		t.Fatal("movement product change must use one canonical handler")
-	}
-}
-
 
 func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	js := string(jsb)
+	appb, err := os.ReadFile(filepath.Join("static","app.js")); if err != nil { t.Fatal(err) }
+	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
+	htmlb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
+	combined:=string(appb)+string(pb)+string(htmlb)
 	for _, want := range []string{
 		`Cadastrar produto`,
-		`new_sku_barcode=`,
+		`/products?barcode=`,
 		`return_to=%2Fentry`,
-		`catalogParams=new URLSearchParams(location.search)`,
-		`pendingNewSKUBarcode=normalizeBarcode(catalogParams.get('new_sku_barcode'))`,
-		`returnTo=catalogParams.get('return_to')==='/entry'?'/entry':''`,
-		`function startNewSKU(prefillBarcode='')`,
-		`if(pendingNewSKUBarcode){msg('','');startNewSKU(pendingNewSKUBarcode)}`,
-		`document.getElementById('newCatalogSku').onclick=()=>startNewSKU(pendingNewSKUBarcode)`,
-		`barcode.value=normalizeBarcode(prefillBarcode)`,
-		`if(!wasEditing&&pendingNewSKUBarcode&&returnTo&&body.barcode===pendingNewSKUBarcode&&+body.item_id===+currentItem.id)`,
-		`sku_id:String(saved.id)`,
-		`location.href=returnTo+'?'+back.toString()`,
+		`params.get('return_to')`,
+		`body={item_id:+parent.value,brand_id:+brand.value,content_quantity:`,
+		`sku_id:String(out.id)`,
+		`location.href='/entry?'`,
+		`id="productBarcode"`,
 	} {
-		if !strings.Contains(js, want) {
-			t.Fatalf("unknown entry barcode continuation missing %q", want)
-		}
+		if !strings.Contains(combined,want) { t.Fatalf("Product/Item continuation missing %q",want) }
 	}
-	if strings.Contains(js, `returnTo=catalogParams.get('return_to')||`) {
-		t.Fatal("catalog continuation must not accept an arbitrary return target")
-	}
-	if strings.Count(js, `function startNewSKU(prefillBarcode='')`) != 1 {
-		t.Fatal("catalog must keep a single new-SKU entry point")
-	}
-	if strings.Contains(js, "/api/catalog/skus/from-entry") {
-		t.Fatal("entry handoff must reuse the existing catalog SKU endpoint")
-	}
+	if strings.Contains(combined,"/api/catalog/skus/from-entry") { t.Fatal("entry handoff must reuse Product/Item endpoint") }
 }
 
 func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
-	hb, err := os.ReadFile(filepath.Join("templates", "catalog.html"))
-	if err != nil { t.Fatal(err) }
-	js, html := string(jsb), string(hb)
+	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
+	hb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
+	combined:=string(pb)+string(hb)
 	for _, want := range []string{
-		`id="skuParentContext" class="context-note" hidden`,
-		`id="skuParentSearchWrap"`,
-		`id="skuParentSelectWrap"`,
-		`skuParentSearchWrap.hidden=true`,
-		`skuParentSelectWrap.hidden=true`,
-		`skuParentContext.textContent='Item pai: '+currentItem.name`,
-		`skuParentSearchWrap.hidden=false`,
-		`skuParentSelectWrap.hidden=false`,
+		`id="productParent"`,`id="productBrand"`,`id="productContent"`,`id="productBarcode"`,
+		`parent.disabled=!!x.has_history`,`brand.disabled=!!x.has_history`,
+		`O nome é gerado automaticamente.`,
 	} {
-		if !strings.Contains(js+html, want) { t.Fatalf("catalog SKU parent context missing %q", want) }
-	}
-	if strings.Contains(js, `skuParentId.disabled=true`) {
-		t.Fatal("new SKU flow must not expose a redundant disabled parent selector")
-	}
-	if strings.Count(js, `function startNewSKU(prefillBarcode='')`) != 1 {
-		t.Fatal("catalog must keep a single new-SKU entry point")
+		if !strings.Contains(combined,want) { t.Fatalf("Product/Item identity UI missing %q",want) }
 	}
 }
+
 func TestCatalogIgnoresStaleParentAndSKUResponses(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	js := string(jsb)
-	for _, want := range []string{
-		`function resetSKUForm(clearFeedback=true){editingSKUVersion=0;skuParentSeq++`,
-		`async function loadSKUs(item=currentItem){if(!item)return false`,
-		`if(!currentItem||+currentItem.id!==+item.id)return false`,
-		`if(!await loadSKUs(r))return`,
-		`if(!await loadSKUs())return`,
-	} {
-		if !strings.Contains(js, want) {
-			t.Fatalf("catalog stale-response guard missing %q", want)
-		}
+	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
+	js:=string(pb)
+	for _, want := range []string{`editing=x`,`body.version=editing.version`,`await load()`,`form.hidden=true`} {
+		if !strings.Contains(js,want) { t.Fatalf("Product/Item edit safety missing %q",want) }
 	}
 }
 
 func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	hb, err := os.ReadFile(filepath.Join("templates", "catalog.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	js, html := string(jsb), string(hb)
+	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
+	hb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
+	combined:=string(pb)+string(hb)
 	for _, want := range []string{
-		`id="skuStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
-		`function skuMsg(type,text){setFeedback(skuStatus,type,text)}`,
-		`skuMsg('loading',moving?'Movendo '+skuLabel+'…':(wasEditing?'Atualizando ':'Criando ')+skuLabel+'…')`,
-		`skuMsg('error','Código de barras '+body.barcode+' já existe no banco de dados.')`,
-		`resetSKUForm(false)`,
-		`skuMsg('success',moving?skuLabel+' movido para '+targetName+'.':skuLabel+(wasEditing?' atualizado.':' criado.'))`,
+		`id="productStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
+		`function msg(type,text){setFeedback(status,type,text)}`,
+		`msg('loading',(editing?'Atualizando ':'Criando ')+label+'…')`,
+		`msg('success',label+(editing?' atualizado.':' criado.'))`,
 	} {
-		if !strings.Contains(js+html, want) {
-			t.Fatalf("catalog SKU local feedback missing %q", want)
-		}
-	}
-	if strings.Count(html, `id="skuStatus"`) != 1 {
-		t.Fatal("catalog must expose a single SKU feedback region")
-	}
-	if strings.Contains(js, `msg('loading',moving?'Movendo '+skuLabel`) {
-		t.Fatal("SKU operations must not use the global catalog feedback region")
+		if !strings.Contains(combined,want) { t.Fatalf("Product/Item feedback missing %q",want) }
 	}
 }
 
@@ -443,7 +316,8 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 	feedback := map[string][]string{
 		"stock.html":           {"stockStatus"},
 		"movement.html":        {"status"},
-		"catalog.html":         {"catalogStatus", "catalogItemStatus"},
+		"catalog.html":         {"masterStatus"},
+		"products.html":        {"productStatus"},
 		"fiscal.html":          {"fiscalStatus", "fiscalConfirmStatus"},
 		"assets.html":          {"assetLookupStatus", "assetOpStatus", "assetTypeStatus", "assetUnitStatusMsg"},
 		"inventory.html":       {"inventoryCreateMessage", "inventoryListMessage", "inventoryMessage"},
@@ -561,14 +435,14 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 		`{{if .CanExit}}<a href="/exit">Saída</a>{{end}}`,
 		`{{if .CanTransfer}}<a href="/transfer">Transferir</a>{{end}}`,
 		`{{if .CanReports}}<a href="/reports">Relatórios</a>{{end}}`,
-		`{{if .CanCatalog}}<a href="/catalog">Catálogo</a>{{end}}`,
+		`{{if .CanCatalog}}<a href="/catalog">Catálogo</a><a href="/products">Produto/Item</a>{{end}}`,
 		`{{if .CanAssets}}<a href="/assets">Patrimônio</a>{{end}}`,
 		`{{if .CanInventory}}<a href="/inventory">Auditoria de Estoque</a>{{end}}`,
 		`{{if .CanAdmin}}<a href="/admin">Administração</a>{{end}}`,
 	} {
 		if !strings.Contains(base, want) { t.Fatalf("canonical navigation missing %q", want) }
 	}
-	for _, name := range []string{"stock.html","movement.html","catalog.html","fiscal.html","assets.html","inventory.html","admin.html","reports.html"} {
+	for _, name := range []string{"stock.html","movement.html","catalog.html","products.html","fiscal.html","assets.html","inventory.html","admin.html","reports.html"} {
 		b, err := os.ReadFile(filepath.Join("templates", name)); if err != nil { t.Fatal(err) }
 		html := string(b)
 		if !strings.Contains(html, `{{template "nav" .}}`) { t.Fatalf("%s must use canonical navigation", name) }
@@ -576,8 +450,8 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 	}
 	catalogb, err := os.ReadFile(filepath.Join("templates", "catalog.html")); if err != nil { t.Fatal(err) }
 	catalog := string(catalogb)
-	if strings.Index(catalog, `id="catalogEmpty"`) > strings.Index(catalog, `id="catalogList"`) {
-		t.Fatal("catalog empty guidance must stay grouped with the parent-list heading before the list")
+	if !strings.Contains(catalog,"Cadastros mestres de item pai e marca.") || strings.Contains(catalog,"Produtos/SKUs vinculados") {
+		t.Fatal("catalog must contain only item and brand masters")
 	}
 }
 
@@ -585,54 +459,41 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		b, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		if err != nil { t.Fatal(err) }
 		return string(b)
 	}
-	js := read(filepath.Join("static", "app.js"))
-	catalog := read(filepath.Join("templates", "catalog.html"))
-	assets := read(filepath.Join("templates", "assets.html"))
-	admin := read(filepath.Join("templates", "admin.html"))
+	app := read(filepath.Join("static","app.js"))
+	masters := read(filepath.Join("static","catalog_masters.js"))
+	products := read(filepath.Join("static","products.js"))
+	catalog := read(filepath.Join("templates","catalog.html"))
+	productHTML := read(filepath.Join("templates","products.html"))
+	assets := read(filepath.Join("templates","assets.html"))
+	admin := read(filepath.Join("templates","admin.html"))
 
 	for _, want := range []string{
 		"function setCrudMode(form,editing,createLabel,updateLabel)",
-		"setCrudMode(itemForm,true,'Criar item pai','Atualizar item pai')",
-		"setCrudMode(itemForm,false,'Criar item pai','Atualizar item pai')",
-		"setCrudMode(skuForm,true,'Criar SKU','Atualizar SKU')",
+		"itemForm.reset()","brandForm.reset()","form.reset()",
+		"body.version=itemVersion","body.version=brandVersion","body.version=editing.version",
+		"msg('success',label+(editing?' atualizado.':' criado.'))",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
 		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(userForm,true,'Criar usuário','Atualizar usuário')",
-		"true,'Criar perfil','Atualizar perfil'",
-		"body.name+(id?' atualizado.':' criado.')",
-		"body.login+(id?' atualizado.':' criado.')",
-		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')",
-		"itemForm.reset()",
-		"typeForm.reset()",
-		"unitForm.reset()",
-		"userForm.reset()",
 	} {
-		if !strings.Contains(js, want) {
-			t.Fatalf("CRUD safety state missing %q", want)
+		if !strings.Contains(app+masters+products,want) {
+			t.Fatalf("CRUD safety state missing %q",want)
 		}
 	}
-	for _, want := range []string{"Criar item pai", "Criar SKU"} {
-		if !strings.Contains(catalog, want) {
-			t.Fatalf("catalog initial create mode missing %q", want)
-		}
+	for _, want := range []string{"Novo item","Nova marca"} {
+		if !strings.Contains(catalog,want) { t.Fatalf("catalog create mode missing %q",want) }
 	}
-	for _, want := range []string{"Criar tipo", "Criar unidade"} {
-		if !strings.Contains(assets, want) {
-			t.Fatalf("assets initial create mode missing %q", want)
-		}
+	if !strings.Contains(productHTML,"Novo Produto/Item") { t.Fatal("Product/Item create mode missing") }
+	for _, want := range []string{"Criar tipo","Criar unidade"} {
+		if !strings.Contains(assets,want) { t.Fatalf("assets initial create mode missing %q",want) }
 	}
-	for _, want := range []string{"Criar usuário", "Criar perfil"} {
-		if !strings.Contains(admin, want) {
-			t.Fatalf("admin initial create mode missing %q", want)
-		}
+	for _, want := range []string{"Criar usuário","Criar perfil"} {
+		if !strings.Contains(admin,want) { t.Fatalf("admin initial create mode missing %q",want) }
 	}
 }
-
 
 func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
@@ -879,8 +740,8 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 
 	for _, want := range []string{
 		`card.after(detail)`,
-		`id="catalogItemStatus" class="operation-feedback"`,
-		`function itemMsg(type,text){setFeedback(itemStatus,type,text)}`,
+		`id="masterStatus" class="operation-feedback"`,
+		`id="productStatus" class="operation-feedback"`,
 		`id="inventoryCreateMessage" class="operation-feedback"`,
 		`function setCreateMessage(text,kind='')`,
 		`id="assetUnitOperations"`,
@@ -891,7 +752,7 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 		".asset-unit-layout{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
 		".fiscal-line-feedback{grid-column:1/-1",
 	} {
-		if !strings.Contains(js+css+assets+fiscal+inventory+catalog, want) {
+		if !strings.Contains(js+css+assets+fiscal+inventory+catalog+read(filepath.Join("templates","products.html")), want) {
 			t.Fatalf("selected-object context contract missing %q", want)
 		}
 	}

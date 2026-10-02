@@ -285,7 +285,16 @@ func (a *app) handleLookup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, []any{})
 		return
 	}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT s.id, i.name, COALESCE(NULLIF(s.name,''),NULLIF(s.brand,''),''), COALESCE(s.barcode,''), i.unit_code, s.content_quantity::text FROM product_skus s JOIN inventory_items i ON i.id=s.item_id WHERE s.active=true AND i.active=true AND (s.barcode=$1 OR lower(i.name) LIKE lower($2) OR lower(COALESCE(s.name,'')) LIKE lower($2) OR lower(COALESCE(s.brand,'')) LIKE lower($2)) ORDER BY i.name,COALESCE(s.name,s.brand) LIMIT 10`, q, "%"+q+"%")
+	rows, err := a.db.QueryContext(r.Context(), `
+SELECT s.id,i.name,b.name,COALESCE(s.barcode,''),i.unit_code,s.content_quantity::text
+FROM product_skus s
+JOIN inventory_items i ON i.id=s.item_id
+JOIN brands b ON b.id=s.brand_id
+WHERE s.active=true AND i.active=true AND b.active=true
+  AND (s.barcode=$1 OR lower(i.name) LIKE lower($2) OR lower(b.name) LIKE lower($2)
+       OR lower(COALESCE(s.name,'')) LIKE lower($2))
+ORDER BY i.name,b.name,s.content_quantity,s.id
+LIMIT 10`, q, "%"+q+"%")
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
@@ -317,11 +326,14 @@ func (a *app) handleStock(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id int64
-		var name, unit, min, qty string
+		var id, brandID int64
+		var brand, name, unit, min, qty string
 		var below bool
-		rows.Scan(&id, &name, &unit, &min, &qty, &below)
-		out = append(out, map[string]any{"item_id": id, "name": name, "unit": unit, "minimum": min, "quantity": qty, "below_minimum": below})
+		if err := rows.Scan(&id,&brandID,&brand,&name,&unit,&min,&qty,&below); err != nil {
+			writeJSONError(w, 500, "internal error")
+			return
+		}
+		out = append(out, map[string]any{"item_id": id, "brand_id": brandID, "brand": brand, "name": name, "unit": unit, "minimum": min, "quantity": qty, "below_minimum": below})
 	}
 	writeJSON(w, 200, out)
 }

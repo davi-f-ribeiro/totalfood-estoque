@@ -51,8 +51,9 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 			"name": "CRUD Version SKU Parent", "category_id": catID, "unit_code": "UN", "minimum_stock": "0",
 		}, director, "")
 		parentID := jsonID(t, parent.Body.Bytes())
+		brandID := createTestBrand(t,a,"CRUD Version Brand")
 		create := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{
-			"item_id": parentID, "name": "CRUD Version SKU", "barcode": "7899999000001",
+			"item_id": parentID, "brand_id":brandID, "content_quantity":"1", "barcode": "7899999000001",
 		}, director, "")
 		if create.Code != http.StatusCreated {
 			t.Fatalf("create sku status=%d body=%s", create.Code, create.Body.String())
@@ -61,14 +62,14 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 		version := crudVersion(t, a, "product_skus", id)
 
 		first := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(id), map[string]any{
-			"item_id": parentID, "name": "CRUD Version SKU First", "barcode": "7899999000001",
+			"item_id": parentID, "brand_id":brandID, "content_quantity":"2", "barcode": "7899999000001",
 			"active": true, "version": version,
 		}, director, "")
 		if first.Code != http.StatusOK {
 			t.Fatalf("first sku edit status=%d body=%s", first.Code, first.Body.String())
 		}
 		stale := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(id), map[string]any{
-			"item_id": parentID, "name": "CRUD Version SKU Stale", "barcode": "7899999000001",
+			"item_id": parentID, "brand_id":brandID, "content_quantity":"3", "barcode": "7899999000001",
 			"active": true, "version": version,
 		}, director, "")
 		if stale.Code != http.StatusConflict || !strings.Contains(stale.Body.String(), concurrentEditMessage) {
@@ -78,7 +79,7 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 		if err := a.db.QueryRow(`SELECT name FROM product_skus WHERE id=$1`, id).Scan(&name); err != nil {
 			t.Fatal(err)
 		}
-		if name != "CRUD Version SKU First" {
+		if !strings.Contains(name,"CRUD Version Brand") || !strings.Contains(name,"2 UN") {
 			t.Fatalf("stale sku overwrote first edit name=%q", name)
 		}
 	})

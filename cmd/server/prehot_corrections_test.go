@@ -28,10 +28,10 @@ func TestPreHotStockGeneralAvailabilityAndPassword(t *testing.T) {
 	defer rows.Close()
 	var found bool
 	for rows.Next() {
-		var id int64
-		var name, unit, min, qty string
+		var id, brandID int64
+		var brand, name, unit, min, qty string
 		var below bool
-		if err := rows.Scan(&id, &name, &unit, &min, &qty, &below); err != nil {
+		if err := rows.Scan(&id,&brandID,&brand,&name,&unit,&min,&qty,&below); err != nil {
 			t.Fatal(err)
 		}
 		if name == "Arroz" {

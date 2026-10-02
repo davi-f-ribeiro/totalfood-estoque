@@ -25,20 +25,22 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 		t.Fatalf("create item status=%d body=%s", itemResp.Code, itemResp.Body.String())
 	}
 	itemID := jsonID(t, itemResp.Body.Bytes())
-	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "name": "Feijão Marca A", "barcode": "7891000000011"}, director, "")
+	brandA := createTestBrand(t,a,"Marca A Catalog")
+	brandB := createTestBrand(t,a,"Marca B Catalog")
+	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandA, "content_quantity":"1", "barcode": "7891000000011"}, director, "")
 	if skuResp.Code != http.StatusCreated {
 		t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
 	}
 	firstSKU := jsonID(t, skuResp.Body.Bytes())
-	secondResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "name": "Feijão Marca B", "barcode": "7891000000028"}, director, "")
+	secondResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandB, "content_quantity":"1", "barcode": "7891000000028"}, director, "")
 	if secondResp.Code != http.StatusCreated {
 		t.Fatalf("create second sku status=%d body=%s", secondResp.Code, secondResp.Body.String())
 	}
-	dupResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "name": "Duplicado", "barcode": "7891000000011"}, director, "")
+	dupResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandA, "content_quantity":"1", "barcode": "7891000000011"}, director, "")
 	if dupResp.Code != http.StatusConflict || !strings.Contains(dupResp.Body.String(), "Este código de barras já está cadastrado.") {
 		t.Fatalf("duplicate barcode status=%d body=%s", dupResp.Code, dupResp.Body.String())
 	}
-	badFK := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": 999999, "name": "Sem item", "barcode": "7891000000998"}, director, "")
+	badFK := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": 999999, "brand_id": brandA, "content_quantity":"1", "barcode": "7891000000998"}, director, "")
 	if badFK.Code != http.StatusBadRequest {
 		t.Fatalf("invalid fk status=%d body=%s", badFK.Code, badFK.Body.String())
 	}
@@ -49,11 +51,11 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 		t.Fatalf("csrf status=%d", rr.Code)
 	}
 	lookup := authReq(a, http.MethodGet, "/api/products/lookup?q=7891000000011", nil, director, "")
-	if lookup.Code != http.StatusOK || !strings.Contains(lookup.Body.String(), "Feijão Marca A") {
+	if lookup.Code != http.StatusOK || !strings.Contains(lookup.Body.String(), "Marca A Catalog") {
 		t.Fatalf("lookup by barcode status=%d body=%s", lookup.Code, lookup.Body.String())
 	}
 	lookupItem := authReq(a, http.MethodGet, "/api/products/lookup?q=Carioca", nil, director, "")
-	if lookupItem.Code != http.StatusOK || !strings.Contains(lookupItem.Body.String(), "Feijão Marca B") {
+	if lookupItem.Code != http.StatusOK || !strings.Contains(lookupItem.Body.String(), "Marca B Catalog") {
 		t.Fatalf("lookup by item status=%d body=%s", lookupItem.Code, lookupItem.Body.String())
 	}
 
@@ -76,7 +78,7 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 	if editOK.Code != http.StatusOK {
 		t.Fatalf("allowed item edit status=%d body=%s", editOK.Code, editOK.Body.String())
 	}
-	skuEdit := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(firstSKU), map[string]any{"name": "Feijão Marca A Corrigido", "barcode": "7891000000011", "active": true, "version": crudVersion(t, a, "product_skus", firstSKU)}, director, "")
+	skuEdit := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(firstSKU), map[string]any{"item_id":itemID,"brand_id":brandA,"content_quantity":"1","barcode": "7891000000011", "active": true, "version": crudVersion(t, a, "product_skus", firstSKU)}, director, "")
 	if skuEdit.Code != http.StatusOK {
 		t.Fatalf("sku edit status=%d body=%s", skuEdit.Code, skuEdit.Body.String())
 	}
@@ -138,7 +140,8 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 	parentC := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Feijão Teste Pai C", "category_id": catID, "unit_code": "L", "minimum_stock": "1"}, director, "")
 	parentCID := jsonID(t, parentC.Body.Bytes())
 
-	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": parentAID, "name": "Feijão Teste Marca", "barcode": "7890000999911"}, director, "")
+	brandID := createTestBrand(t,a,"Marca Teste Pai")
+	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": parentAID, "brand_id":brandID, "content_quantity":"1", "barcode": "7890000999911"}, director, "")
 	if skuResp.Code != http.StatusCreated { t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String()) }
 	skuID := jsonID(t, skuResp.Body.Bytes())
 	moveRes, moveErr := a.createEntry(context.Background(), movementRequest{OperationID: "catalog-parent-history", SKUID: skuID, WarehouseID: wh, Quantity: "3", UnitCost: "10"}, "catalog-parent-history")
@@ -149,13 +152,13 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 		t.Fatalf("history snapshot got=%d want=%d err=%v", snapshot, parentAID, err)
 	}
 
-	move := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentBID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true, "version": crudVersion(t, a, "product_skus", skuID)}, director, "")
-	if move.Code != http.StatusOK { t.Fatalf("reassign same unit status=%d body=%s", move.Code, move.Body.String()) }
+	move := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentBID, "brand_id":brandID, "content_quantity":"1", "barcode": "7890000999911", "active": true, "version": crudVersion(t, a, "product_skus", skuID)}, director, "")
+	if move.Code != http.StatusConflict { t.Fatalf("historical Product/Item reassignment status=%d body=%s", move.Code, move.Body.String()) }
 	var currentParent, historicalParent int64
 	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuID).Scan(&currentParent); err != nil { t.Fatal(err) }
 	if err := a.db.QueryRow(`SELECT item_id FROM movement_lines WHERE sku_id=$1 LIMIT 1`, skuID).Scan(&historicalParent); err != nil { t.Fatal(err) }
-	if currentParent != parentBID || historicalParent != parentAID {
-		t.Fatalf("reassign current=%d history=%d want current=%d history=%d", currentParent, historicalParent, parentBID, parentAID)
+	if currentParent != parentAID || historicalParent != parentAID {
+		t.Fatalf("historical identity changed current=%d history=%d want=%d", currentParent, historicalParent, parentAID)
 	}
 
 	historicalUnitEdit := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(parentAID), map[string]any{
@@ -170,13 +173,13 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 		t.Fatalf("historical parent unit edit status=%d body=%s", historicalUnitEdit.Code, historicalUnitEdit.Body.String())
 	}
 
-	badMove := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentCID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true, "version": crudVersion(t, a, "product_skus", skuID)}, director, "")
-	if badMove.Code != http.StatusConflict || !strings.Contains(badMove.Body.String(), "mesma unidade") {
+	badMove := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentCID, "brand_id":brandID, "content_quantity":"1", "barcode": "7890000999911", "active": true, "version": crudVersion(t, a, "product_skus", skuID)}, director, "")
+	if badMove.Code != http.StatusConflict || !strings.Contains(badMove.Body.String(), "histórico") {
 		t.Fatalf("cross-unit historical reassign status=%d body=%s", badMove.Code, badMove.Body.String())
 	}
 
 	search := authReq(a, http.MethodGet, "/api/catalog/items?q=7890000999911", nil, director, "")
-	if search.Code != http.StatusOK || !strings.Contains(search.Body.String(), "Feijão Teste Pai B") {
+	if search.Code != http.StatusOK || !strings.Contains(search.Body.String(), "Feijão Teste Pai A") {
 		t.Fatalf("catalog barcode search status=%d body=%s", search.Code, search.Body.String())
 	}
 

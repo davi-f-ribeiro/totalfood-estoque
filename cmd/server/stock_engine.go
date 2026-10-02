@@ -84,25 +84,30 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 	sort.Slice(skuIDs, func(i, j int) bool { return skuIDs[i] < skuIDs[j] })
 	return a.writeMovement(ctx, "ENTRADA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		type stockIdentity struct {
-			ItemID int64
+			ItemID  int64
+			BrandID int64
 			SKUID   int64
 		}
 		identities := make([]stockIdentity, 0, len(skuIDs))
-		seenItems := make(map[int64]struct{}, len(skuIDs))
+		seenIdentities := make(map[[2]int64]struct{}, len(skuIDs))
 		for _, skuID := range skuIDs {
 			if err := ensureRefs(ctx, tx, skuID, req.WarehouseID); err != nil {
 				return 0, err
 			}
-			var itemID int64
-			if err := tx.QueryRowContext(ctx, `SELECT item_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID); err != nil {
+			var itemID, brandID int64
+			if err := tx.QueryRowContext(ctx, `SELECT item_id,brand_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID,&brandID); err != nil {
 				return 0, err
 			}
-			if _, exists := seenItems[itemID]; !exists {
-				seenItems[itemID] = struct{}{}
-				identities = append(identities, stockIdentity{ItemID: itemID, SKUID: skuID})
+			key := [2]int64{itemID,brandID}
+			if _, exists := seenIdentities[key]; !exists {
+				seenIdentities[key] = struct{}{}
+				identities = append(identities, stockIdentity{ItemID:itemID,BrandID:brandID,SKUID:skuID})
 			}
 		}
-		sort.Slice(identities, func(i, j int) bool { return identities[i].ItemID < identities[j].ItemID })
+		sort.Slice(identities, func(i,j int) bool {
+			if identities[i].ItemID==identities[j].ItemID { return identities[i].BrandID<identities[j].BrandID }
+			return identities[i].ItemID<identities[j].ItemID
+		})
 		for _, identity := range identities {
 			if err := lockStock(ctx, tx, identity.SKUID, req.WarehouseID); err != nil {
 				return 0, err
@@ -279,25 +284,27 @@ func insertMovement(ctx context.Context, tx *sql.Tx, typ string, req movementReq
 
 func createEntryLot(ctx context.Context, tx *sql.Tx, movementLineID int64) error {
 	_, err := tx.ExecContext(ctx, `
-INSERT INTO stock_lots (item_id,warehouse_id,source_movement_line_id,initial_quantity)
-SELECT item_id,warehouse_id,id,quantity
-FROM movement_lines
-WHERE id=$1 AND direction='IN'`, movementLineID)
+INSERT INTO stock_lots (item_id,brand_id,warehouse_id,source_movement_line_id,initial_quantity)
+SELECT ml.item_id,s.brand_id,ml.warehouse_id,ml.id,ml.quantity
+FROM movement_lines ml
+JOIN product_skus s ON s.id=ml.sku_id
+WHERE ml.id=$1 AND ml.direction='IN'`, movementLineID)
 	return err
 }
 
 func allocateLots(ctx context.Context, tx *sql.Tx, movementLineID int64) error {
 	res, err := tx.ExecContext(ctx, `
 WITH target AS (
-    SELECT item_id,warehouse_id,quantity
-    FROM movement_lines
-    WHERE id=$1 AND direction='OUT'
+    SELECT ml.item_id,s.brand_id,ml.warehouse_id,ml.quantity
+    FROM movement_lines ml
+    JOIN product_skus s ON s.id=ml.sku_id
+    WHERE ml.id=$1 AND ml.direction='OUT'
 ),
 lot_balances AS (
     SELECT l.id,l.received_at,l.expires_at,
            l.initial_quantity-COALESCE(sum(a.quantity),0) AS remaining
     FROM stock_lots l
-    JOIN target t ON t.item_id=l.item_id AND t.warehouse_id=l.warehouse_id
+    JOIN target t ON t.item_id=l.item_id AND t.brand_id=l.brand_id AND t.warehouse_id=l.warehouse_id
     LEFT JOIN stock_lot_allocations a ON a.stock_lot_id=l.id
     GROUP BY l.id,l.received_at,l.expires_at,l.initial_quantity
     HAVING l.initial_quantity-COALESCE(sum(a.quantity),0) > 0
@@ -348,10 +355,10 @@ GROUP BY ml.id`, movementLineID).Scan(&requested, &allocated); err != nil {
 func createTransferLots(ctx context.Context, tx *sql.Tx, outLineID, inLineID int64) error {
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO stock_lots (
-    item_id,warehouse_id,source_movement_line_id,source_lot_id,initial_quantity,
+    item_id,brand_id,warehouse_id,source_movement_line_id,source_lot_id,initial_quantity,
     manufacturer_lot_code,manufactured_at,expires_at,received_at
 )
-SELECT dest.item_id,dest.warehouse_id,dest.id,a.stock_lot_id,a.quantity,
+SELECT dest.item_id,src.brand_id,dest.warehouse_id,dest.id,a.stock_lot_id,a.quantity,
        src.manufacturer_lot_code,src.manufactured_at,src.expires_at,src.received_at
 FROM stock_lot_allocations a
 JOIN stock_lots src ON src.id=a.stock_lot_id
@@ -397,18 +404,18 @@ WHERE id=$1`, skuID, quantity).Scan(&canonicalQuantity)
 }
 
 func lockStock(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error {
-	var itemID int64
-	if err := tx.QueryRowContext(ctx, `SELECT item_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID); err != nil {
+	var itemID, brandID int64
+	if err := tx.QueryRowContext(ctx, `SELECT item_id,brand_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID,&brandID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNotFound
 		}
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO stock_locks (item_id, warehouse_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, itemID, warehouseID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO stock_locks (item_id,brand_id,warehouse_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, itemID,brandID,warehouseID); err != nil {
 		return err
 	}
 	var x int
-	return tx.QueryRowContext(ctx, `SELECT 1 FROM stock_locks WHERE item_id=$1 AND warehouse_id=$2 FOR UPDATE`, itemID, warehouseID).Scan(&x)
+	return tx.QueryRowContext(ctx, `SELECT 1 FROM stock_locks WHERE item_id=$1 AND brand_id=$2 AND warehouse_id=$3 FOR UPDATE`, itemID,brandID,warehouseID).Scan(&x)
 }
 
 func ensureRefs(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error {

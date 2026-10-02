@@ -455,9 +455,10 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 		t.Fatalf("create item status=%d body=%s", itemResp.Code, itemResp.Body.String())
 	}
 	itemID := jsonID(t, itemResp.Body.Bytes())
+	brandID := createTestBrand(t,a,"Marca Apresentacao Teste")
 
 	skuResp := authReq(a, "POST", "/api/catalog/skus", map[string]any{
-		"item_id": itemID, "name": "Pacote", "barcode": t.Name()+"-ean",
+		"item_id": itemID, "brand_id":brandID, "content_quantity":"1", "barcode": t.Name()+"-ean",
 	}, director, "")
 	if skuResp.Code != 201 {
 		t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
@@ -472,7 +473,7 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 	}
 
 	edit := authReq(a, "PATCH", "/api/catalog/skus/"+itoa(skuID), map[string]any{
-		"item_id": itemID, "name": "Pacote", "barcode": t.Name()+"-ean",
+		"item_id": itemID, "brand_id":brandID, "barcode": t.Name()+"-ean",
 		"content_quantity": "3", "active": true, "version": crudVersion(t, a, "product_skus", skuID),
 	}, director, "")
 	if edit.Code != 200 {
@@ -774,6 +775,8 @@ WHERE l.item_id=$1 AND l.warehouse_id=$2`, itemID, warehouseID).Scan(&lots); err
 func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
+	brandID := createTestBrand(t,a,t.Name()+"-Brand")
+	if _, err := a.db.Exec(`UPDATE product_skus SET brand_id=$1 WHERE id=$2`,brandID,sku); err != nil { t.Fatal(err) }
 	entry, err := a.createEntry(ctx, movementRequest{
 		OperationID: "detail-lot-entry", SKUID: sku, WarehouseID: wh, Quantity: "6", UnitCost: "9",
 	}, "detail-lot-entry-hash")
@@ -791,8 +794,8 @@ func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testin
 	}
 	var sibling int64
 	if err := a.db.QueryRow(`
-INSERT INTO product_skus(item_id,brand,name,barcode,content_quantity,active)
-VALUES($1,'Marca B','Pacote alternativo',$2,2,true) RETURNING id`, itemID, t.Name()+"-detail-sibling").Scan(&sibling); err != nil {
+INSERT INTO product_skus(item_id,brand_id,brand,name,barcode,content_quantity,active)
+VALUES($1,$2,'Marca B','Pacote alternativo',$3,2,true) RETURNING id`, itemID,brandID,t.Name()+"-detail-sibling").Scan(&sibling); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.db.QueryRow(`
@@ -805,7 +808,7 @@ WHERE ml.movement_id=$1`, entry.MovementID).Scan(&lotID); err != nil {
 
 	createTestUser(t, a, "stock-lot-detail-reader", "secret", "Diretor", true)
 	login := doLogin(t, a, "stock-lot-detail-reader", "secret")
-	rr := authReq(a, "GET", "/api/stock/detail/"+itoa(itemID), nil, login, "")
+	rr := authReq(a, "GET", "/api/stock/detail/"+itoa(itemID)+"?brand_id="+itoa(brandID), nil, login, "")
 	if rr.Code != 200 {
 		t.Fatalf("stock detail status=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -997,5 +1000,81 @@ VALUES($1,'Outra','Outra apresentação',$2,true) RETURNING id`, itemID, t.Name(
 	}, "warehouse-parent-net-exit-hash"); err != nil { t.Fatal(err) }
 	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh); err != nil {
 		t.Fatalf("canonical zero-balance warehouse should deactivate: %v", err)
+	}
+}
+
+
+func TestBrandStockIdentitySharesPresentationsButIsolatesBrands(t *testing.T) {
+	a, payol1, whFrom, whTo := newStockTestApp(t)
+	ctx := context.Background()
+
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, payol1).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	var payolBrand, caeteBrand int64
+	if err := a.db.QueryRow(`INSERT INTO brands(name) VALUES ($1) RETURNING id`, t.Name()+"-Payol").Scan(&payolBrand); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`INSERT INTO brands(name) VALUES ($1) RETURNING id`, t.Name()+"-Caete").Scan(&caeteBrand); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE product_skus SET brand_id=$1,content_quantity=1 WHERE id=$2`, payolBrand, payol1); err != nil {
+		t.Fatal(err)
+	}
+
+	var payol10, caete1 int64
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus(item_id,brand_id,name,barcode,content_quantity,active)
+VALUES($1,$2,'Payol 10 kg',$3,10,true) RETURNING id`, itemID,payolBrand,t.Name()+"-payol10").Scan(&payol10); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus(item_id,brand_id,name,barcode,content_quantity,active)
+VALUES($1,$2,'Caete 1 kg',$3,1,true) RETURNING id`, itemID,caeteBrand,t.Name()+"-caete1").Scan(&caete1); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.createEntry(ctx,movementRequest{
+		OperationID:"brand-payol-entry",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:payol10,WarehouseID:whFrom,Quantity:"1",UnitCost:"50",
+	},"brand-payol-entry-hash"); err != nil { t.Fatal(err) }
+	if _, err := a.createEntry(ctx,movementRequest{
+		OperationID:"brand-caete-entry",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:caete1,WarehouseID:whFrom,Quantity:"50",UnitCost:"5",
+	},"brand-caete-entry-hash"); err != nil { t.Fatal(err) }
+
+	if _, err := a.createExit(ctx,movementRequest{
+		OperationID:"brand-payol-exit",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:payol1,WarehouseID:whFrom,Quantity:"3",
+	},"brand-payol-exit-hash"); err != nil {
+		t.Fatalf("same-brand presentation must consume shared Payol balance: %v",err)
+	}
+
+	payol, err := getStockSnapshot(ctx,a.db,payol1,whFrom)
+	if err != nil { t.Fatal(err) }
+	caete, err := getStockSnapshot(ctx,a.db,caete1,whFrom)
+	if err != nil { t.Fatal(err) }
+	if payol.Quantity!="7.000" || caete.Quantity!="50.000" {
+		t.Fatalf("brand isolation failed: Payol=%s Caete=%s",payol.Quantity,caete.Quantity)
+	}
+
+	if _, err := a.createExit(ctx,movementRequest{
+		OperationID:"brand-payol-too-much",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:payol1,WarehouseID:whFrom,Quantity:"8",
+	},"brand-payol-too-much-hash"); !errors.Is(err,errInsufficientStock) {
+		t.Fatalf("Payol must not consume Caete balance: %v",err)
+	}
+
+	if _, err := a.createTransfer(ctx,movementRequest{
+		OperationID:"brand-payol-transfer",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:payol1,FromWarehouseID:whFrom,ToWarehouseID:whTo,Quantity:"2",
+	},"brand-payol-transfer-hash"); err != nil { t.Fatal(err) }
+
+	fromPayol, _ := getStockSnapshot(ctx,a.db,payol10,whFrom)
+	toPayol, _ := getStockSnapshot(ctx,a.db,payol1,whTo)
+	fromCaete, _ := getStockSnapshot(ctx,a.db,caete1,whFrom)
+	if fromPayol.Quantity!="5.000" || toPayol.Quantity!="2.000" || fromCaete.Quantity!="50.000" {
+		t.Fatalf("transfer crossed brand boundary: Payol from=%s to=%s Caete=%s",fromPayol.Quantity,toPayol.Quantity,fromCaete.Quantity)
 	}
 }
