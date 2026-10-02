@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// Gate 01 regression contracts for canonical stock identity.
-// These tests intentionally describe the corrected domain: sibling SKUs are
-// presentations of the same inventory item and must consume one shared balance.
+// Regression contracts for canonical stock identity, presentation conversion
+// and internal lot allocation. Sibling SKUs are presentations of the same
+// inventory item and consume one shared canonical balance.
 func TestCanonicalStockSiblingSKUCanConsumeParentBalance(t *testing.T) {
 	a, skuIn, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
@@ -641,7 +641,7 @@ func TestTransferLotsPreserveLineageAndExpiry(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	var sourceLot int64
 	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, entry.MovementID).Scan(&sourceLot); err != nil { t.Fatal(err) }
-	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-20',manufacturer_lot_code='FAB-123' WHERE id=$1`, sourceLot); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-20',manufacturer_lot_code='FAB-123',received_at='2026-01-15T10:00:00Z' WHERE id=$1`, sourceLot); err != nil { t.Fatal(err) }
 
 	transfer, err := a.createTransfer(ctx, movementRequest{
 		OperationID: "lot-transfer", SKUID: sku, FromWarehouseID: fromWH, ToWarehouseID: toWH, Quantity: "3",
@@ -650,14 +650,14 @@ func TestTransferLotsPreserveLineageAndExpiry(t *testing.T) {
 
 	var derivedSource int64
 	var qty, lotCode string
-	var expiry string
+	var expiry, receivedAt string
 	if err := a.db.QueryRow(`
-SELECT l.source_lot_id,l.initial_quantity::text,COALESCE(l.manufacturer_lot_code,''),l.expires_at::text
+SELECT l.source_lot_id,l.initial_quantity::text,COALESCE(l.manufacturer_lot_code,''),l.expires_at::text,l.received_at::text
 FROM stock_lots l
 JOIN movement_lines ml ON ml.id=l.source_movement_line_id
-WHERE ml.movement_id=$1 AND ml.direction='IN'`, transfer.MovementID).Scan(&derivedSource,&qty,&lotCode,&expiry); err != nil { t.Fatal(err) }
-	if derivedSource != sourceLot || qty != "3.000" || lotCode != "FAB-123" || expiry != "2026-12-20" {
-		t.Fatalf("transfer lineage source=%d qty=%s code=%s expiry=%s", derivedSource, qty, lotCode, expiry)
+WHERE ml.movement_id=$1 AND ml.direction='IN'`, transfer.MovementID).Scan(&derivedSource,&qty,&lotCode,&expiry,&receivedAt); err != nil { t.Fatal(err) }
+	if derivedSource != sourceLot || qty != "3.000" || lotCode != "FAB-123" || expiry != "2026-12-20" || !strings.HasPrefix(receivedAt,"2026-01-15 10:00:00") {
+		t.Fatalf("transfer lineage source=%d qty=%s code=%s expiry=%s received=%s", derivedSource, qty, lotCode, expiry, receivedAt)
 	}
 }
 
@@ -767,5 +767,166 @@ WHERE ml.movement_id=$1`, entry.MovementID).Scan(&lotID); err != nil {
 	}
 	if s.Quantity != "4.000" {
 		t.Fatalf("stock detail path changed canonical balance: %s", s.Quantity)
+	}
+}
+
+
+func TestLegacyCanonicalMovementIsNotReinterpretedAsPresentation(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.db.Exec(`UPDATE product_skus SET content_quantity=3 WHERE id=$1`, sku); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := a.createEntry(ctx, movementRequest{
+		OperationID: "legacy-canonical-entry",
+		SKUID: sku, WarehouseID: wh, Quantity: "3", UnitCost: "13.30",
+	}, "legacy-canonical-entry-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var qty, cost string
+	if err := a.db.QueryRow(`SELECT quantity::text,unit_cost::text FROM movement_lines WHERE movement_id=$1`, entry.MovementID).Scan(&qty,&cost); err != nil {
+		t.Fatal(err)
+	}
+	if qty != "3.000" || cost != "13.3000" {
+		t.Fatalf("legacy payload was reinterpreted qty=%s cost=%s", qty, cost)
+	}
+}
+
+func TestPresentationIdempotencyDoesNotDuplicateLotsOrAllocations(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.db.Exec(`UPDATE product_skus SET content_quantity=2 WHERE id=$1`, sku); err != nil {
+		t.Fatal(err)
+	}
+	req := movementRequest{
+		OperationID: "presentation-idempotent-entry",
+		QuantitySemantics: presentationQuantitySemantics,
+		SKUID: sku, WarehouseID: wh, Quantity: "2", UnitCost: "20",
+	}
+	first, err := a.createEntry(ctx, req, "presentation-idempotent-entry-hash")
+	if err != nil { t.Fatal(err) }
+	second, err := a.createEntry(ctx, req, "presentation-idempotent-entry-hash")
+	if err != nil { t.Fatal(err) }
+	if first.MovementID != second.MovementID {
+		t.Fatal("idempotent entry returned different movement")
+	}
+	var lots int
+	if err := a.db.QueryRow(`
+SELECT count(*)
+FROM stock_lots l
+JOIN movement_lines ml ON ml.id=l.source_movement_line_id
+WHERE ml.movement_id=$1`, first.MovementID).Scan(&lots); err != nil { t.Fatal(err) }
+	if lots != 1 {
+		t.Fatalf("idempotent entry created %d lots want 1", lots)
+	}
+
+	exitReq := movementRequest{
+		OperationID: "presentation-idempotent-exit",
+		QuantitySemantics: presentationQuantitySemantics,
+		SKUID: sku, WarehouseID: wh, Quantity: "1",
+	}
+	exit1, err := a.createExit(ctx, exitReq, "presentation-idempotent-exit-hash")
+	if err != nil { t.Fatal(err) }
+	exit2, err := a.createExit(ctx, exitReq, "presentation-idempotent-exit-hash")
+	if err != nil { t.Fatal(err) }
+	if exit1.MovementID != exit2.MovementID {
+		t.Fatal("idempotent exit returned different movement")
+	}
+	var allocations int
+	var allocated string
+	if err := a.db.QueryRow(`
+SELECT count(*),COALESCE(sum(a.quantity),0)::text
+FROM stock_lot_allocations a
+JOIN movement_lines ml ON ml.id=a.movement_line_id
+WHERE ml.movement_id=$1`, exit1.MovementID).Scan(&allocations,&allocated); err != nil { t.Fatal(err) }
+	if allocations != 1 || allocated != "2.000" {
+		t.Fatalf("idempotent exit allocations=%d qty=%s", allocations, allocated)
+	}
+}
+
+func TestLotAllocationFailureRollsBackWholeExit(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "rollback-lot-seed", SKUID: sku, WarehouseID: wh, Quantity: "5", UnitCost: "10",
+	}, "rollback-lot-seed-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`DELETE FROM stock_lots`); err != nil {
+		t.Fatal(err)
+	}
+	var beforeMovements, beforeLines int
+	if err := a.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&beforeMovements); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&beforeLines); err != nil { t.Fatal(err) }
+
+	if _, err := a.createExit(ctx, movementRequest{
+		OperationID: "rollback-lot-exit", SKUID: sku, WarehouseID: wh, Quantity: "2",
+	}, "rollback-lot-exit-hash"); err == nil || !strings.Contains(err.Error(),"lot allocation") {
+		t.Fatalf("expected lot allocation failure, got %v", err)
+	}
+	var afterMovements, afterLines, exitOps int
+	if err := a.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&afterMovements); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&afterLines); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT count(*) FROM movements WHERE operation_id='rollback-lot-exit'`).Scan(&exitOps); err != nil { t.Fatal(err) }
+	if afterMovements != beforeMovements || afterLines != beforeLines || exitOps != 0 {
+		t.Fatalf("failed exit left partial data movements %d->%d lines %d->%d op=%d", beforeMovements, afterMovements, beforeLines, afterLines, exitOps)
+	}
+}
+
+func TestLotChoiceDoesNotChangeWeightedAverageCost(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	e1, err := a.createEntry(ctx, movementRequest{
+		OperationID: "cost-lot-entry-1", SKUID: sku, WarehouseID: wh, Quantity: "10", UnitCost: "10",
+	}, "cost-lot-entry-1-hash")
+	if err != nil { t.Fatal(err) }
+	e2, err := a.createEntry(ctx, movementRequest{
+		OperationID: "cost-lot-entry-2", SKUID: sku, WarehouseID: wh, Quantity: "10", UnitCost: "20",
+	}, "cost-lot-entry-2-hash")
+	if err != nil { t.Fatal(err) }
+	var lot1, lot2 int64
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, e1.MovementID).Scan(&lot1); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, e2.MovementID).Scan(&lot2); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-31' WHERE id=$1; UPDATE stock_lots SET expires_at='2026-11-30' WHERE id=$2`, lot1, lot2); err != nil { t.Fatal(err) }
+
+	exit, err := a.createExit(ctx, movementRequest{
+		OperationID: "cost-lot-exit", SKUID: sku, WarehouseID: wh, Quantity: "5",
+	}, "cost-lot-exit-hash")
+	if err != nil { t.Fatal(err) }
+	var exitCost string
+	var chosenLot int64
+	if err := a.db.QueryRow(`
+SELECT ml.unit_cost::text,a.stock_lot_id
+FROM movement_lines ml
+JOIN stock_lot_allocations a ON a.movement_line_id=ml.id
+WHERE ml.movement_id=$1`, exit.MovementID).Scan(&exitCost,&chosenLot); err != nil { t.Fatal(err) }
+	if chosenLot != lot2 || exitCost != "15.0000" {
+		t.Fatalf("lot/cost coupling detected chosen=%d want=%d exit_cost=%s want=15.0000", chosenLot, lot2, exitCost)
+	}
+	s, err := getStockSnapshot(ctx, a.db, sku, wh)
+	if err != nil { t.Fatal(err) }
+	if s.Quantity != "15.000" || s.AvgCost != "15.0000" {
+		t.Fatalf("post-exit avg changed qty=%s avg=%s", s.Quantity, s.AvgCost)
+	}
+}
+
+func TestCanonicalWarehouseCanDeactivateAfterCrossSKUParentNetZero(t *testing.T) {
+	a, skuA, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuA).Scan(&itemID); err != nil { t.Fatal(err) }
+	var skuB int64
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus(item_id,brand,name,barcode,active)
+VALUES($1,'Outra','Outra apresentação',$2,true) RETURNING id`, itemID, t.Name()+"-sibling").Scan(&skuB); err != nil { t.Fatal(err) }
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "warehouse-parent-net-entry", SKUID: skuA, WarehouseID: wh, Quantity: "10", UnitCost: "1",
+	}, "warehouse-parent-net-entry-hash"); err != nil { t.Fatal(err) }
+	if _, err := a.createExit(ctx, movementRequest{
+		OperationID: "warehouse-parent-net-exit", SKUID: skuB, WarehouseID: wh, Quantity: "10",
+	}, "warehouse-parent-net-exit-hash"); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh); err != nil {
+		t.Fatalf("canonical zero-balance warehouse should deactivate: %v", err)
 	}
 }
