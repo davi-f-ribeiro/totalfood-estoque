@@ -25,11 +25,15 @@ func (a *app) createEntry(ctx context.Context, req movementRequest, hash string)
 		if err := lockStock(ctx, tx, req.SKUID, req.WarehouseID); err != nil {
 			return 0, err
 		}
+		quantity, unitCost, err := normalizePresentation(ctx, tx, req.SKUID, req.Quantity, req.UnitCost, true)
+		if err != nil {
+			return 0, err
+		}
 		m, err := insertMovement(ctx, tx, "ENTRADA", req, hash)
 		if err != nil {
 			return 0, err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5)`, m, req.SKUID, req.WarehouseID, req.Quantity, req.UnitCost)
+		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5)`, m, req.SKUID, req.WarehouseID, quantity, unitCost)
 		return m, err
 	})
 }
@@ -84,7 +88,11 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 			return 0, err
 		}
 		for _, line := range lines {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5)`, m, line.SKUID, req.WarehouseID, line.Quantity, line.UnitCost); err != nil {
+			quantity, unitCost, err := normalizePresentation(ctx, tx, line.SKUID, line.Quantity, line.UnitCost, true)
+			if err != nil {
+				return 0, err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'IN',$4,$5)`, m, line.SKUID, req.WarehouseID, quantity, unitCost); err != nil {
 				return 0, err
 			}
 		}
@@ -114,18 +122,22 @@ func (a *app) createExit(ctx context.Context, req movementRequest, hash string) 
 		if err := lockStock(ctx, tx, req.SKUID, req.WarehouseID); err != nil {
 			return 0, err
 		}
+		quantity, _, err := normalizePresentation(ctx, tx, req.SKUID, req.Quantity, "", false)
+		if err != nil {
+			return 0, err
+		}
 		s, err := getStockSnapshot(ctx, tx, req.SKUID, req.WarehouseID)
 		if err != nil {
 			return 0, err
 		}
-		if !quantityAtLeast(ctx, tx, s.Quantity, req.Quantity) {
+		if !quantityAtLeast(ctx, tx, s.Quantity, quantity) {
 			return 0, insufficientStockError{Available: s.Quantity, Unit: s.Unit}
 		}
 		m, err := insertMovement(ctx, tx, "SAIDA", req, hash)
 		if err != nil {
 			return 0, err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'OUT',$4,$5)`, m, req.SKUID, req.WarehouseID, req.Quantity, s.AvgCost)
+		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'OUT',$4,$5)`, m, req.SKUID, req.WarehouseID, quantity, s.AvgCost)
 		return m, err
 	})
 }
@@ -162,11 +174,15 @@ func (a *app) createTransfer(ctx context.Context, req movementRequest, hash stri
 				return 0, err
 			}
 		}
+		quantity, _, err := normalizePresentation(ctx, tx, req.SKUID, req.Quantity, "", false)
+		if err != nil {
+			return 0, err
+		}
 		s, err := getStockSnapshot(ctx, tx, req.SKUID, req.FromWarehouseID)
 		if err != nil {
 			return 0, err
 		}
-		if !quantityAtLeast(ctx, tx, s.Quantity, req.Quantity) {
+		if !quantityAtLeast(ctx, tx, s.Quantity, quantity) {
 			return 0, insufficientStockError{Available: s.Quantity, Unit: s.Unit}
 		}
 		req.WarehouseID = req.FromWarehouseID
@@ -174,7 +190,7 @@ func (a *app) createTransfer(ctx context.Context, req movementRequest, hash stri
 		if err != nil {
 			return 0, err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'OUT',$4,$5),($1,$2,$6,'IN',$4,$5)`, m, req.SKUID, req.FromWarehouseID, req.Quantity, s.AvgCost, req.ToWarehouseID)
+		_, err = tx.ExecContext(ctx, `INSERT INTO movement_lines (movement_id, sku_id, warehouse_id, direction, quantity, unit_cost) VALUES ($1,$2,$3,'OUT',$4,$5),($1,$2,$6,'IN',$4,$5)`, m, req.SKUID, req.FromWarehouseID, quantity, s.AvgCost, req.ToWarehouseID)
 		return m, err
 	})
 }
@@ -212,6 +228,32 @@ func insertMovement(ctx context.Context, tx *sql.Tx, typ string, req movementReq
 	var id int64
 	err := tx.QueryRowContext(ctx, `INSERT INTO movements (operation_id, request_hash, movement_type, document_number, supplier_name, user_id, notes) VALUES ($1,$2,$3,NULLIF($4,''),NULLIF($5,''),NULLIF($6,0),NULLIF($7,'')) RETURNING id`, req.OperationID, hash, typ, req.DocumentNumber, req.SupplierName, req.UserID, req.Notes).Scan(&id)
 	return id, err
+}
+
+func normalizePresentation(ctx context.Context, tx *sql.Tx, skuID int64, quantity, unitCost string, withCost bool) (string, string, error) {
+	var canonicalQuantity, canonicalUnitCost string
+	if withCost {
+		err := tx.QueryRowContext(ctx, `
+SELECT
+  ($2::numeric * content_quantity)::numeric(14,3)::text,
+  CASE WHEN $3::numeric = 0 THEN '0.0000'
+       ELSE ($3::numeric / content_quantity)::numeric(14,4)::text
+  END
+FROM product_skus
+WHERE id=$1`, skuID, quantity, unitCost).Scan(&canonicalQuantity, &canonicalUnitCost)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", errNotFound
+		}
+		return canonicalQuantity, canonicalUnitCost, err
+	}
+	err := tx.QueryRowContext(ctx, `
+SELECT ($2::numeric * content_quantity)::numeric(14,3)::text
+FROM product_skus
+WHERE id=$1`, skuID, quantity).Scan(&canonicalQuantity)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", errNotFound
+	}
+	return canonicalQuantity, "", err
 }
 
 func lockStock(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error {
