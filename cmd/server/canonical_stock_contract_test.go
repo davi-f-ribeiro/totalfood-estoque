@@ -650,3 +650,112 @@ WHERE ml.movement_id=$1 AND ml.direction='IN'`, transfer.MovementID).Scan(&deriv
 		t.Fatalf("transfer lineage source=%d qty=%s code=%s expiry=%s", derivedSource, qty, lotCode, expiry)
 	}
 }
+
+
+func TestLotBalancesReconcileWithCanonicalLedgerByWarehouse(t *testing.T) {
+	a, sku, wh1, wh2 := newStockTestApp(t)
+	ctx := context.Background()
+
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "reconcile-entry-1", SKUID: sku, WarehouseID: wh1, Quantity: "10", UnitCost: "10",
+	}, "reconcile-entry-1-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "reconcile-entry-2", SKUID: sku, WarehouseID: wh1, Quantity: "5", UnitCost: "14",
+	}, "reconcile-entry-2-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createExit(ctx, movementRequest{
+		OperationID: "reconcile-exit", SKUID: sku, WarehouseID: wh1, Quantity: "4",
+	}, "reconcile-exit-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createTransfer(ctx, movementRequest{
+		OperationID: "reconcile-transfer", SKUID: sku, FromWarehouseID: wh1, ToWarehouseID: wh2, Quantity: "3",
+	}, "reconcile-transfer-hash"); err != nil {
+		t.Fatal(err)
+	}
+
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, sku).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertReconciled := func(warehouseID int64) {
+		t.Helper()
+		var ledger, lots string
+		if err := a.db.QueryRow(`
+SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::text
+FROM movement_lines
+WHERE item_id=$1 AND warehouse_id=$2`, itemID, warehouseID).Scan(&ledger); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.db.QueryRow(`
+SELECT COALESCE(sum(l.initial_quantity-COALESCE(a.allocated,0)),0)::text
+FROM stock_lots l
+LEFT JOIN LATERAL (
+    SELECT sum(quantity) AS allocated
+    FROM stock_lot_allocations
+    WHERE stock_lot_id=l.id
+) a ON true
+WHERE l.item_id=$1 AND l.warehouse_id=$2`, itemID, warehouseID).Scan(&lots); err != nil {
+			t.Fatal(err)
+		}
+		var equal bool
+		if err := a.db.QueryRow(`SELECT $1::numeric=$2::numeric`, ledger, lots).Scan(&equal); err != nil {
+			t.Fatal(err)
+		}
+		if !equal {
+			t.Fatalf("ledger/lots mismatch warehouse=%d ledger=%s lots=%s", warehouseID, ledger, lots)
+		}
+	}
+
+	assertReconciled(wh1)
+	assertReconciled(wh2)
+}
+
+func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	entry, err := a.createEntry(ctx, movementRequest{
+		OperationID: "detail-lot-entry", SKUID: sku, WarehouseID: wh, Quantity: "6", UnitCost: "9",
+	}, "detail-lot-entry-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createExit(ctx, movementRequest{
+		OperationID: "detail-lot-exit", SKUID: sku, WarehouseID: wh, Quantity: "2",
+	}, "detail-lot-exit-hash"); err != nil {
+		t.Fatal(err)
+	}
+	var itemID, lotID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, sku).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`
+SELECT l.id
+FROM stock_lots l
+JOIN movement_lines ml ON ml.id=l.source_movement_line_id
+WHERE ml.movement_id=$1`, entry.MovementID).Scan(&lotID); err != nil {
+		t.Fatal(err)
+	}
+
+	createTestUser(t, a, "stock-lot-detail-reader", "secret", "Diretor", true)
+	login := doLogin(t, a, "stock-lot-detail-reader", "secret")
+	rr := authReq(a, "GET", "/api/stock/detail/"+itoa(itemID), nil, login, "")
+	if rr.Code != 200 {
+		t.Fatalf("stock detail status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `"quantity":"4.000"`) || !strings.Contains(body, `"id":`+itoa(lotID)) {
+		t.Fatalf("remaining lot trace missing from detail: %s", body)
+	}
+	s, err := getStockSnapshot(ctx, a.db, sku, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Quantity != "4.000" {
+		t.Fatalf("stock detail path changed canonical balance: %s", s.Quantity)
+	}
+}
