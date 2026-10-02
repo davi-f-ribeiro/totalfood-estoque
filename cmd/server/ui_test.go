@@ -146,26 +146,31 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 	}
 }
 
-func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
+func TestStockHierarchyKeepsParentAsPrimaryVisualUnit(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
 	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
 	if err != nil { t.Fatal(err) }
 	js, css := string(jsb), string(cssb)
 	for _, want := range []string{
-		`let openKey='',detailSeq=0`,
-		`let key=row.item_id+':'+row.brand_id`,
-		`/api/stock/detail/'+row.item_id+'?brand_id='+row.brand_id`,
-		`if(seq!==detailSeq||openKey!==key)return`,
+		`let openItem=0,detailSeq=0`,
+		`openItem===row.item_id`,
+		`/api/stock/detail/'+row.item_id+qs`,
+		`summary.textContent=x.brand+' — '+displayDecimal(x.quantity)+' '+x.unit`,
+		`/api/stock/detail/'+row.item_id+'?brand_id='+x.brand_id`,
+		`a.textContent=r.name`,
+		`q.textContent=displayDecimal(r.quantity)+' '+r.unit+' ▼'`,
 		`card.after(detail)`,
-		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
-		`sum.textContent='Embalagens'`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
-		if !strings.Contains(js+css,want) { t.Fatalf("brand stock contextual detail missing %q",want) }
+		if !strings.Contains(js+css,want) { t.Fatalf("stock parent/brand hierarchy missing %q",want) }
 	}
-	for _, forbidden := range []string{"Composição do saldo","detail-head","movementURL(path,d,x)","['Entrada','/entry']","x.warehouse"} {
-		if strings.Contains(js,forbidden) { t.Fatalf("stock detail repeats context or movement actions: %q",forbidden) }
+	for _, forbidden := range []string{
+		`a.textContent=r.name+' - '+r.brand`,
+		`let key=row.item_id+':'+row.brand_id`,
+		"Composição do saldo","detail-head","movementURL(path,d,x)","['Entrada','/entry']",
+	} {
+		if strings.Contains(js,forbidden) { t.Fatalf("stock hierarchy regressed to brand-primary or duplicated actions: %q",forbidden) }
 	}
 }
 
