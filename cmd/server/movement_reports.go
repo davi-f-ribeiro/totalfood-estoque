@@ -32,7 +32,7 @@ SELECT m.occurred_at,m.id,m.movement_type,i.name,
        COALESCE(s.barcode,''),w.id,w.name,ml.quantity::text,i.unit_code,
        ml.unit_cost::numeric(14,4)::text,
        COALESCE(m.document_number,''),COALESCE(m.supplier_name,''),
-       COALESCE(u.login,'')
+       COALESCE(NULLIF(u.login,''),NULLIF(m.responsible,''),'')
 FROM movements m
 JOIN movement_lines ml ON ml.movement_id=m.id
 JOIN product_skus s ON s.id=ml.sku_id
