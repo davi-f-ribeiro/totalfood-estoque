@@ -235,6 +235,39 @@ WHERE validation_id=$1`, res.ID).Scan(&snapshot); err != nil {
 	if snapshot != "10.000" {
 		t.Fatalf("canonical inventory snapshot=%s want 10.000", snapshot)
 	}
+
+	var snappedItem int64
+	if err := e.db.QueryRow(`
+SELECT item_id FROM inventory_validation_lines WHERE validation_id=$1`, res.ID).Scan(&snappedItem); err != nil {
+		t.Fatal(err)
+	}
+	if snappedItem != itemID {
+		t.Fatalf("inventory parent snapshot=%d want %d", snappedItem, itemID)
+	}
+	var otherItem int64
+	if err := e.db.QueryRow(`
+INSERT INTO inventory_items(name,category_id,unit_code,active)
+VALUES($1,$2,'KG',true) RETURNING id`, t.Name()+"-other-parent", catID).Scan(&otherItem); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Exec(`UPDATE product_skus SET item_id=$1 WHERE id=$2`, otherItem, res.SKUIDs[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	lookupAfterMove, err := e.a.lookupInventoryBarcode(ctx, res.ID, t.Name()+"-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lookupAfterMove.Known || !lookupAfterMove.InInventory || lookupAfterMove.SKUID != res.SKUIDs[0] {
+		t.Fatalf("inventory parent snapshot lost after representative reassign: %+v", lookupAfterMove)
+	}
+	view, err := e.a.getInventoryCountingView(ctx, res.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Lines) != 1 || view.Lines[0].Description != t.Name()+"-item" {
+		t.Fatalf("inventory history followed current SKU parent: %+v", view.Lines)
+	}
 	_ = skuB
 }
 
