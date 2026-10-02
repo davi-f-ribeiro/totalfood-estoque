@@ -164,3 +164,62 @@ RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
 		t.Fatalf("shared stock after concurrent exits=%s want 3.000", s.Quantity)
 	}
 }
+
+
+func TestInventorySiblingBarcodeResolvesSingleCanonicalLine(t *testing.T) {
+	e := newInventoryTestEnv(t)
+	ctx := context.Background()
+	wh := e.warehouse(t, "canonical-inventory", true)
+
+	var catID, itemID, skuA, skuB int64
+	if err := e.db.QueryRow(`SELECT id FROM categories ORDER BY id LIMIT 1`).Scan(&catID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.QueryRow(`
+INSERT INTO inventory_items (name,category_id,unit_code,active)
+VALUES ($1,$2,'KG',true) RETURNING id`, t.Name()+"-item", catID).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.QueryRow(`
+INSERT INTO product_skus (item_id,name,barcode,active)
+VALUES ($1,'Big Bag 10kg',$2,true) RETURNING id`, itemID, t.Name()+"-a").Scan(&skuA); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.QueryRow(`
+INSERT INTO product_skus (item_id,name,barcode,active)
+VALUES ($1,'Pacote 1kg',$2,true) RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
+		t.Fatal(err)
+	}
+	e.movement(t, skuA, wh, "IN", 10)
+
+	res, err := e.a.createTotalInventory(ctx, e.userID, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.SKUIDs) != 1 {
+		t.Fatalf("canonical inventory created %d lines for one item: %v", len(res.SKUIDs), res.SKUIDs)
+	}
+
+	lookup, err := e.a.lookupInventoryBarcode(ctx, res.ID, t.Name()+"-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !lookup.Known || !lookup.InInventory {
+		t.Fatalf("sibling barcode not resolved into canonical inventory line: %+v", lookup)
+	}
+	if lookup.SKUID != res.SKUIDs[0] {
+		t.Fatalf("lookup line sku=%d want representative=%d", lookup.SKUID, res.SKUIDs[0])
+	}
+
+	var snapshot string
+	if err := e.db.QueryRow(`
+SELECT system_quantity_snapshot::text
+FROM inventory_validation_lines
+WHERE validation_id=$1`, res.ID).Scan(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot != "10.000" {
+		t.Fatalf("canonical inventory snapshot=%s want 10.000", snapshot)
+	}
+	_ = skuB
+}
