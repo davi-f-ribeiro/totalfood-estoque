@@ -27,11 +27,10 @@ FROM warehouses w
 JOIN product_skus requested_sku ON requested_sku.id=$1
 JOIN inventory_items i ON i.id=requested_sku.item_id
 JOIN (
-  SELECT ml.warehouse_id, line_sku.item_id,
+  SELECT ml.warehouse_id, ml.item_id,
          COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) AS quantity
   FROM movement_lines ml
-  JOIN product_skus line_sku ON line_sku.id=ml.sku_id
-  GROUP BY ml.warehouse_id,line_sku.item_id
+  GROUP BY ml.warehouse_id,ml.item_id
 ) bal ON bal.warehouse_id=w.id AND bal.item_id=requested_sku.item_id
 WHERE w.active=true AND bal.quantity > 0
 ORDER BY w.name`, skuID)
@@ -75,7 +74,6 @@ func (a *app) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 SELECT rep.id,COALESCE(rep.name,''),COALESCE(rep.barcode,''),w.id,w.name,
        sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text
 FROM movement_lines ml
-JOIN product_skus line_sku ON line_sku.id=ml.sku_id
 JOIN warehouses w ON w.id=ml.warehouse_id
 JOIN LATERAL (
     SELECT s.id,s.name,s.barcode
@@ -84,7 +82,7 @@ JOIN LATERAL (
     ORDER BY s.id
     LIMIT 1
 ) rep ON true
-WHERE line_sku.item_id=$1
+WHERE ml.item_id=$1
 GROUP BY rep.id,rep.name,rep.barcode,w.id,w.name
 HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) <> 0
 ORDER BY w.name`, itemID)
@@ -112,9 +110,9 @@ func stockRowsSQL(general bool, showZero bool) string {
 		where = ""
 	}
 	if general {
-		return `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS qty, CASE WHEN i.minimum_stock IS NULL THEN false ELSE COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < i.minimum_stock END FROM inventory_items i JOIN product_skus s ON s.item_id=i.id LEFT JOIN movement_lines ml ON ml.sku_id=s.id GROUP BY i.id ` + where + ` ORDER BY i.name`
+		return `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS qty, CASE WHEN i.minimum_stock IS NULL THEN false ELSE COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < i.minimum_stock END FROM inventory_items i LEFT JOIN movement_lines ml ON ml.item_id=i.id GROUP BY i.id ` + where + ` ORDER BY i.name`
 	}
-	return `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS qty, CASE WHEN i.minimum_stock IS NULL THEN false ELSE COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < i.minimum_stock END FROM inventory_items i JOIN product_skus s ON s.item_id=i.id LEFT JOIN movement_lines ml ON ml.sku_id=s.id AND ml.warehouse_id=$1 GROUP BY i.id ` + where + ` ORDER BY i.name`
+	return `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS qty, CASE WHEN i.minimum_stock IS NULL THEN false ELSE COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < i.minimum_stock END FROM inventory_items i LEFT JOIN movement_lines ml ON ml.item_id=i.id AND ml.warehouse_id=$1 GROUP BY i.id ` + where + ` ORDER BY i.name`
 }
 
 func normalizeOpText(v string) string { return strings.TrimSpace(v) }
