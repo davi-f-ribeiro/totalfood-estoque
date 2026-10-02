@@ -42,7 +42,7 @@ type adminProfilePermissionsRequest struct {
 }
 
 func (a *app) registerAdminHandlers(mux *http.ServeMux) {
-	mux.HandleFunc("GET /admin", a.uiPage("admin", "Administração", "users", "write"))
+	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /api/admin/users", a.requireAuth("users", "write", a.handleAdminUsers))
 	mux.HandleFunc("POST /api/admin/users", a.requireAuth("users", "write", a.handleAdminCreateUser))
 	mux.HandleFunc("PATCH /api/admin/users/{id}", a.requireAuth("users", "write", a.handleAdminUpdateUser))
