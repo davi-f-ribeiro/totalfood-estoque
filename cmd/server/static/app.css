@@ -207,3 +207,9 @@
  .asset-unit-layout{grid-template-columns:1fr;gap:16px}
  .asset-unit-list-pane{border-right:0;border-bottom:1px solid var(--border);padding:0 0 16px}
 }
+
+/* Operational stock detail: concise balance composition; lot audit stays out of this view. */
+.stock-composition{margin-top:16px}.stock-composition h3{margin:0 0 6px}.stock-composition-row{padding:5px 0;color:var(--text-primary);font-weight:700}
+/* Quantity is a short numeric decision, not a full-width content field. */
+.movement label:has(#quantity){align-self:start}.movement #quantity{width:min(100%,180px)}
+@media(max-width:767px){.movement label:has(#quantity){width:180px;margin-bottom:10px}}
