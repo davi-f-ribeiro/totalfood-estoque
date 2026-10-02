@@ -193,7 +193,7 @@ SELECT l.sku_id,
        l.count_version
 FROM inventory_validation_lines l
 JOIN product_skus s ON s.id=l.sku_id
-JOIN inventory_items i ON i.id=s.item_id
+JOIN inventory_items i ON i.id=l.item_id
 LEFT JOIN users u ON u.id=l.counted_by_user_id
 WHERE l.validation_id=$1
 ORDER BY i.name,code,l.sku_id`, id)
@@ -250,8 +250,7 @@ func (a *app) lookupInventoryBarcode(ctx context.Context, validationID int64, ba
 	err = a.db.QueryRowContext(ctx, `
 SELECT l.sku_id
 FROM inventory_validation_lines l
-JOIN product_skus s ON s.id=l.sku_id
-WHERE l.validation_id=$1 AND s.item_id=$2
+WHERE l.validation_id=$1 AND l.item_id=$2
 LIMIT 1`, validationID, itemID).Scan(&lineSKUID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return inventoryLookupResult{Known: true, InInventory: false, SKUID: scannedSKUID}, nil
@@ -365,7 +364,7 @@ SELECT l.sku_id,
        l.count_version
 FROM inventory_validation_lines l
 JOIN product_skus s ON s.id=l.sku_id
-JOIN inventory_items i ON i.id=s.item_id
+JOIN inventory_items i ON i.id=l.item_id
 LEFT JOIN users u ON u.id=l.counted_by_user_id
 WHERE l.validation_id=$1 AND l.sku_id=$2`, validationID, skuID).
 		Scan(&line.SKUID, &line.Code, &line.Description, &line.Unit, &line.Barcode, &qty, &countedAt, &line.CountedBy, &line.Version); err != nil {
