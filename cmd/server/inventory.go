@@ -334,17 +334,30 @@ func validateInventoryWarehouse(ctx context.Context, q interface {
 
 func inventoryEligibility(ctx context.Context, q inventoryQueryer, warehouseID int64) ([]inventoryEligibilityRow, error) {
 	rows, err := q.QueryContext(ctx, `
-SELECT COALESCE(min(s.id) FILTER (WHERE s.active),min(s.id)) AS sku_id,
-       COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS balance,
-       bool_or(s.active) AS sku_active,
+WITH sku_rep AS (
+    SELECT item_id,
+           COALESCE(min(id) FILTER (WHERE active),min(id)) AS sku_id,
+           bool_or(active) AS sku_active
+    FROM product_skus
+    GROUP BY item_id
+),
+balances AS (
+    SELECT item_id,
+           COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) AS balance
+    FROM movement_lines
+    WHERE warehouse_id=$1
+    GROUP BY item_id
+)
+SELECT r.sku_id,
+       COALESCE(b.balance,0)::text,
+       r.sku_active,
        i.active,
-       COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) > 0 AS positive_balance,
-       COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < 0 AS negative_balance
+       COALESCE(b.balance,0) > 0,
+       COALESCE(b.balance,0) < 0
 FROM inventory_items i
-JOIN product_skus s ON s.item_id=i.id
-LEFT JOIN movement_lines ml ON ml.sku_id=s.id AND ml.warehouse_id=$1
-GROUP BY i.id
-ORDER BY sku_id`, warehouseID)
+JOIN sku_rep r ON r.item_id=i.id
+LEFT JOIN balances b ON b.item_id=i.id
+ORDER BY r.sku_id`, warehouseID)
 	if err != nil {
 		return nil, err
 	}
@@ -405,24 +418,25 @@ func selectBlindWarehouse(ctx context.Context, tx *sql.Tx) (int64, int, error) {
 	var warehouseID int64
 	var eligibleCount int
 	err := tx.QueryRowContext(ctx, `
-WITH balances AS (
-    SELECT w.id AS warehouse_id,
-           i.id AS item_id,
-           bool_or(s.active) AS sku_active,
-           i.active AS item_active,
-           COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) AS balance
-    FROM warehouses w
-    CROSS JOIN inventory_items i
-    JOIN product_skus s ON s.item_id=i.id
-    LEFT JOIN movement_lines ml ON ml.sku_id=s.id AND ml.warehouse_id=w.id
-    WHERE w.active=true
-    GROUP BY w.id,i.id
+WITH sku_rep AS (
+    SELECT item_id,bool_or(active) AS sku_active
+    FROM product_skus
+    GROUP BY item_id
+),
+balances AS (
+    SELECT ml.warehouse_id,ml.item_id,
+           sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) AS balance
+    FROM movement_lines ml
+    GROUP BY ml.warehouse_id,ml.item_id
 ),
 eligible_counts AS (
-    SELECT warehouse_id, count(*)::int AS eligible_count
-    FROM balances
-    WHERE sku_active=true AND item_active=true AND balance>0
-    GROUP BY warehouse_id
+    SELECT b.warehouse_id,count(*)::int AS eligible_count
+    FROM balances b
+    JOIN warehouses w ON w.id=b.warehouse_id AND w.active=true
+    JOIN inventory_items i ON i.id=b.item_id
+    JOIN sku_rep r ON r.item_id=b.item_id
+    WHERE r.sku_active=true AND i.active=true AND b.balance>0
+    GROUP BY b.warehouse_id
     HAVING count(*) >= 2
 ),
 history AS (
@@ -444,16 +458,19 @@ LIMIT 1`).Scan(&warehouseID, &eligibleCount)
 
 func selectBlindSKUs(ctx context.Context, tx *sql.Tx, warehouseID int64, sampleSize int) ([]inventorySnapshotLine, error) {
 	rows, err := tx.QueryContext(ctx, `
-WITH balances AS (
-    SELECT i.id AS item_id,
-           min(s.id) FILTER (WHERE s.active) AS sku_id,
-           bool_or(s.active) AS sku_active,
-           i.active AS item_active,
-           COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) AS balance
-    FROM inventory_items i
-    JOIN product_skus s ON s.item_id=i.id
-    LEFT JOIN movement_lines ml ON ml.sku_id=s.id AND ml.warehouse_id=$1
-    GROUP BY i.id
+WITH sku_rep AS (
+    SELECT item_id,
+           min(id) FILTER (WHERE active) AS sku_id,
+           bool_or(active) AS sku_active
+    FROM product_skus
+    GROUP BY item_id
+),
+balances AS (
+    SELECT item_id,
+           sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END) AS balance
+    FROM movement_lines
+    WHERE warehouse_id=$1
+    GROUP BY item_id
 ),
 history AS (
     SELECT hs.item_id, max(v.created_at) AS last_selected
@@ -462,10 +479,12 @@ history AS (
     JOIN inventory_validations v ON v.id=l.validation_id
     GROUP BY hs.item_id
 )
-SELECT b.sku_id, b.balance::text
+SELECT r.sku_id,b.balance::text
 FROM balances b
+JOIN inventory_items i ON i.id=b.item_id
+JOIN sku_rep r ON r.item_id=b.item_id
 LEFT JOIN history h ON h.item_id=b.item_id
-WHERE b.sku_active=true AND b.item_active=true AND b.balance>0 AND b.sku_id IS NOT NULL
+WHERE r.sku_active=true AND i.active=true AND b.balance>0 AND r.sku_id IS NOT NULL
 ORDER BY (h.last_selected IS NOT NULL), h.last_selected ASC NULLS FIRST, random()
 LIMIT $2`, warehouseID, sampleSize)
 	if err != nil {
