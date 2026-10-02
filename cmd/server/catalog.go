@@ -373,7 +373,7 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 	}
 	if currentUnit != req.UnitCode {
 		var used bool
-		if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM movement_lines ml JOIN product_skus s ON s.id=ml.sku_id WHERE s.item_id=$1)`, id).Scan(&used); err != nil {
+		if err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM movement_lines WHERE item_id=$1)`, id).Scan(&used); err != nil {
 			writeJSONError(w, 500, "Erro interno.")
 			return
 		}
