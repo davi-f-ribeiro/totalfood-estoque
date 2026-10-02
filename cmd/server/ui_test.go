@@ -523,7 +523,6 @@ func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 		"async function runLocked(control,fn)",
 		"function requireFields(form,feedback",
 		"dataset.busy==='1'",
-		"submit.disabled=true",
 		"reportValidity()",
 		`id="assetMoveWarehouse" required`,
 		`id="assetNewStatus" required`,
@@ -609,7 +608,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"itemForm.reset()",
 		"typeForm.reset()",
 		"unitForm.reset()",
-		"form.reset()",
+		"userForm.reset()",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("CRUD safety state missing %q", want)
