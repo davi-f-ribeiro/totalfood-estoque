@@ -8,21 +8,31 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 )
 
 func getStockSnapshot(ctx context.Context, q interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, skuID, warehouseID int64) (stockSnapshot, error) {
+	return getStockSnapshotAt(ctx, q, skuID, warehouseID, nil)
+}
+
+func getStockSnapshotAt(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, skuID, warehouseID int64, before *time.Time) (stockSnapshot, error) {
 	var s stockSnapshot
 	err := q.QueryRowContext(ctx, `
 SELECT
-  COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::text AS quantity,
-  COALESCE(sum(CASE WHEN direction='IN' THEN quantity*unit_cost ELSE -quantity*unit_cost END),0)::text AS value,
-  CASE WHEN COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) = 0
+  COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS quantity,
+  COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity*ml.unit_cost ELSE -ml.quantity*ml.unit_cost END),0)::text AS value,
+  CASE WHEN COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) = 0
        THEN '0'
-       ELSE (COALESCE(sum(CASE WHEN direction='IN' THEN quantity*unit_cost ELSE -quantity*unit_cost END),0) / COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0))::numeric(14,4)::text
+       ELSE (COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity*ml.unit_cost ELSE -ml.quantity*ml.unit_cost END),0) / COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0))::numeric(14,4)::text
   END AS avg_cost
-FROM movement_lines WHERE sku_id=$1 AND warehouse_id=$2`, skuID, warehouseID).Scan(&s.Quantity, &s.Value, &s.AvgCost)
+FROM movement_lines ml
+JOIN movements m ON m.id=ml.movement_id
+WHERE ml.sku_id=$1 AND ml.warehouse_id=$2
+  AND ($3::timestamptz IS NULL OR m.occurred_at < $3)`, skuID, warehouseID, before).Scan(&s.Quantity, &s.Value, &s.AvgCost)
 	if err != nil {
 		return s, err
 	}
