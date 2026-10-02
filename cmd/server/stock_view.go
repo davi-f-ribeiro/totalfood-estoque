@@ -24,14 +24,15 @@ func (a *app) handleStockAvailability(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
 SELECT w.id,w.name,bal.quantity::text,i.unit_code
 FROM warehouses w
+JOIN product_skus requested_sku ON requested_sku.id=$1
+JOIN inventory_items i ON i.id=requested_sku.item_id
 JOIN (
-  SELECT warehouse_id, COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) AS quantity
-  FROM movement_lines
-  WHERE sku_id=$1
-  GROUP BY warehouse_id
-) bal ON bal.warehouse_id=w.id
-JOIN product_skus s ON s.id=$1
-JOIN inventory_items i ON i.id=s.item_id
+  SELECT ml.warehouse_id, line_sku.item_id,
+         COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) AS quantity
+  FROM movement_lines ml
+  JOIN product_skus line_sku ON line_sku.id=ml.sku_id
+  GROUP BY ml.warehouse_id,line_sku.item_id
+) bal ON bal.warehouse_id=w.id AND bal.item_id=requested_sku.item_id
 WHERE w.active=true AND bal.quantity > 0
 ORDER BY w.name`, skuID)
 	if err != nil {
