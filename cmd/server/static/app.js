@@ -28,19 +28,21 @@ async function loadWarehouses(includeGeneral=false,endpoint='/api/warehouses'){l
 async function initStock(){
 let sel=document.getElementById('warehouse'),list=document.getElementById('stockList'),detail=document.getElementById('stockDetail'),stockStatus=document.getElementById('stockStatus');if(!sel||!list)return;
 try{await loadWarehouses(true)}catch(err){setFeedback(stockStatus,'error',uiErrorMessage(err,'Não foi possível carregar os depósitos.'));return}
-let openKey='',detailSeq=0;
+let openItem=0,detailSeq=0;
 async function openDetail(row,card){
- let key=row.item_id+':'+row.brand_id;
- if(openKey===key){openKey='';detailSeq++;detail.hidden=true;detail.textContent='';card?.setAttribute('aria-expanded','false');return}
- openKey=key;let seq=++detailSeq;document.querySelectorAll('.stock-card[aria-expanded="true"]').forEach(c=>c.setAttribute('aria-expanded','false'));card?.setAttribute('aria-expanded','true');if(card)card.after(detail);detail.hidden=false;detail.textContent='Carregando…';
- let d;try{d=await api('/api/stock/detail/'+row.item_id+'?brand_id='+row.brand_id)}catch(err){if(seq!==detailSeq)return;detail.textContent=uiErrorMessage(err,'Não foi possível carregar os detalhes do estoque.');return}
- if(seq!==detailSeq||openKey!==key)return;detail.textContent='';
- let presentations=d.presentations||[];if(!presentations.length){detail.hidden=true;return}
- let more=document.createElement('details'),sum=document.createElement('summary'),box=document.createElement('div');sum.textContent='Embalagens';more.append(sum);box.className='list';
- presentations.forEach(x=>{let r=document.createElement('div');r.className='row';let a=document.createElement('div');a.textContent=displayDecimal(x.content_quantity||'1',4)+' '+d.unit;let sm=document.createElement('small');sm.textContent=x.barcode?'EAN '+x.barcode:'';if(sm.textContent)a.append(sm);r.append(a);box.append(r)});
- more.append(box);detail.append(more);detail.scrollIntoView({block:'nearest',behavior:'smooth'})
+ if(openItem===row.item_id){openItem=0;detailSeq++;detail.hidden=true;detail.textContent='';card?.setAttribute('aria-expanded','false');return}
+ openItem=row.item_id;let seq=++detailSeq;document.querySelectorAll('.stock-card[aria-expanded="true"]').forEach(c=>c.setAttribute('aria-expanded','false'));card?.setAttribute('aria-expanded','true');if(card)card.after(detail);detail.hidden=false;detail.textContent='Carregando…';
+ let qs=sel.value?'?warehouse_id='+sel.value:'',d;try{d=await api('/api/stock/detail/'+row.item_id+qs)}catch(err){if(seq!==detailSeq)return;detail.textContent=uiErrorMessage(err,'Não foi possível carregar os detalhes do estoque.');return}
+ if(seq!==detailSeq||openItem!==row.item_id)return;detail.textContent='';
+ (d.brands||[]).forEach(x=>{
+  let brand=document.createElement('details'),summary=document.createElement('summary'),packages=document.createElement('div');
+  summary.textContent=x.brand+' — '+displayDecimal(x.quantity)+' '+x.unit;packages.className='list';brand.append(summary,packages);
+  brand.addEventListener('toggle',async()=>{if(!brand.open||packages.dataset.loaded)return;packages.textContent='Carregando…';try{let bd=await api('/api/stock/detail/'+row.item_id+'?brand_id='+x.brand_id);packages.textContent='';(bd.presentations||[]).forEach(p=>{let r=document.createElement('div');r.className='row';let label=document.createElement('div');label.textContent=displayDecimal(p.content_quantity||'1',4)+' '+bd.unit;let ean=document.createElement('small');ean.textContent=p.barcode?'EAN '+p.barcode:'';if(ean.textContent)label.append(ean);r.append(label);packages.append(r)});packages.dataset.loaded='1'}catch(err){packages.textContent=uiErrorMessage(err,'Não foi possível carregar as embalagens.')}});
+  detail.append(brand)
+ });
+ detail.scrollIntoView({block:'nearest',behavior:'smooth'})
 }
-async function load(){setFeedback(stockStatus,'loading','Carregando estoque…');list.textContent='';let qs=sel.value?'?warehouse_id='+sel.value:'';let rows;try{rows=await api('/api/stock'+qs)}catch(err){setFeedback(stockStatus,'error',uiErrorMessage(err,'Não foi possível carregar o estoque.'));return}setFeedback(stockStatus,'','');detail.hidden=true;detail.textContent='';openKey='';rows.forEach(r=>{let d=document.createElement('button');d.type='button';d.className='row stock-card';d.setAttribute('aria-expanded','false');let a=document.createElement('strong');a.textContent=r.name+' - '+r.brand;let q=document.createElement('strong');q.textContent=displayDecimal(r.quantity)+' '+r.unit+' ▼';d.append(a,q);d.onclick=()=>openDetail(r,d);list.append(d)})}
+async function load(){setFeedback(stockStatus,'loading','Carregando estoque…');list.textContent='';let qs=sel.value?'?warehouse_id='+sel.value:'';let rows;try{rows=await api('/api/stock'+qs)}catch(err){setFeedback(stockStatus,'error',uiErrorMessage(err,'Não foi possível carregar o estoque.'));return}setFeedback(stockStatus,'','');detail.hidden=true;detail.textContent='';openItem=0;rows.forEach(r=>{let d=document.createElement('button');d.type='button';d.className='row stock-card';d.setAttribute('aria-expanded','false');let a=document.createElement('strong');a.textContent=r.name;let q=document.createElement('strong');q.textContent=displayDecimal(r.quantity)+' '+r.unit+' ▼';d.append(a,q);d.onclick=()=>openDetail(r,d);list.append(d)})}
 sel.onchange=load;await load()
 }
 
