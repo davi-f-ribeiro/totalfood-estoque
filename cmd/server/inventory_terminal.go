@@ -374,7 +374,7 @@ SELECT l.sku_id,
        CASE WHEN COALESCE(r.quantity,l.physical_quantity) IS NULL THEN NULL WHEN COALESCE(r.quantity,l.physical_quantity)=l.system_quantity_snapshot THEN 'MATCH' ELSE 'DIVERGENT' END
 FROM inventory_validation_lines l
 JOIN product_skus s ON s.id=l.sku_id
-JOIN inventory_items i ON i.id=s.item_id
+JOIN inventory_items i ON i.id=l.item_id
 LEFT JOIN users cu ON cu.id=l.counted_by_user_id
 LEFT JOIN inventory_validation_recounts r ON r.validation_id=l.validation_id AND r.sku_id=l.sku_id
 LEFT JOIN users ru ON ru.id=r.recounted_by_user_id
