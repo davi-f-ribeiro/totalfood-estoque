@@ -234,6 +234,7 @@ func TestPresentationNormalizationAlhoThreeKg(t *testing.T) {
 	}
 	res, err := a.createEntry(ctx, movementRequest{
 		OperationID: "alho-3kg-entry",
+		QuantitySemantics: presentationQuantitySemantics,
 		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "39.90",
 	}, "alho-3kg-entry-hash")
 	if err != nil {
@@ -277,12 +278,14 @@ RETURNING id`, itemID, t.Name()+"-pack").Scan(&pack); err != nil {
 
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "bigbag-entry",
+		QuantitySemantics: presentationQuantitySemantics,
 		SKUID: bigBag, WarehouseID: wh, Quantity: "1", UnitCost: "50",
 	}, "bigbag-entry-hash"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.createExit(ctx, movementRequest{
 		OperationID: "pack-exit",
+		QuantitySemantics: presentationQuantitySemantics,
 		SKUID: pack, WarehouseID: wh, Quantity: "1",
 	}, "pack-exit-hash"); err != nil {
 		t.Fatal(err)
@@ -321,12 +324,14 @@ func TestPresentationNormalizationTransferUsesCanonicalQuantity(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := a.createEntry(ctx, movementRequest{
-		OperationID: "transfer-seed", SKUID: sku, WarehouseID: fromWH, Quantity: "2", UnitCost: "50",
+		OperationID: "transfer-seed",
+		QuantitySemantics: presentationQuantitySemantics, SKUID: sku, WarehouseID: fromWH, Quantity: "2", UnitCost: "50",
 	}, "transfer-seed-hash"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.createTransfer(ctx, movementRequest{
-		OperationID: "transfer-one-bag", SKUID: sku, FromWarehouseID: fromWH, ToWarehouseID: toWH, Quantity: "1",
+		OperationID: "transfer-one-bag",
+		QuantitySemantics: presentationQuantitySemantics, SKUID: sku, FromWarehouseID: fromWH, ToWarehouseID: toWH, Quantity: "1",
 	}, "transfer-one-bag-hash"); err != nil {
 		t.Fatal(err)
 	}
@@ -461,6 +466,7 @@ RETURNING id`, itemID, t.Name()+"-marca-a").Scan(&skuBrandA); err != nil {
 
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "cross-brand-entry",
+		QuantitySemantics: presentationQuantitySemantics,
 		SKUID: skuBrandB,
 		WarehouseID: wh,
 		Quantity: "1",
@@ -471,6 +477,7 @@ RETURNING id`, itemID, t.Name()+"-marca-a").Scan(&skuBrandA); err != nil {
 
 	if _, err := a.createExit(ctx, movementRequest{
 		OperationID: "cross-brand-exit",
+		QuantitySemantics: presentationQuantitySemantics,
 		SKUID: skuBrandA,
 		WarehouseID: wh,
 		Quantity: "1",
@@ -599,11 +606,13 @@ INSERT INTO product_skus (item_id,brand,name,barcode,content_quantity,active)
 VALUES ($1,'Marca A','Marca A 1kg',$2,1,true) RETURNING id`, itemID, t.Name()+"-a").Scan(&skuBrandA); err != nil { t.Fatal(err) }
 
 	entry, err := a.createEntry(ctx, movementRequest{
-		OperationID: "lot-cross-brand-entry", SKUID: skuBrandB, WarehouseID: wh, Quantity: "1", UnitCost: "50",
+		OperationID: "lot-cross-brand-entry",
+		QuantitySemantics: presentationQuantitySemantics, SKUID: skuBrandB, WarehouseID: wh, Quantity: "1", UnitCost: "50",
 	}, "lot-cross-brand-entry-hash")
 	if err != nil { t.Fatal(err) }
 	exit, err := a.createExit(ctx, movementRequest{
-		OperationID: "lot-cross-brand-exit", SKUID: skuBrandA, WarehouseID: wh, Quantity: "2",
+		OperationID: "lot-cross-brand-exit",
+		QuantitySemantics: presentationQuantitySemantics, SKUID: skuBrandA, WarehouseID: wh, Quantity: "2",
 	}, "lot-cross-brand-exit-hash")
 	if err != nil { t.Fatal(err) }
 
