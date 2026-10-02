@@ -164,6 +164,18 @@ RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
 	if s.Quantity != "3.000" {
 		t.Fatalf("shared stock after concurrent exits=%s want 3.000", s.Quantity)
 	}
+	var allocated string
+	if err := a.db.QueryRow(`
+SELECT COALESCE(sum(a.quantity),0)::text
+FROM stock_lot_allocations a
+JOIN movement_lines ml ON ml.id=a.movement_line_id
+JOIN movements m ON m.id=ml.movement_id
+WHERE m.operation_id IN ('canonical-concurrency-a','canonical-concurrency-b')`).Scan(&allocated); err != nil {
+		t.Fatal(err)
+	}
+	if allocated != "7.000" {
+		t.Fatalf("concurrent exits overallocated lots: %s want 7.000", allocated)
+	}
 }
 
 
