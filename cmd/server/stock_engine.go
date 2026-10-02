@@ -25,7 +25,7 @@ func (a *app) createEntry(ctx context.Context, req movementRequest, hash string)
 		if err := lockStock(ctx, tx, req.SKUID, req.WarehouseID); err != nil {
 			return 0, err
 		}
-		quantity, unitCost, err := normalizePresentation(ctx, tx, req.SKUID, req.Quantity, req.UnitCost, true)
+		quantity, unitCost, err := canonicalMovementValues(ctx, tx, req.QuantitySemantics, req.SKUID, req.Quantity, req.UnitCost, true)
 		if err != nil {
 			return 0, err
 		}
@@ -109,7 +109,7 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 			return 0, err
 		}
 		for _, line := range lines {
-			quantity, unitCost, err := normalizePresentation(ctx, tx, line.SKUID, line.Quantity, line.UnitCost, true)
+			quantity, unitCost, err := canonicalMovementValues(ctx, tx, req.QuantitySemantics, line.SKUID, line.Quantity, line.UnitCost, true)
 			if err != nil {
 				return 0, err
 			}
@@ -147,7 +147,7 @@ func (a *app) createExit(ctx context.Context, req movementRequest, hash string) 
 		if err := lockStock(ctx, tx, req.SKUID, req.WarehouseID); err != nil {
 			return 0, err
 		}
-		quantity, _, err := normalizePresentation(ctx, tx, req.SKUID, req.Quantity, "", false)
+		quantity, _, err := canonicalMovementValues(ctx, tx, req.QuantitySemantics, req.SKUID, req.Quantity, "", false)
 		if err != nil {
 			return 0, err
 		}
@@ -205,7 +205,7 @@ func (a *app) createTransfer(ctx context.Context, req movementRequest, hash stri
 				return 0, err
 			}
 		}
-		quantity, _, err := normalizePresentation(ctx, tx, req.SKUID, req.Quantity, "", false)
+		quantity, _, err := canonicalMovementValues(ctx, tx, req.QuantitySemantics, req.SKUID, req.Quantity, "", false)
 		if err != nil {
 			return 0, err
 		}
@@ -354,6 +354,16 @@ JOIN stock_lots src ON src.id=a.stock_lot_id
 JOIN movement_lines dest ON dest.id=$2 AND dest.direction='IN'
 WHERE a.movement_line_id=$1`, outLineID, inLineID)
 	return err
+}
+
+func canonicalMovementValues(ctx context.Context, tx *sql.Tx, semantics string, skuID int64, quantity, unitCost string, withCost bool) (string, string, error) {
+	if semantics == "" {
+		return quantity, unitCost, nil
+	}
+	if semantics != presentationQuantitySemantics {
+		return "", "", errValidation
+	}
+	return normalizePresentation(ctx, tx, skuID, quantity, unitCost, withCost)
 }
 
 func normalizePresentation(ctx context.Context, tx *sql.Tx, skuID int64, quantity, unitCost string, withCost bool) (string, string, error) {
