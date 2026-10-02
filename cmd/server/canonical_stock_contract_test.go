@@ -999,3 +999,53 @@ VALUES($1,'Outra','Outra apresentação',$2,true) RETURNING id`, itemID, t.Name(
 		t.Fatalf("canonical zero-balance warehouse should deactivate: %v", err)
 	}
 }
+
+
+func TestPresentationNormalizationOil900mlPreservesCommercialPriceAndCanonicalCost(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, sku).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE inventory_items SET unit_code='L' WHERE id=$1`, itemID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE product_skus SET content_quantity=0.9 WHERE id=$1`, sku); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := a.createEntry(ctx, movementRequest{
+		OperationID:       "oil-900ml-entry",
+		QuantitySemantics: presentationQuantitySemantics,
+		SKUID:             sku,
+		WarehouseID:       wh,
+		Quantity:          "100",
+		UnitCost:          "8.10",
+	}, "oil-900ml-entry-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var quantity, unitCost, total string
+	if err := a.db.QueryRow(`
+SELECT quantity::text,
+       unit_cost::text,
+       (quantity*unit_cost)::numeric(14,2)::text
+FROM movement_lines
+WHERE movement_id=$1`, res.MovementID).Scan(&quantity, &unitCost, &total); err != nil {
+		t.Fatal(err)
+	}
+	if quantity != "90.000" || unitCost != "9.0000" || total != "810.00" {
+		t.Fatalf("oil ledger qty=%s cost=%s total=%s want 90.000, 9.0000, 810.00", quantity, unitCost, total)
+	}
+
+	stock, err := getStockSnapshot(ctx, a.db, sku, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stock.Quantity != "90.000" || stock.AvgCost != "9.0000" || stock.Unit != "L" {
+		t.Fatalf("oil stock=%+v want qty=90.000 avg=9.0000 unit=L", stock)
+	}
+}
