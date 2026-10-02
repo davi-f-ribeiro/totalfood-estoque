@@ -500,3 +500,153 @@ WHERE movement_id IN (
 		t.Fatalf("presentation trace lost: entry sku=%d want %d, exit sku=%d want %d", inSKU, skuBrandB, outSKU, skuBrandA)
 	}
 }
+
+
+func TestLotsFIFOWithoutExpiry(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+
+	first, err := a.createEntry(ctx, movementRequest{
+		OperationID: "lot-fifo-entry-1", SKUID: sku, WarehouseID: wh, Quantity: "4", UnitCost: "10",
+	}, "lot-fifo-entry-1-hash")
+	if err != nil { t.Fatal(err) }
+	second, err := a.createEntry(ctx, movementRequest{
+		OperationID: "lot-fifo-entry-2", SKUID: sku, WarehouseID: wh, Quantity: "5", UnitCost: "12",
+	}, "lot-fifo-entry-2-hash")
+	if err != nil { t.Fatal(err) }
+
+	exit, err := a.createExit(ctx, movementRequest{
+		OperationID: "lot-fifo-exit", SKUID: sku, WarehouseID: wh, Quantity: "6",
+	}, "lot-fifo-exit-hash")
+	if err != nil { t.Fatal(err) }
+
+	var firstLot, secondLot int64
+	if err := a.db.QueryRow(`
+SELECT l.id FROM stock_lots l
+JOIN movement_lines ml ON ml.id=l.source_movement_line_id
+WHERE ml.movement_id=$1`, first.MovementID).Scan(&firstLot); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`
+SELECT l.id FROM stock_lots l
+JOIN movement_lines ml ON ml.id=l.source_movement_line_id
+WHERE ml.movement_id=$1`, second.MovementID).Scan(&secondLot); err != nil { t.Fatal(err) }
+
+	rows, err := a.db.Query(`
+SELECT a.stock_lot_id,a.quantity::text
+FROM stock_lot_allocations a
+JOIN movement_lines ml ON ml.id=a.movement_line_id
+WHERE ml.movement_id=$1
+ORDER BY a.stock_lot_id`, exit.MovementID)
+	if err != nil { t.Fatal(err) }
+	defer rows.Close()
+	got := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var q string
+		if err := rows.Scan(&id,&q); err != nil { t.Fatal(err) }
+		got[id]=q
+	}
+	if got[firstLot]!="4.000" || got[secondLot]!="2.000" {
+		t.Fatalf("FIFO allocations=%v want first 4.000 second 2.000", got)
+	}
+}
+
+func TestLotsFEFOWhenExpiryExists(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+
+	oldEntry, err := a.createEntry(ctx, movementRequest{
+		OperationID: "lot-fefo-old-entry", SKUID: sku, WarehouseID: wh, Quantity: "5", UnitCost: "10",
+	}, "lot-fefo-old-entry-hash")
+	if err != nil { t.Fatal(err) }
+	newEntry, err := a.createEntry(ctx, movementRequest{
+		OperationID: "lot-fefo-new-entry", SKUID: sku, WarehouseID: wh, Quantity: "5", UnitCost: "10",
+	}, "lot-fefo-new-entry-hash")
+	if err != nil { t.Fatal(err) }
+
+	var oldLot, newLot int64
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, oldEntry.MovementID).Scan(&oldLot); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, newEntry.MovementID).Scan(&newLot); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-31' WHERE id=$1`, oldLot); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-11-30' WHERE id=$1`, newLot); err != nil { t.Fatal(err) }
+
+	exit, err := a.createExit(ctx, movementRequest{
+		OperationID: "lot-fefo-exit", SKUID: sku, WarehouseID: wh, Quantity: "3",
+	}, "lot-fefo-exit-hash")
+	if err != nil { t.Fatal(err) }
+
+	var chosen int64
+	var qty string
+	if err := a.db.QueryRow(`
+SELECT a.stock_lot_id,a.quantity::text
+FROM stock_lot_allocations a
+JOIN movement_lines ml ON ml.id=a.movement_line_id
+WHERE ml.movement_id=$1`, exit.MovementID).Scan(&chosen,&qty); err != nil { t.Fatal(err) }
+	if chosen != newLot || qty != "3.000" {
+		t.Fatalf("FEFO chose lot=%d qty=%s want lot=%d qty=3.000", chosen, qty, newLot)
+	}
+}
+
+func TestLotsCrossBrandExitTracksEntryOrigin(t *testing.T) {
+	a, skuBrandB, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuBrandB).Scan(&itemID); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE product_skus SET brand='Marca B',name='Marca B 10kg',content_quantity=10 WHERE id=$1`, skuBrandB); err != nil { t.Fatal(err) }
+	var skuBrandA int64
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus (item_id,brand,name,barcode,content_quantity,active)
+VALUES ($1,'Marca A','Marca A 1kg',$2,1,true) RETURNING id`, itemID, t.Name()+"-a").Scan(&skuBrandA); err != nil { t.Fatal(err) }
+
+	entry, err := a.createEntry(ctx, movementRequest{
+		OperationID: "lot-cross-brand-entry", SKUID: skuBrandB, WarehouseID: wh, Quantity: "1", UnitCost: "50",
+	}, "lot-cross-brand-entry-hash")
+	if err != nil { t.Fatal(err) }
+	exit, err := a.createExit(ctx, movementRequest{
+		OperationID: "lot-cross-brand-exit", SKUID: skuBrandA, WarehouseID: wh, Quantity: "2",
+	}, "lot-cross-brand-exit-hash")
+	if err != nil { t.Fatal(err) }
+
+	var sourceSKU, exitSKU int64
+	var allocated string
+	if err := a.db.QueryRow(`
+SELECT source_ml.sku_id,exit_ml.sku_id,a.quantity::text
+FROM stock_lot_allocations a
+JOIN movement_lines exit_ml ON exit_ml.id=a.movement_line_id
+JOIN stock_lots l ON l.id=a.stock_lot_id
+JOIN movement_lines source_ml ON source_ml.id=l.source_movement_line_id
+WHERE exit_ml.movement_id=$1`, exit.MovementID).Scan(&sourceSKU,&exitSKU,&allocated); err != nil { t.Fatal(err) }
+	if sourceSKU != skuBrandB || exitSKU != skuBrandA || allocated != "2.000" {
+		t.Fatalf("cross-brand trace source=%d exit=%d qty=%s", sourceSKU, exitSKU, allocated)
+	}
+	_ = entry
+}
+
+func TestTransferLotsPreserveLineageAndExpiry(t *testing.T) {
+	a, sku, fromWH, toWH := newStockTestApp(t)
+	ctx := context.Background()
+
+	entry, err := a.createEntry(ctx, movementRequest{
+		OperationID: "lot-transfer-entry", SKUID: sku, WarehouseID: fromWH, Quantity: "8", UnitCost: "10",
+	}, "lot-transfer-entry-hash")
+	if err != nil { t.Fatal(err) }
+	var sourceLot int64
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, entry.MovementID).Scan(&sourceLot); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-20',manufacturer_lot_code='FAB-123' WHERE id=$1`, sourceLot); err != nil { t.Fatal(err) }
+
+	transfer, err := a.createTransfer(ctx, movementRequest{
+		OperationID: "lot-transfer", SKUID: sku, FromWarehouseID: fromWH, ToWarehouseID: toWH, Quantity: "3",
+	}, "lot-transfer-hash")
+	if err != nil { t.Fatal(err) }
+
+	var derivedSource int64
+	var qty, lotCode string
+	var expiry string
+	if err := a.db.QueryRow(`
+SELECT l.source_lot_id,l.initial_quantity::text,COALESCE(l.manufacturer_lot_code,''),l.expires_at::text
+FROM stock_lots l
+JOIN movement_lines ml ON ml.id=l.source_movement_line_id
+WHERE ml.movement_id=$1 AND ml.direction='IN'`, transfer.MovementID).Scan(&derivedSource,&qty,&lotCode,&expiry); err != nil { t.Fatal(err) }
+	if derivedSource != sourceLot || qty != "3.000" || lotCode != "FAB-123" || expiry != "2026-12-20" {
+		t.Fatalf("transfer lineage source=%d qty=%s code=%s expiry=%s", derivedSource, qty, lotCode, expiry)
+	}
+}
