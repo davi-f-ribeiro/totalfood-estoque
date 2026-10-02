@@ -215,11 +215,18 @@ func insertMovement(ctx context.Context, tx *sql.Tx, typ string, req movementReq
 }
 
 func lockStock(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error {
-	if _, err := tx.ExecContext(ctx, `INSERT INTO stock_locks (sku_id, warehouse_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, skuID, warehouseID); err != nil {
+	var itemID int64
+	if err := tx.QueryRowContext(ctx, `SELECT item_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errNotFound
+		}
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO stock_locks (item_id, warehouse_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, itemID, warehouseID); err != nil {
 		return err
 	}
 	var x int
-	return tx.QueryRowContext(ctx, `SELECT 1 FROM stock_locks WHERE sku_id=$1 AND warehouse_id=$2 FOR UPDATE`, skuID, warehouseID).Scan(&x)
+	return tx.QueryRowContext(ctx, `SELECT 1 FROM stock_locks WHERE item_id=$1 AND warehouse_id=$2 FOR UPDATE`, itemID, warehouseID).Scan(&x)
 }
 
 func ensureRefs(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error {
