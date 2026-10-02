@@ -30,11 +30,21 @@ func (e inventoryTestEnv) movementDecimal(t *testing.T, skuID, warehouseID int64
 		typ, e.userID).Scan(&movementID); err != nil {
 		t.Fatalf("movement header: %v", err)
 	}
-	if _, err := tx.ExecContext(ctx,
+	var movementLineID int64
+	if err := tx.QueryRowContext(ctx,
 		`INSERT INTO movement_lines (movement_id,sku_id,warehouse_id,direction,quantity,unit_cost)
-		 VALUES ($1,$2,$3,$4,$5::numeric,1)`,
-		movementID, skuID, warehouseID, direction, qty); err != nil {
+		 VALUES ($1,$2,$3,$4,$5::numeric,1) RETURNING id`,
+		movementID, skuID, warehouseID, direction, qty).Scan(&movementLineID); err != nil {
 		t.Fatalf("movement line: %v", err)
+	}
+	if direction == "IN" {
+		if err := createEntryLot(ctx, tx, movementLineID); err != nil {
+			t.Fatalf("movement lot: %v", err)
+		}
+	} else if direction == "OUT" {
+		if err := allocateLots(ctx, tx, movementLineID); err != nil {
+			t.Fatalf("movement lot allocation: %v", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("movement commit: %v", err)
