@@ -148,8 +148,8 @@ func TestFiscalManualPresentationConversionUsesCanonicalEngine(t *testing.T) {
 		"quantity_semantics": presentationQuantitySemantics,
 		"lines": []map[string]any{{
 			"sku_id": sku,
-			"quantity": "1",
-			"unit_cost": "39.90",
+			"quantity": "1,0",
+			"unit_cost": "39,90",
 		}},
 	}
 	rr := authReq(a, http.MethodPost, "/api/fiscal/confirm", payload, director, "")
