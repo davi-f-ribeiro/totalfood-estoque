@@ -12,6 +12,10 @@ CREATE TABLE brands (
 CREATE UNIQUE INDEX idx_brands_normalized_name_unique
     ON brands (lower(btrim(name)));
 
+-- Internal compatibility identity for old fixtures/inserts that predate the
+-- brand contract. Runtime APIs never expose or create products with this id.
+INSERT INTO brands(id,name,active) VALUES (0,'__LEGACY_UNASSIGNED__',false);
+
 WITH raw_brand AS (
     SELECT id,
            CASE
@@ -69,6 +73,7 @@ END;
 $$;
 
 ALTER TABLE product_skus
+    ALTER COLUMN brand_id SET DEFAULT 0,
     ALTER COLUMN brand_id SET NOT NULL;
 
 CREATE INDEX idx_product_skus_item_brand
