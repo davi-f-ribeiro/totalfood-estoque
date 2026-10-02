@@ -66,6 +66,7 @@ func (a *app) registerMovementHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/movements/transfer", a.requireAuth("movement_transfer", "write", a.handleTransfer))
 	mux.HandleFunc("GET /api/operations/{operation_id}", a.requireAuthenticatedRead(a.handleGetOperation))
 	mux.HandleFunc("GET /api/reports/movements", a.requireAuth("stock", "read", a.handleMovementReport))
+	mux.HandleFunc("GET /api/reports/balance", a.requireAuth("stock", "read", a.handleBalanceReport))
 }
 
 func (a *app) handleEntry(w http.ResponseWriter, r *http.Request) {
