@@ -775,6 +775,8 @@ WHERE l.item_id=$1 AND l.warehouse_id=$2`, itemID, warehouseID).Scan(&lots); err
 func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
+	brandID := createTestBrand(t,a,t.Name()+"-Brand")
+	if _, err := a.db.Exec(`UPDATE product_skus SET brand_id=$1 WHERE id=$2`,brandID,sku); err != nil { t.Fatal(err) }
 	entry, err := a.createEntry(ctx, movementRequest{
 		OperationID: "detail-lot-entry", SKUID: sku, WarehouseID: wh, Quantity: "6", UnitCost: "9",
 	}, "detail-lot-entry-hash")
@@ -786,14 +788,14 @@ func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testin
 	}, "detail-lot-exit-hash"); err != nil {
 		t.Fatal(err)
 	}
-	var itemID, brandID, lotID int64
-	if err := a.db.QueryRow(`SELECT item_id,brand_id FROM product_skus WHERE id=$1`, sku).Scan(&itemID,&brandID); err != nil {
+	var itemID, lotID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, sku).Scan(&itemID); err != nil {
 		t.Fatal(err)
 	}
 	var sibling int64
 	if err := a.db.QueryRow(`
-INSERT INTO product_skus(item_id,brand,name,barcode,content_quantity,active)
-VALUES($1,'Marca B','Pacote alternativo',$2,2,true) RETURNING id`, itemID, t.Name()+"-detail-sibling").Scan(&sibling); err != nil {
+INSERT INTO product_skus(item_id,brand_id,brand,name,barcode,content_quantity,active)
+VALUES($1,$2,'Marca B','Pacote alternativo',$3,2,true) RETURNING id`, itemID,brandID,t.Name()+"-detail-sibling").Scan(&sibling); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.db.QueryRow(`
