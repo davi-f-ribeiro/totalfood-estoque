@@ -894,3 +894,17 @@ func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
 		t.Fatal("CSV must emit real BOM and CRLF, not escaped text")
 	}
 }
+
+
+func TestReportsNavigationIsPermissionAwareAcrossPages(t *testing.T) {
+	for _, name := range []string{"base.html", "stock.html", "movement.html", "catalog.html", "fiscal.html", "assets.html", "inventory.html", "admin.html", "reports.html"} {
+		b, err := os.ReadFile(filepath.Join("templates", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		html := string(b)
+		if !strings.Contains(html, `{{if .CanReports}}<a href="/reports"`) {
+			t.Fatalf("%s must expose Reports only when CanReports is true", name)
+		}
+	}
+}
