@@ -73,11 +73,17 @@ func TestAuthLoginSessionLogoutAndAuthorization(t *testing.T) {
 	assertStock(t, a, sku, wh, "1.000", "10.0000")
 
 	sales := doLogin(t, a, "sales", "secret")
+	if rr := authReq(a, http.MethodGet, "/api/me", nil, sales, ""); rr.Code != http.StatusOK {
+		t.Fatalf("profile without operations permission must still read own session, status=%d body=%s", rr.Code, rr.Body.String())
+	}
 	if rr := authReq(a, http.MethodPost, "/api/movements/entry", map[string]any{"operation_id": "denied", "sku_id": sku, "warehouse_id": wh, "quantity": "1", "unit_cost": "1"}, sales, ""); rr.Code != http.StatusForbidden {
 		t.Fatalf("profile without permission status=%d", rr.Code)
 	}
 	if rr := authReq(a, http.MethodPost, "/api/users", map[string]any{"login": "x", "password": "secret", "profile": "Vendas"}, sales, ""); rr.Code != http.StatusForbidden {
 		t.Fatalf("unauth create user status=%d", rr.Code)
+	}
+	if rr := authReq(a, http.MethodPost, "/api/logout", nil, sales, ""); rr.Code != http.StatusOK {
+		t.Fatalf("profile without operations permission must still logout, status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	if rr := authReq(a, http.MethodPost, "/api/users", map[string]any{"login": "newuser", "password": "secret", "profile": "Vendas"}, login, ""); rr.Code != http.StatusCreated {
 		t.Fatalf("director create user status=%d body=%s", rr.Code, rr.Body.String())
