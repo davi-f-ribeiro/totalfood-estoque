@@ -1,0 +1,21 @@
+(async function(){
+const $=id=>document.getElementById(id),status=$('masterStatus');if(!$('masterItemList'))return;
+const itemList=$('masterItemList'),brandList=$('masterBrandList'),itemForm=$('masterItemForm'),brandForm=$('masterBrandForm');
+const itemSearch=$('masterItemSearch'),brandSearch=$('masterBrandSearch');
+let items=[],brands=[],itemVersion=0,brandVersion=0;
+function msg(type,text){setFeedback(status,type,text)}
+function fill(sel,rows){sel.textContent='';rows.forEach(r=>{let o=document.createElement('option');o.value=r.id;o.textContent=r.name;sel.append(o)})}
+let opts;try{opts=await api('/api/catalog/options');fill($('masterCategory'),opts.categories);fill($('masterUnit'),opts.units)}catch(e){msg('error',uiErrorMessage(e,'Não foi possível carregar o catálogo.'));return}
+function renderItems(){itemList.textContent='';items.filter(x=>!itemSearch.value||x.name.toLowerCase().includes(itemSearch.value.toLowerCase())).forEach(x=>{let b=document.createElement('button');b.type='button';b.className='catalog-parent-card';let s=document.createElement('strong'),m=document.createElement('small');s.textContent=x.name;m.textContent=x.category+' · '+x.unit+(x.active?'':' · Inativo');b.append(s,m);b.onclick=()=>editItem(x);itemList.append(b)})}
+function renderBrands(){brandList.textContent='';brands.filter(x=>!brandSearch.value||x.name.toLowerCase().includes(brandSearch.value.toLowerCase())).forEach(x=>{let b=document.createElement('button');b.type='button';b.className='catalog-parent-card';b.textContent=x.name+(x.active?'':' · Inativa');b.onclick=()=>editBrand(x);brandList.append(b)})}
+async function load(){items=await api('/api/catalog/items');brands=await api('/api/catalog/brands');renderItems();renderBrands()}
+function newItem(){itemForm.reset();$('masterItemId').value='';$('masterMinimum').value='0';$('masterItemActive').checked=true;itemVersion=0;itemForm.hidden=false;$('masterItemName').focus()}
+function editItem(x){$('masterItemId').value=x.id;$('masterItemName').value=x.name;$('masterCategory').value=x.category_id;$('masterUnit').value=x.unit;$('masterMinimum').value=x.minimum_stock||'0';$('masterNotes').value=x.notes||'';$('masterItemActive').checked=!!x.active;itemVersion=x.version;itemForm.hidden=false}
+function newBrand(){brandForm.reset();$('masterBrandId').value='';$('masterBrandActive').checked=true;brandVersion=0;brandForm.hidden=false;$('masterBrandName').focus()}
+function editBrand(x){$('masterBrandId').value=x.id;$('masterBrandName').value=x.name;$('masterBrandActive').checked=!!x.active;brandVersion=x.version;brandForm.hidden=false}
+$('masterNewItem').onclick=newItem;$('masterCancelItem').onclick=()=>itemForm.hidden=true;$('masterNewBrand').onclick=newBrand;$('masterCancelBrand').onclick=()=>brandForm.hidden=true;
+itemSearch.oninput=renderItems;brandSearch.oninput=renderBrands;
+itemForm.onsubmit=async e=>{e.preventDefault();let id=$('masterItemId').value,name=$('masterItemName').value.trim(),body={name,category_id:+$('masterCategory').value,unit_code:$('masterUnit').value,minimum_stock:requestDecimal($('masterMinimum').value),notes:$('masterNotes').value,active:$('masterItemActive').checked};if(id)body.version=itemVersion;try{msg('loading',(id?'Atualizando ':'Criando ')+name+'…');await api(id?'/api/catalog/items/'+id:'/api/catalog/items',{method:id?'PATCH':'POST',body:JSON.stringify(body)});itemForm.hidden=true;await load();msg('success',name+(id?' atualizado.':' criado.'))}catch(err){msg('error',uiErrorMessage(err,'Não foi possível salvar '+name+'.'))}};
+brandForm.onsubmit=async e=>{e.preventDefault();let id=$('masterBrandId').value,name=$('masterBrandName').value.trim(),body={name,active:$('masterBrandActive').checked};if(id)body.version=brandVersion;try{msg('loading',(id?'Atualizando ':'Criando ')+name+'…');await api(id?'/api/catalog/brands/'+id:'/api/catalog/brands',{method:id?'PATCH':'POST',body:JSON.stringify(body)});brandForm.hidden=true;await load();msg('success',name+(id?' atualizada.':' criada.'))}catch(err){msg('error',uiErrorMessage(err,'Não foi possível salvar '+name+'.'))}};
+try{await load()}catch(e){msg('error',uiErrorMessage(e,'Não foi possível carregar o catálogo.'))}
+})();
