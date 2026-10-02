@@ -69,8 +69,22 @@ func (a *app) writeOperationResponse(w http.ResponseWriter, typ, operationID str
 	status := http.StatusInternalServerError
 	msg := "internal error"
 	switch {
+	case errors.Is(err, errMovementOperationIDMissing):
+		status, msg = http.StatusBadRequest, "Não foi possível identificar esta operação. Recarregue a página antes de tentar novamente."
+	case errors.Is(err, errMovementProductRequired):
+		status, msg = http.StatusBadRequest, "Selecione um produto antes de registrar a movimentação."
+	case errors.Is(err, errMovementQuantityInvalid):
+		status, msg = http.StatusBadRequest, "Informe uma quantidade maior que zero, com até 4 casas decimais."
+	case errors.Is(err, errMovementCostInvalid):
+		status, msg = http.StatusBadRequest, "Informe um custo unitário válido, igual ou maior que zero, com até 4 casas decimais."
+	case errors.Is(err, errMovementWarehouseRequired):
+		status, msg = http.StatusBadRequest, "Selecione um depósito antes de registrar a movimentação."
+	case errors.Is(err, errTransferWarehousesRequired):
+		status, msg = http.StatusBadRequest, "Selecione os depósitos de origem e destino."
+	case errors.Is(err, errTransferSameWarehouse):
+		status, msg = http.StatusBadRequest, "O depósito de destino deve ser diferente da origem."
 	case errors.Is(err, errValidation):
-		status, msg = http.StatusBadRequest, "validation rejected"
+		status, msg = http.StatusBadRequest, "Os dados recebidos não correspondem à movimentação solicitada."
 	case errors.Is(err, errNotFound):
 		status, msg = http.StatusNotFound, "resource not found"
 	case errors.Is(err, errInsufficientStock):
