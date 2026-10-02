@@ -238,23 +238,28 @@ func (a *app) lookupInventoryBarcode(ctx context.Context, validationID int64, ba
 	if !exists {
 		return inventoryLookupResult{}, errInventoryValidationNotFound
 	}
-	var skuID int64
-	err := a.db.QueryRowContext(ctx, `SELECT id FROM product_skus WHERE barcode=$1`, barcode).Scan(&skuID)
+	var scannedSKUID, itemID int64
+	err := a.db.QueryRowContext(ctx, `SELECT id,item_id FROM product_skus WHERE barcode=$1`, barcode).Scan(&scannedSKUID, &itemID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return inventoryLookupResult{Known: false}, nil
 	}
 	if err != nil {
 		return inventoryLookupResult{}, err
 	}
-	var inInventory bool
-	if err := a.db.QueryRowContext(ctx, `
-SELECT EXISTS(
-    SELECT 1 FROM inventory_validation_lines
-    WHERE validation_id=$1 AND sku_id=$2
-)`, validationID, skuID).Scan(&inInventory); err != nil {
+	var lineSKUID int64
+	err = a.db.QueryRowContext(ctx, `
+SELECT l.sku_id
+FROM inventory_validation_lines l
+JOIN product_skus s ON s.id=l.sku_id
+WHERE l.validation_id=$1 AND s.item_id=$2
+LIMIT 1`, validationID, itemID).Scan(&lineSKUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return inventoryLookupResult{Known: true, InInventory: false, SKUID: scannedSKUID}, nil
+	}
+	if err != nil {
 		return inventoryLookupResult{}, err
 	}
-	return inventoryLookupResult{Known: true, InInventory: inInventory, SKUID: skuID}, nil
+	return inventoryLookupResult{Known: true, InInventory: true, SKUID: lineSKUID}, nil
 }
 
 func (a *app) saveInventoryCount(ctx context.Context, validationID, skuID int64, quantity string, expectedVersion, userID int64) (inventoryCountingLine, string, error) {
