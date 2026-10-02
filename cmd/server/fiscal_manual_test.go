@@ -92,7 +92,8 @@ func createFiscalTestSKU(t *testing.T, a *app, login loginData, itemName, skuNam
 		t.Fatalf("item status=%d body=%s", itemResp.Code, itemResp.Body.String())
 	}
 	itemID := jsonID(t, itemResp.Body.Bytes())
-	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "name": skuName, "barcode": barcode}, login, "")
+	brandID := createTestBrand(t,a,skuName+" Brand")
+	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id":brandID, "content_quantity":"1", "barcode": barcode}, login, "")
 	if skuResp.Code != http.StatusCreated {
 		t.Fatalf("sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
 	}
