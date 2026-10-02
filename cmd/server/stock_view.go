@@ -63,31 +63,16 @@ func (a *app) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 	brandRaw := strings.TrimSpace(r.URL.Query().Get("brand_id"))
 	if brandRaw == "" {
 		warehouseID, _ := strconv.ParseInt(r.URL.Query().Get("warehouse_id"), 10, 64)
-		query := `
+		rows, qerr := a.db.QueryContext(r.Context(), `
 SELECT b.id,b.name,sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text,i.unit_code
 FROM movement_lines ml
 JOIN product_skus s ON s.id=ml.sku_id
 JOIN brands b ON b.id=s.brand_id
 JOIN inventory_items i ON i.id=ml.item_id
-WHERE ml.item_id=$1
+WHERE ml.item_id=$1 AND ($2::bigint=0 OR ml.warehouse_id=$2)
 GROUP BY b.id,b.name,i.unit_code
 HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
-ORDER BY b.name`
-		args := []any{itemID}
-		if warehouseID > 0 {
-			query = `
-SELECT b.id,b.name,sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text,i.unit_code
-FROM movement_lines ml
-JOIN product_skus s ON s.id=ml.sku_id
-JOIN brands b ON b.id=s.brand_id
-JOIN inventory_items i ON i.id=ml.item_id
-WHERE ml.item_id=$1 AND ml.warehouse_id=$2
-GROUP BY b.id,b.name,i.unit_code
-HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
-ORDER BY b.name`
-			args = append(args, warehouseID)
-		}
-		rows, qerr := a.db.QueryContext(r.Context(), query, args...)
+ORDER BY b.name`, itemID, warehouseID)
 		if qerr != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
