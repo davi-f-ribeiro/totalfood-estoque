@@ -259,7 +259,7 @@ func TestWarehouseWithCurrentAssetCannotBeDeactivatedAndDirectAssignmentIsReject
 	createTestUser(t, a, "warehouse-asset-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "warehouse-asset-director", "secret")
 	rr := authReq(a, http.MethodPost, "/api/admin/warehouses/"+itoa(wh1)+"/deactivate", nil, director, "")
-	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "warehouse_not_empty") {
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "Não é possível desativar este depósito porque ainda existe estoque ou patrimônio vinculado.") {
 		t.Fatalf("warehouse with asset deactivate status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	list := authReq(a, http.MethodGet, "/api/admin/warehouses", nil, director, "")
