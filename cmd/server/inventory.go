@@ -473,11 +473,10 @@ balances AS (
     GROUP BY item_id
 ),
 history AS (
-    SELECT hs.item_id, max(v.created_at) AS last_selected
+    SELECT l.item_id, max(v.created_at) AS last_selected
     FROM inventory_validation_lines l
-    JOIN product_skus hs ON hs.id=l.sku_id
     JOIN inventory_validations v ON v.id=l.validation_id
-    GROUP BY hs.item_id
+    GROUP BY l.item_id
 )
 SELECT r.sku_id,b.balance::text
 FROM balances b
@@ -519,8 +518,10 @@ RETURNING id`, typ, warehouseID, responsibleUserID, snapshotAt, operationID, has
 			return inventorySelection{}, errors.New("inventory snapshot quantity is empty")
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO inventory_validation_lines (validation_id,sku_id,system_quantity_snapshot,status)
-VALUES ($1,$2,$3::numeric,'OPEN')`, id, line.SKUID, line.Quantity); err != nil {
+INSERT INTO inventory_validation_lines (validation_id,sku_id,item_id,system_quantity_snapshot,status)
+SELECT $1,$2,s.item_id,$3::numeric,'OPEN'
+FROM product_skus s
+WHERE s.id=$2`, id, line.SKUID, line.Quantity); err != nil {
 			return inventorySelection{}, err
 		}
 		skuIDs = append(skuIDs, line.SKUID)
