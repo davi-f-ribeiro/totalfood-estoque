@@ -67,6 +67,13 @@ ALTER TABLE product_skus
 CREATE INDEX idx_product_skus_item_brand
     ON product_skus(item_id,brand_id);
 
+UPDATE product_skus s
+SET name = i.name || ' - ' || b.name || ' - ' ||
+           trim(trailing '.' FROM trim(trailing '0' FROM s.content_quantity::text)) ||
+           ' ' || i.unit_code
+FROM inventory_items i, brands b
+WHERE i.id=s.item_id AND b.id=s.brand_id AND s.brand_id<>0;
+
 ALTER TABLE stock_lots
     ADD COLUMN brand_id bigint REFERENCES brands(id);
 
