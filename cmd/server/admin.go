@@ -44,6 +44,7 @@ type adminProfilePermissionsRequest struct {
 func (a *app) registerAdminHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin", a.adminPage)
 	mux.HandleFunc("GET /api/admin/users", a.requireAuth("users", "write", a.handleAdminUsers))
+	mux.HandleFunc("GET /api/admin/profile-options", a.requireAuth("users", "write", a.handleAdminProfileOptions))
 	mux.HandleFunc("POST /api/admin/users", a.requireAuth("users", "write", a.handleAdminCreateUser))
 	mux.HandleFunc("PATCH /api/admin/users/{id}", a.requireAuth("users", "write", a.handleAdminUpdateUser))
 	mux.HandleFunc("PATCH /api/admin/users/{id}/password", a.requireAuth("users", "write", a.handleAdminResetPassword))
@@ -52,6 +53,31 @@ func (a *app) registerAdminHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/admin/profiles/{id}", a.requireAuth("profiles", "write", a.handleAdminUpdateProfile))
 	mux.HandleFunc("PUT /api/admin/profiles/{id}/permissions", a.requireAuth("profiles", "write", a.handleAdminProfilePermissions))
 	mux.HandleFunc("GET /api/admin/permissions", a.requireAuth("profiles", "write", a.handleAdminPermissions))
+}
+
+func (a *app) handleAdminProfileOptions(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.db.QueryContext(r.Context(), `SELECT id,name FROM profiles ORDER BY name`)
+	if err != nil {
+		log.Printf("admin profile options failed: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar os perfis disponíveis.")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar os perfis disponíveis.")
+			return
+		}
+		out = append(out, map[string]any{"id": id, "name": name})
+	}
+	if err := rows.Err(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar os perfis disponíveis.")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (a *app) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
