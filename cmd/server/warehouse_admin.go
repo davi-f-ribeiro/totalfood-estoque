@@ -91,7 +91,7 @@ func (a *app) handleAdminCreateWarehouse(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			writeJSONError(w, http.StatusConflict, "warehouse name already exists")
+			writeJSONError(w, http.StatusConflict, "Já existe um depósito com este nome.")
 			return
 		}
 		log.Printf("warehouse create failed error=%v", err)
@@ -134,7 +134,7 @@ func (a *app) setWarehouseActive(w http.ResponseWriter, r *http.Request, active 
 	var name string
 	if err = tx.QueryRowContext(r.Context(), `SELECT name,active FROM warehouses WHERE id=$1 FOR UPDATE`, id).Scan(&name, &current); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeJSONError(w, http.StatusNotFound, "warehouse not found")
+			writeJSONError(w, http.StatusNotFound, "Depósito não encontrado.")
 		} else {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 		}
@@ -159,7 +159,7 @@ func (a *app) setWarehouseActive(w http.ResponseWriter, r *http.Request, active 
 			return
 		}
 		if nonZero {
-			writeJSONError(w, http.StatusConflict, "warehouse_not_empty")
+			writeJSONError(w, http.StatusConflict, "Não é possível desativar este depósito porque ainda existe estoque ou patrimônio vinculado.")
 			return
 		}
 		var hasAssets bool
@@ -168,7 +168,7 @@ func (a *app) setWarehouseActive(w http.ResponseWriter, r *http.Request, active 
 			return
 		}
 		if hasAssets {
-			writeJSONError(w, http.StatusConflict, "warehouse_not_empty")
+			writeJSONError(w, http.StatusConflict, "Não é possível desativar este depósito porque ainda existe estoque ou patrimônio vinculado.")
 			return
 		}
 	}

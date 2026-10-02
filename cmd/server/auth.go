@@ -62,8 +62,8 @@ var authThrottle = &loginThrottle{m: map[string][]time.Time{}}
 
 func (a *app) registerAuthHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/login", a.handleLogin)
-	mux.HandleFunc("POST /api/logout", a.requireAuth("operations", "read", a.handleLogout))
-	mux.HandleFunc("GET /api/me", a.requireAuth("operations", "read", a.handleMe))
+	mux.HandleFunc("POST /api/logout", a.requireSession(a.handleLogout))
+	mux.HandleFunc("GET /api/me", a.requireSession(a.handleMe))
 	mux.HandleFunc("POST /api/users", a.requireAuth("users", "write", a.handleCreateUser))
 }
 
@@ -220,6 +220,25 @@ func (a *app) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "login": req.Login, "active": active, "profile": req.Profile})
+}
+
+func (a *app) requireSession(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u, csrf, err := a.authenticate(r.Context(), r)
+		if err != nil {
+			writeJSONError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		if r.Method != http.MethodGet && subtle.ConstantTimeCompare([]byte(hashToken(r.Header.Get(csrfHeaderName))), []byte(csrf)) != 1 {
+			writeJSONError(w, http.StatusForbidden, "csrf rejected")
+			return
+		}
+		if u.MustChangePassword && r.URL.Path != "/api/me/password" && r.URL.Path != "/api/logout" {
+			writeJSONError(w, http.StatusForbidden, "password change required")
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), authCtxKey, u)))
+	}
 }
 
 func (a *app) requireAuthenticatedRead(next http.HandlerFunc) http.HandlerFunc {

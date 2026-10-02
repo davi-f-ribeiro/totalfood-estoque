@@ -15,7 +15,7 @@ type changeOwnPasswordRequest struct {
 }
 
 func (a *app) registerAccountHandlers(mux *http.ServeMux) {
-	mux.HandleFunc("PATCH /api/me/password", a.requireAuth("operations", "read", a.handleChangeOwnPassword))
+	mux.HandleFunc("PATCH /api/me/password", a.requireSession(a.handleChangeOwnPassword))
 }
 
 func (a *app) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request) {

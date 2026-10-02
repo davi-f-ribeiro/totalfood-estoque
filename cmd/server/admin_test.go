@@ -93,6 +93,54 @@ func TestAdminUsersProfilesPermissionsAndSessions(t *testing.T) {
 	}
 }
 
+func TestWarehouseOnlyAdministratorHasScopedAdministration(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	var profileID int64
+	if err := a.db.QueryRow(`INSERT INTO profiles(name) VALUES('Gestor de Depósitos') RETURNING id`).Scan(&profileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`INSERT INTO profile_permissions(profile_id,permission_id)
+SELECT $1,id FROM permissions WHERE resource='warehouses' AND action='write'`, profileID); err != nil {
+		t.Fatal(err)
+	}
+	createTestUserWithProfileID(t, a, "warehouse-admin", "secret", profileID, true)
+	login := doLogin(t, a, "warehouse-admin", "secret")
+	server := newHTTPServer("127.0.0.1:0", a)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req.AddCookie(login.Cookie)
+	rr := httptest.NewRecorder()
+	server.Handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("warehouse-only admin page status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Depósitos cadastrados") {
+		t.Fatalf("warehouse-only admin page missing warehouse workspace: %s", body)
+	}
+	if strings.Contains(body, `id="adminUserForm"`) || strings.Contains(body, `id="adminProfileForm"`) {
+		t.Fatalf("warehouse-only admin page exposed unrelated administration: %s", body)
+	}
+
+	if got := authReq(a, http.MethodGet, "/api/admin/warehouses", nil, login, ""); got.Code != http.StatusOK {
+		t.Fatalf("warehouse-only admin warehouse API status=%d body=%s", got.Code, got.Body.String())
+	}
+	if got := authReq(a, http.MethodGet, "/api/admin/users", nil, login, ""); got.Code != http.StatusForbidden {
+		t.Fatalf("warehouse-only admin unexpectedly gained user administration: %d", got.Code)
+	}
+	if got := authReq(a, http.MethodGet, "/api/admin/profiles", nil, login, ""); got.Code != http.StatusForbidden {
+		t.Fatalf("warehouse-only admin unexpectedly gained profile administration: %d", got.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/app", nil)
+	req.AddCookie(login.Cookie)
+	rr = httptest.NewRecorder()
+	server.Handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/admin" {
+		t.Fatalf("warehouse-only landing status=%d location=%q", rr.Code, rr.Header().Get("Location"))
+	}
+}
+
 func profileID(t *testing.T, a *app, name string) int64 {
 	t.Helper()
 	var id int64

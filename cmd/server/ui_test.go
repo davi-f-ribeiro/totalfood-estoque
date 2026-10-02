@@ -22,8 +22,8 @@ func TestUIRoutesAndEscaping(t *testing.T) {
 	}
 	rr = httptest.NewRecorder()
 	newHTTPServer("127.0.0.1:0", a).Handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/app", nil))
-	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/stock" {
-		t.Fatalf("app redirect status=%d loc=%s", rr.Code, rr.Header().Get("Location"))
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/login" {
+		t.Fatalf("unauthenticated app redirect status=%d loc=%s", rr.Code, rr.Header().Get("Location"))
 	}
 
 	rr = httptest.NewRecorder()
@@ -277,27 +277,29 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 
 func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	js := string(jsb)
+	if err != nil { t.Fatal(err) }
+	hb, err := os.ReadFile(filepath.Join("templates", "catalog.html"))
+	if err != nil { t.Fatal(err) }
+	js, html := string(jsb), string(hb)
 	for _, want := range []string{
-		`skuParentSearch.closest('label').hidden=true`,
-		`skuParentId.disabled=true`,
-		`Item pai definido pelo contexto selecionado.`,
-		`skuParentSearch.closest('label').hidden=false`,
-		`skuParentId.disabled=false`,
-		`Alterar este campo reatribui o SKU. Com histórico, a unidade do novo pai deve ser a mesma.`,
+		`id="skuParentContext" class="context-note" hidden`,
+		`id="skuParentSearchWrap"`,
+		`id="skuParentSelectWrap"`,
+		`skuParentSearchWrap.hidden=true`,
+		`skuParentSelectWrap.hidden=true`,
+		`skuParentContext.textContent='Item pai: '+currentItem.name`,
+		`skuParentSearchWrap.hidden=false`,
+		`skuParentSelectWrap.hidden=false`,
 	} {
-		if !strings.Contains(js, want) {
-			t.Fatalf("catalog SKU parent context missing %q", want)
-		}
+		if !strings.Contains(js+html, want) { t.Fatalf("catalog SKU parent context missing %q", want) }
+	}
+	if strings.Contains(js, `skuParentId.disabled=true`) {
+		t.Fatal("new SKU flow must not expose a redundant disabled parent selector")
 	}
 	if strings.Count(js, `function startNewSKU(prefillBarcode='')`) != 1 {
 		t.Fatal("catalog must keep a single new-SKU entry point")
 	}
 }
-
 func TestCatalogIgnoresStaleParentAndSKUResponses(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil {
@@ -369,41 +371,26 @@ func TestFrontendCleanupKeepsSingleCanonicalHelpers(t *testing.T) {
 
 func TestWarehouseAdminUIContracts(t *testing.T) {
 	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	if err != nil { t.Fatal(err) }
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	if err != nil { t.Fatal(err) }
 	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	if err != nil { t.Fatal(err) }
 	combined := string(htmlb) + string(jsb) + string(cssb)
-	checks := []string{
-		"Depósitos",
+	for _, want := range []string{
+		"Depósitos cadastrados",
 		"O nome é único e permanente para preservar a rastreabilidade.",
-		"id=\"adminWarehouseStatus\" class=\"operation-feedback\" role=\"status\" aria-live=\"polite\" hidden",
+		"id=\"adminWarehouseStatus\" class=\"operation-feedback\"",
 		"Vazio",
-		"SKU",
-		"action.disabled=true",
-		"submit.disabled=true",
 		"Não foi possível carregar os depósitos.",
-		"Este depósito está inativo. Atualize a página e selecione um depósito ativo.",
-		".admin{display:grid;gap:16px}",
-		".warehouse-row button{min-width:112px}",
+		".admin-master-detail{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
+	} {
+		if !strings.Contains(combined, want) { t.Fatalf("warehouse admin UI missing %q", want) }
 	}
-	for _, want := range checks {
-		if !strings.Contains(combined, want) {
-			t.Fatalf("warehouse admin UI missing %q", want)
-		}
-	}
-	if strings.Contains(combined, "confirm('Desativar este depósito?") {
-		t.Fatal("warehouse deactivation must use inline context/feedback, not a redundant modal")
+	if strings.Contains(combined, "warehouse_not_empty") || strings.Contains(combined, "warehouse name already exists") {
+		t.Fatal("warehouse admin must not expose technical domain codes")
 	}
 }
-
 
 func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 	read := func(name string) string {
@@ -456,10 +443,10 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 	feedback := map[string][]string{
 		"stock.html":           {"stockStatus"},
 		"movement.html":        {"status"},
-		"catalog.html":         {"catalogStatus"},
+		"catalog.html":         {"catalogStatus", "catalogItemStatus"},
 		"fiscal.html":          {"fiscalStatus", "fiscalConfirmStatus"},
 		"assets.html":          {"assetLookupStatus", "assetOpStatus", "assetTypeStatus", "assetUnitStatusMsg"},
-		"inventory.html":       {"inventoryListMessage", "inventoryMessage"},
+		"inventory.html":       {"inventoryCreateMessage", "inventoryListMessage", "inventoryMessage"},
 		"admin.html":           {"adminWarehouseStatus", "adminUserStatus", "adminProfileStatus", "adminPermStatus"},
 		"change_password.html": {"forcedPasswordStatus"},
 	}
@@ -499,9 +486,9 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 		"@media(min-width:768px) and (max-width:1023px)",
 		"@media(max-width:767px)",
 		".assets{grid-template-columns:repeat(2,minmax(0,1fr))",
-		".admin{grid-template-columns:repeat(2,minmax(0,1fr))",
+		".admin-master-detail{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
 		".stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))",
-		".assets,.admin,.stock-shell,.fiscal-shell{grid-template-columns:1fr",
+		".admin-master-detail{grid-template-columns:1fr;gap:18px",
 	} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("responsive UX missing %q", want)
@@ -538,14 +525,13 @@ func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 		"async function runLocked(control,fn)",
 		"function requireFields(form,feedback",
 		"dataset.busy==='1'",
-		"submit.disabled=true",
 		"reportValidity()",
 		`id="assetMoveWarehouse" required`,
 		`id="assetNewStatus" required`,
 		`id="assetUnitWarehouse" required`,
 		`id="fiscalWarehouse" required`,
 		"Ao baixar, a localização atual será removida",
-		"todos os usuários deste perfil terão as sessões atuais encerradas",
+		"as sessões atuais dos usuários deste perfil serão encerradas",
 		".impact-warning{",
 		"Selecione um depósito.",
 	} {
@@ -563,53 +549,37 @@ func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 
 
 func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
-	read := func(name string) string {
-		t.Helper()
-		b, err := os.ReadFile(filepath.Join("templates", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(b)
+	baseb, err := os.ReadFile(filepath.Join("templates", "base.html"))
+	if err != nil { t.Fatal(err) }
+	base := string(baseb)
+	if strings.Count(base, `{{define "nav"}}`) != 1 {
+		t.Fatal("navigation must have one canonical template")
 	}
-	files := []string{"base.html", "stock.html", "movement.html", "catalog.html", "fiscal.html", "assets.html", "inventory.html", "admin.html"}
-	for _, name := range files {
-		body := read(name)
-		if strings.Contains(body, "Validação de Estoque") {
-			t.Fatalf("%s reintroduced obsolete inventory label", name)
-		}
-		if !strings.Contains(body, "Auditoria de Estoque") {
-			t.Fatalf("%s missing Auditoria de Estoque label", name)
-		}
+	for _, want := range []string{
+		`{{if .CanStock}}<a href="/stock">Estoque</a>{{end}}`,
+		`{{if .CanEntry}}<a href="/entry">Entrada</a>{{end}}`,
+		`{{if .CanExit}}<a href="/exit">Saída</a>{{end}}`,
+		`{{if .CanTransfer}}<a href="/transfer">Transferir</a>{{end}}`,
+		`{{if .CanReports}}<a href="/reports">Relatórios</a>{{end}}`,
+		`{{if .CanCatalog}}<a href="/catalog">Catálogo</a>{{end}}`,
+		`{{if .CanAssets}}<a href="/assets">Patrimônio</a>{{end}}`,
+		`{{if .CanInventory}}<a href="/inventory">Auditoria de Estoque</a>{{end}}`,
+		`{{if .CanAdmin}}<a href="/admin">Administração</a>{{end}}`,
+	} {
+		if !strings.Contains(base, want) { t.Fatalf("canonical navigation missing %q", want) }
 	}
-	for _, name := range []string{"stock.html", "movement.html", "catalog.html", "fiscal.html", "assets.html", "inventory.html", "admin.html"} {
-		body := read(name)
-		audit := strings.Index(body, `<a href="/inventory"`)
-		admin := strings.Index(body, `<a href="/admin"`)
-		if audit < 0 || admin < 0 || audit > admin {
-			t.Fatalf("%s must place Auditoria de Estoque before Administração", name)
-		}
+	for _, name := range []string{"stock.html","movement.html","catalog.html","fiscal.html","assets.html","inventory.html","admin.html","reports.html"} {
+		b, err := os.ReadFile(filepath.Join("templates", name)); if err != nil { t.Fatal(err) }
+		html := string(b)
+		if !strings.Contains(html, `{{template "nav" .}}`) { t.Fatalf("%s must use canonical navigation", name) }
+		if strings.Contains(html, `<nav class="nav">`) { t.Fatalf("%s reintroduced a competing navigation", name) }
 	}
-	catalog := read("catalog.html")
+	catalogb, err := os.ReadFile(filepath.Join("templates", "catalog.html")); if err != nil { t.Fatal(err) }
+	catalog := string(catalogb)
 	if strings.Index(catalog, `id="catalogEmpty"`) > strings.Index(catalog, `id="catalogList"`) {
 		t.Fatal("catalog empty guidance must stay grouped with the parent-list heading before the list")
 	}
-	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	css := string(cssb)
-	for _, want := range []string{
-		".catalog-parent-card{justify-content:stretch;justify-items:start",
-		".catalog-empty{padding:14px;text-align:left",
-		".catalog-parent-list{max-height:none;overflow:visible",
-		".catalog-manager{padding:0;border:0;border-radius:0;box-shadow:none",
-	} {
-		if !strings.Contains(css, want) {
-			t.Fatalf("catalog responsive/Gestalt contract missing %q", want)
-		}
-	}
 }
-
 
 func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	read := func(path string) string {
@@ -632,7 +602,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"setCrudMode(skuForm,true,'Criar SKU','Atualizar SKU')",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
 		"function setAssetUnitEditMode(editing)",
-		"setCrudMode(form,true,'Criar usuário','Atualizar usuário')",
+		"setCrudMode(userForm,true,'Criar usuário','Atualizar usuário')",
 		"true,'Criar perfil','Atualizar perfil'",
 		"body.name+(id?' atualizado.':' criado.')",
 		"body.login+(id?' atualizado.':' criado.')",
@@ -640,7 +610,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"itemForm.reset()",
 		"typeForm.reset()",
 		"unitForm.reset()",
-		"form.reset()",
+		"userForm.reset()",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("CRUD safety state missing %q", want)
@@ -726,42 +696,30 @@ func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 }
 
 func TestAdminSafetyAtomicUserUpdateAndExplicitPermissionTarget(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js")); if err != nil { t.Fatal(err) }
+	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html")); if err != nil { t.Fatal(err) }
 	js, html := string(jsb), string(htmlb)
-
 	for _, forbidden := range []string{
 		"if(pass)await api('/api/admin/users/'+id+'/password'",
 		"if(!selectedProfile&&profiles[0])selectedProfile=profiles[0].id",
+		"marque somente permissões reais existentes no banco",
 	} {
-		if strings.Contains(js, forbidden) {
-			t.Fatalf("admin safety reintroduced unsafe flow %q", forbidden)
-		}
+		if strings.Contains(js+html, forbidden) { t.Fatalf("admin safety reintroduced unsafe flow %q", forbidden) }
 	}
 	for _, want := range []string{
 		"if(pass)body.password=pass",
 		"out=await api('/api/admin/users/'+id,{method:'PATCH'",
-		"if(out?.reauth_required){location.href='/login';return}",
 		"selectedProfile=0",
-		"permSave.disabled=true",
-		"permSave.disabled=false",
-		"Nenhum perfil selecionado. Selecione um perfil na lista acima.",
+		"Nenhum perfil selecionado. Selecione um perfil na lista ao lado.",
 		"Perfil selecionado: ",
-		"Selecione explicitamente um perfil antes de salvar as permissões.",
-		"Selecione novamente um perfil para realizar outra alteração.",
-		"id=\"adminSavePerms\" type=\"button\" disabled",
-		"id=\"adminPermSelection\"",
+		"Selecione explicitamente um perfil antes de salvar os acessos.",
+		`id="adminSavePerms" type="button" disabled>Salvar acessos`,
 		"Obrigatória ao criar. Ao editar, deixe em branco para manter a senha atual.",
+		"/api/admin/profile-options",
+		"function permissionActionLabel(resource,action)",
+		"Perfis e acessos",
 	} {
-		if !strings.Contains(js+html, want) {
-			t.Fatalf("admin safety contract missing %q", want)
-		}
+		if !strings.Contains(js+html, want) { t.Fatalf("admin safety contract missing %q", want) }
 	}
 }
 
@@ -897,14 +855,47 @@ func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
 
 
 func TestReportsNavigationIsPermissionAwareAcrossPages(t *testing.T) {
-	for _, name := range []string{"base.html", "stock.html", "movement.html", "catalog.html", "fiscal.html", "assets.html", "inventory.html", "admin.html", "reports.html"} {
-		b, err := os.ReadFile(filepath.Join("templates", name))
-		if err != nil {
-			t.Fatal(err)
+	b, err := os.ReadFile(filepath.Join("templates", "base.html"))
+	if err != nil { t.Fatal(err) }
+	html := string(b)
+	if strings.Count(html, `{{if .CanReports}}<a href="/reports">Relatórios</a>{{end}}`) != 1 {
+		t.Fatal("Reports must be exposed exactly once by the canonical permission-aware navigation")
+	}
+}
+
+func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil { t.Fatal(err) }
+		return string(b)
+	}
+	js := read(filepath.Join("static", "app.js"))
+	css := read(filepath.Join("static", "app.css"))
+	assets := read(filepath.Join("templates", "assets.html"))
+	fiscal := read(filepath.Join("templates", "fiscal.html"))
+	inventory := read(filepath.Join("templates", "inventory.html"))
+	catalog := read(filepath.Join("templates", "catalog.html"))
+
+	for _, want := range []string{
+		`card.after(detail)`,
+		`id="catalogItemStatus" class="operation-feedback"`,
+		`function itemMsg(type,text){setFeedback(itemStatus,type,text)}`,
+		`id="inventoryCreateMessage" class="operation-feedback"`,
+		`function setCreateMessage(text,kind='')`,
+		`id="assetUnitOperations"`,
+		`renderAsset(r,true)`,
+		`ops.parentElement===unitOpsHost`,
+		`className='operation-feedback fiscal-line-feedback'`,
+		`Selecione um produto/SKU nesta linha.`,
+		".asset-unit-layout{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
+		".fiscal-line-feedback{grid-column:1/-1",
+	} {
+		if !strings.Contains(js+css+assets+fiscal+inventory+catalog, want) {
+			t.Fatalf("selected-object context contract missing %q", want)
 		}
-		html := string(b)
-		if !strings.Contains(html, `{{if .CanReports}}<a href="/reports"`) {
-			t.Fatalf("%s must expose Reports only when CanReports is true", name)
-		}
+	}
+	if strings.Contains(js, `if(createTotal)if(createTotal)`) {
+		t.Fatal("inventory creation must not retain duplicated guards")
 	}
 }

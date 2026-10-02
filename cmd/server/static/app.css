@@ -64,7 +64,7 @@
  .inventory-list-filters .actions button{flex:1 1 120px}
 }
 
-.admin{display:grid;gap:16px}.warehouse-row{align-items:center}.warehouse-row button{min-width:112px}@media(max-width:720px){.admin{gap:10px}.warehouse-row button{width:100%}}
+.warehouse-row{align-items:center}.warehouse-row button{min-width:112px}@media(max-width:720px){.admin{gap:10px}.warehouse-row button{width:100%}}
 
 
 /* Shared selectable rows: semantic button, desktop and keyboard friendly. */
@@ -88,12 +88,6 @@
   .assets>.panel{padding:20px}
   .assets #assetOps>.grid,.assets #assetUnitForm>.grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 
-  .admin{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
-  .admin-intro,.admin-warehouses,.admin-permissions{grid-column:1/-1}
-  .admin>.panel{padding:20px}
-  .admin-warehouses #adminWarehouseForm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}
-  .admin-warehouses #adminWarehouseForm label{margin:0}
-  .admin-warehouses #adminWarehouseForm .operation-feedback{grid-column:1/-1}
 
   .fiscal-shell{grid-template-columns:minmax(0,1fr)}
   .fiscal{padding:22px}
@@ -105,16 +99,16 @@
 
 @media(min-width:768px) and (max-width:1023px){
   .main{max-width:900px;padding:18px}
-  .assets,.admin{grid-template-columns:1fr}
+  .assets{grid-template-columns:1fr}
   .stock-shell #stockList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px}
   .fiscal .line{grid-template-columns:minmax(0,1fr) 120px 120px auto}
 }
 
 @media(max-width:767px){
   .main{padding:12px}
-  .assets,.admin,.stock-shell,.fiscal-shell{grid-template-columns:1fr;gap:12px}
+  .assets,.stock-shell,.fiscal-shell{grid-template-columns:1fr;gap:12px}
   .stock-shell #stockList{display:block}
-  .assets>.panel,.admin>.panel,.fiscal{padding:12px}
+  .assets>.panel,.fiscal{padding:12px}
   .list-action{grid-template-columns:1fr;width:100%}
   .list-action strong{justify-self:start}
   .admin-warehouses #adminWarehouseForm button,
@@ -168,3 +162,48 @@
 .report-shortcuts button[aria-pressed="true"]{background:var(--brand-primary-soft);color:var(--brand-primary-active);border-color:var(--brand-primary);box-shadow:inset 0 0 0 1px var(--brand-primary)}
 
 .report-actions{margin-top:0}.report-actions button{min-height:40px}@media print{.top,.nav,#reportForm,.report-actions{display:none!important}body,.main,.panel{background:#fff;box-shadow:none;border:0}.main{max-width:none;padding:0}.reports h1{display:none}.report-result{margin:0}.report-table-wrap{overflow:visible;border:0}.report-table{min-width:0;font-size:10pt}.report-table th,.report-table td{padding:6px;border-color:#999}.section-heading{break-after:avoid}.report-table tr{break-inside:avoid}}
+
+
+/* Administration: desktop master/detail, one operational context per section. */
+.admin{display:grid;grid-template-columns:1fr;gap:18px}
+.admin-intro,.admin-users,.admin-profiles-access,.admin-warehouses{grid-column:1/-1}
+.admin-master-detail{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:24px;align-items:start;margin-top:16px}
+.admin-list-pane{min-width:0;border-right:1px solid var(--border);padding-right:20px}
+.admin-list-pane h3,.admin-editor-pane h3{margin:0 0 12px}
+.admin-editor-pane{min-width:0}
+.admin-editor-pane form{margin:0}
+.admin-permissions{margin-top:22px;padding-top:20px;border-top:1px solid var(--border)}
+.permission-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0 16px}
+.permission-group{margin:0;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-secondary)}
+.permission-group legend{padding:0 6px;font-weight:800;color:var(--text-primary)}
+.permission-group .check{margin:8px 0 0;font-weight:500}
+.admin-users #adminUsersList,.admin-profiles-access #adminProfilesList,.admin-warehouses #adminWarehousesList{max-height:62vh;overflow:auto}
+.admin .list-action.selected{background:var(--brand-primary-soft);border-left:4px solid var(--brand-primary)}
+@media(max-width:900px){
+ .admin-master-detail{grid-template-columns:1fr;gap:18px}
+ .admin-list-pane{border-right:0;border-bottom:1px solid var(--border);padding:0 0 18px}
+ .admin-users #adminUsersList,.admin-profiles-access #adminProfilesList,.admin-warehouses #adminWarehousesList{max-height:320px}
+ .permission-grid{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+ .admin{gap:12px}
+ .admin-master-detail{margin-top:12px}
+ .admin>.panel{padding:12px}
+}
+
+
+/* UX context corrections: keep feedback and operations beside the object that caused them. */
+.context-note{margin:0 0 12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-secondary);font-weight:700;color:var(--text-secondary)}
+.fiscal-line-feedback{grid-column:1/-1;margin-top:2px}
+.asset-unit-layout{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:22px;align-items:start}
+.asset-unit-list-pane{min-width:0;border-right:1px solid var(--border);padding-right:18px}
+.asset-unit-list-pane h2{margin:0 0 10px;font-size:1rem}
+.asset-unit-editor-pane{min-width:0}
+#assetUnitOperations:empty{display:none}
+#assetUnitOperations:not(:empty){margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+#assetUnitOperations #assetCurrent{margin-top:0}
+#assetsList .list-action.selected{background:var(--brand-primary-soft);border-left:4px solid var(--brand-primary)}
+@media(max-width:900px){
+ .asset-unit-layout{grid-template-columns:1fr;gap:16px}
+ .asset-unit-list-pane{border-right:0;border-bottom:1px solid var(--border);padding:0 0 16px}
+}
