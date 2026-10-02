@@ -48,10 +48,22 @@ func TestFiscalManualFallbackConfirmMultiLine(t *testing.T) {
 	if s1retry.Quantity != "2.000" {
 		t.Fatalf("retry duplicated stock=%+v", s1retry)
 	}
+	beforeDupMovements := tableCount(t, a, "movements")
+	beforeDupLines := tableCount(t, a, "movement_lines")
+	beforeDupLots := tableCount(t, a, "stock_lots")
 	dupPayload := map[string]any{"operation_id": "fiscal-manual-dup", "access_key": key, "warehouse_id": wh, "lines": []map[string]any{{"sku_id": sku1, "quantity": "1", "unit_cost": "1"}}}
 	dup := authReq(a, http.MethodPost, "/api/fiscal/confirm", dupPayload, director, "")
 	if dup.Code != http.StatusConflict || !strings.Contains(dup.Body.String(), "Nota fiscal já confirmada") {
 		t.Fatalf("duplicate status=%d body=%s", dup.Code, dup.Body.String())
+	}
+	if got := tableCount(t, a, "movements"); got != beforeDupMovements {
+		t.Fatalf("duplicate fiscal left movement %d -> %d", beforeDupMovements, got)
+	}
+	if got := tableCount(t, a, "movement_lines"); got != beforeDupLines {
+		t.Fatalf("duplicate fiscal left movement line %d -> %d", beforeDupLines, got)
+	}
+	if got := tableCount(t, a, "stock_lots"); got != beforeDupLots {
+		t.Fatalf("duplicate fiscal left stock lot %d -> %d", beforeDupLots, got)
 	}
 }
 
