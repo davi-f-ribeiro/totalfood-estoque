@@ -29,18 +29,16 @@ async function initStock(){
 let sel=document.getElementById('warehouse'),list=document.getElementById('stockList'),detail=document.getElementById('stockDetail'),stockStatus=document.getElementById('stockStatus');if(!sel||!list)return;
 try{await loadWarehouses(true)}catch(err){setFeedback(stockStatus,'error',uiErrorMessage(err,'Não foi possível carregar os depósitos.'));return}
 let openKey='',detailSeq=0;
-function movementURL(path,d,x){let q=new URLSearchParams({sku_id:x.sku_id,item:d.name,brand:d.brand,barcode:x.barcode||'',unit:d.unit,content_quantity:x.content_quantity||'1'});return path+'?'+q.toString()}
 async function openDetail(row,card){
  let key=row.item_id+':'+row.brand_id;
  if(openKey===key){openKey='';detailSeq++;detail.hidden=true;detail.textContent='';card?.setAttribute('aria-expanded','false');return}
  openKey=key;let seq=++detailSeq;document.querySelectorAll('.stock-card[aria-expanded="true"]').forEach(c=>c.setAttribute('aria-expanded','false'));card?.setAttribute('aria-expanded','true');if(card)card.after(detail);detail.hidden=false;detail.textContent='Carregando…';
  let d;try{d=await api('/api/stock/detail/'+row.item_id+'?brand_id='+row.brand_id)}catch(err){if(seq!==detailSeq)return;detail.textContent=uiErrorMessage(err,'Não foi possível carregar os detalhes do estoque.');return}
  if(seq!==detailSeq||openKey!==key)return;detail.textContent='';
- let h=document.createElement('button');h.type='button';h.className='detail-head';h.textContent=d.name+' - '+d.brand+' ▲';h.onclick=()=>openDetail(row,card);
- let lines=document.createElement('div');lines.className='list';(d.details||[]).forEach(x=>{let r=document.createElement('div');r.className='row';let a=document.createElement('div');a.textContent=x.warehouse;let q=document.createElement('strong');q.textContent=displayDecimal(x.quantity)+' '+d.unit;r.append(a,q);lines.append(r)});
- let more=document.createElement('details'),sum=document.createElement('summary'),box=document.createElement('div');sum.textContent='Detalhes das embalagens';more.append(sum);box.className='list';
- (d.presentations||[]).forEach(x=>{let r=document.createElement('div');r.className='row';let a=document.createElement('div');a.textContent=x.sku||d.name+' - '+d.brand;let sm=document.createElement('small');sm.textContent=(x.barcode?'EAN '+x.barcode+' · ':'')+'1 un = '+displayDecimal(x.content_quantity||'1',4)+' '+d.unit;a.append(sm);let act=document.createElement('div');act.className='actions';[['Entrada','/entry'],['Saída','/exit'],['Transferir','/transfer']].forEach(pair=>{let b=document.createElement('a');b.className='button';b.href=movementURL(pair[1],d,x);b.textContent=pair[0];act.append(b)});r.append(a,act);box.append(r)});
- more.append(box);detail.append(h,lines);if((d.presentations||[]).length)detail.append(more);detail.scrollIntoView({block:'nearest',behavior:'smooth'})
+ let presentations=d.presentations||[];if(!presentations.length){detail.hidden=true;return}
+ let more=document.createElement('details'),sum=document.createElement('summary'),box=document.createElement('div');sum.textContent='Embalagens';more.append(sum);box.className='list';
+ presentations.forEach(x=>{let r=document.createElement('div');r.className='row';let a=document.createElement('div');a.textContent=displayDecimal(x.content_quantity||'1',4)+' '+d.unit;let sm=document.createElement('small');sm.textContent=x.barcode?'EAN '+x.barcode:'';if(sm.textContent)a.append(sm);r.append(a);box.append(r)});
+ more.append(box);detail.append(more);detail.scrollIntoView({block:'nearest',behavior:'smooth'})
 }
 async function load(){setFeedback(stockStatus,'loading','Carregando estoque…');list.textContent='';let qs=sel.value?'?warehouse_id='+sel.value:'';let rows;try{rows=await api('/api/stock'+qs)}catch(err){setFeedback(stockStatus,'error',uiErrorMessage(err,'Não foi possível carregar o estoque.'));return}setFeedback(stockStatus,'','');detail.hidden=true;detail.textContent='';openKey='';rows.forEach(r=>{let d=document.createElement('button');d.type='button';d.className='row stock-card';d.setAttribute('aria-expanded','false');let a=document.createElement('strong');a.textContent=r.name+' - '+r.brand;let q=document.createElement('strong');q.textContent=displayDecimal(r.quantity)+' '+r.unit+' ▼';d.append(a,q);d.onclick=()=>openDetail(r,d);list.append(d)})}
 sel.onchange=load;await load()
