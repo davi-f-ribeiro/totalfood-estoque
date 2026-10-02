@@ -30,10 +30,9 @@ SELECT
        ELSE (COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity*ml.unit_cost ELSE -ml.quantity*ml.unit_cost END),0) / COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0))::numeric(14,4)::text
   END AS avg_cost
 FROM movement_lines ml
-JOIN product_skus line_sku ON line_sku.id=ml.sku_id
 JOIN product_skus requested_sku ON requested_sku.id=$1
 JOIN movements m ON m.id=ml.movement_id
-WHERE line_sku.item_id=requested_sku.item_id AND ml.warehouse_id=$2
+WHERE ml.item_id=requested_sku.item_id AND ml.warehouse_id=$2
   AND ($3::timestamptz IS NULL OR m.occurred_at < $3)`, skuID, warehouseID, before).Scan(&s.Quantity, &s.Value, &s.AvgCost)
 	if err != nil {
 		return s, err
