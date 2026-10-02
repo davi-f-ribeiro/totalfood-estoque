@@ -335,18 +335,20 @@ func validateInventoryWarehouse(ctx context.Context, q interface {
 func inventoryEligibility(ctx context.Context, q inventoryQueryer, warehouseID int64) ([]inventoryEligibilityRow, error) {
 	rows, err := q.QueryContext(ctx, `
 WITH sku_rep AS (
-    SELECT item_id,
+    SELECT item_id,brand_id,
            COALESCE(min(id) FILTER (WHERE active),min(id)) AS sku_id,
            bool_or(active) AS sku_active
     FROM product_skus
-    GROUP BY item_id
+    WHERE brand_id<>0
+    GROUP BY item_id,brand_id
 ),
 balances AS (
-    SELECT item_id,
-           COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0) AS balance
-    FROM movement_lines
-    WHERE warehouse_id=$1
-    GROUP BY item_id
+    SELECT ml.item_id,s.brand_id,
+           COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) AS balance
+    FROM movement_lines ml
+    JOIN product_skus s ON s.id=ml.sku_id
+    WHERE ml.warehouse_id=$1
+    GROUP BY ml.item_id,s.brand_id
 )
 SELECT r.sku_id,
        COALESCE(b.balance,0)::text,
@@ -356,7 +358,7 @@ SELECT r.sku_id,
        COALESCE(b.balance,0) < 0
 FROM inventory_items i
 JOIN sku_rep r ON r.item_id=i.id
-LEFT JOIN balances b ON b.item_id=i.id
+LEFT JOIN balances b ON b.item_id=i.id AND b.brand_id=r.brand_id
 ORDER BY r.sku_id`, warehouseID)
 	if err != nil {
 		return nil, err
@@ -419,22 +421,24 @@ func selectBlindWarehouse(ctx context.Context, tx *sql.Tx) (int64, int, error) {
 	var eligibleCount int
 	err := tx.QueryRowContext(ctx, `
 WITH sku_rep AS (
-    SELECT item_id,bool_or(active) AS sku_active
+    SELECT item_id,brand_id,bool_or(active) AS sku_active
     FROM product_skus
-    GROUP BY item_id
+    WHERE brand_id<>0
+    GROUP BY item_id,brand_id
 ),
 balances AS (
-    SELECT ml.warehouse_id,ml.item_id,
+    SELECT ml.warehouse_id,ml.item_id,s.brand_id,
            sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) AS balance
     FROM movement_lines ml
-    GROUP BY ml.warehouse_id,ml.item_id
+    JOIN product_skus s ON s.id=ml.sku_id
+    GROUP BY ml.warehouse_id,ml.item_id,s.brand_id
 ),
 eligible_counts AS (
     SELECT b.warehouse_id,count(*)::int AS eligible_count
     FROM balances b
     JOIN warehouses w ON w.id=b.warehouse_id AND w.active=true
     JOIN inventory_items i ON i.id=b.item_id
-    JOIN sku_rep r ON r.item_id=b.item_id
+    JOIN sku_rep r ON r.item_id=b.item_id AND r.brand_id=b.brand_id
     WHERE r.sku_active=true AND i.active=true AND b.balance>0
     GROUP BY b.warehouse_id
     HAVING count(*) >= 2
@@ -459,30 +463,33 @@ LIMIT 1`).Scan(&warehouseID, &eligibleCount)
 func selectBlindSKUs(ctx context.Context, tx *sql.Tx, warehouseID int64, sampleSize int) ([]inventorySnapshotLine, error) {
 	rows, err := tx.QueryContext(ctx, `
 WITH sku_rep AS (
-    SELECT item_id,
+    SELECT item_id,brand_id,
            min(id) FILTER (WHERE active) AS sku_id,
            bool_or(active) AS sku_active
     FROM product_skus
-    GROUP BY item_id
+    WHERE brand_id<>0
+    GROUP BY item_id,brand_id
 ),
 balances AS (
-    SELECT item_id,
-           sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END) AS balance
-    FROM movement_lines
-    WHERE warehouse_id=$1
-    GROUP BY item_id
+    SELECT ml.item_id,s.brand_id,
+           sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) AS balance
+    FROM movement_lines ml
+    JOIN product_skus s ON s.id=ml.sku_id
+    WHERE ml.warehouse_id=$1
+    GROUP BY ml.item_id,s.brand_id
 ),
 history AS (
-    SELECT l.item_id, max(v.created_at) AS last_selected
+    SELECT l.item_id,s.brand_id,max(v.created_at) AS last_selected
     FROM inventory_validation_lines l
+    JOIN product_skus s ON s.id=l.sku_id
     JOIN inventory_validations v ON v.id=l.validation_id
-    GROUP BY l.item_id
+    GROUP BY l.item_id,s.brand_id
 )
 SELECT r.sku_id,b.balance::text
 FROM balances b
 JOIN inventory_items i ON i.id=b.item_id
-JOIN sku_rep r ON r.item_id=b.item_id
-LEFT JOIN history h ON h.item_id=b.item_id
+JOIN sku_rep r ON r.item_id=b.item_id AND r.brand_id=b.brand_id
+LEFT JOIN history h ON h.item_id=b.item_id AND h.brand_id=b.brand_id
 WHERE r.sku_active=true AND i.active=true AND b.balance>0 AND r.sku_id IS NOT NULL
 ORDER BY (h.last_selected IS NOT NULL), h.last_selected ASC NULLS FIRST, random()
 LIMIT $2`, warehouseID, sampleSize)
