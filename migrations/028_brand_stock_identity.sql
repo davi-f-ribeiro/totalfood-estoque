@@ -60,14 +60,6 @@ FROM normalized n
 JOIN brands b ON lower(btrim(b.name))=lower(btrim(n.brand_name))
 WHERE s.id=n.id;
 
-DO $$
-BEGIN
-    IF EXISTS (SELECT 1 FROM product_skus WHERE brand_id IS NULL) THEN
-        RAISE EXCEPTION 'brand migration left product_skus without brand_id';
-    END IF;
-END;
-$$;
-
 ALTER TABLE product_skus
     ALTER COLUMN brand_id SET DEFAULT 0,
     ALTER COLUMN brand_id SET NOT NULL;
