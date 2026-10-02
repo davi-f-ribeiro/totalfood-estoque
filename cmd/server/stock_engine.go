@@ -73,13 +73,28 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 	}
 	sort.Slice(skuIDs, func(i, j int) bool { return skuIDs[i] < skuIDs[j] })
 	return a.writeMovement(ctx, "ENTRADA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
+		type stockIdentity struct {
+			ItemID int64
+			SKUID   int64
+		}
+		identities := make([]stockIdentity, 0, len(skuIDs))
+		seenItems := make(map[int64]struct{}, len(skuIDs))
 		for _, skuID := range skuIDs {
 			if err := ensureRefs(ctx, tx, skuID, req.WarehouseID); err != nil {
 				return 0, err
 			}
+			var itemID int64
+			if err := tx.QueryRowContext(ctx, `SELECT item_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID); err != nil {
+				return 0, err
+			}
+			if _, exists := seenItems[itemID]; !exists {
+				seenItems[itemID] = struct{}{}
+				identities = append(identities, stockIdentity{ItemID: itemID, SKUID: skuID})
+			}
 		}
-		for _, skuID := range skuIDs {
-			if err := lockStock(ctx, tx, skuID, req.WarehouseID); err != nil {
+		sort.Slice(identities, func(i, j int) bool { return identities[i].ItemID < identities[j].ItemID })
+		for _, identity := range identities {
+			if err := lockStock(ctx, tx, identity.SKUID, req.WarehouseID); err != nil {
 				return 0, err
 			}
 		}
