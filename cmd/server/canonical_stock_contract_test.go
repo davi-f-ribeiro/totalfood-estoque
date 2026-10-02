@@ -999,3 +999,79 @@ VALUES($1,'Outra','Outra apresentação',$2,true) RETURNING id`, itemID, t.Name(
 		t.Fatalf("canonical zero-balance warehouse should deactivate: %v", err)
 	}
 }
+
+
+func TestBrandStockIdentitySharesPresentationsButIsolatesBrands(t *testing.T) {
+	a, payol1, whFrom, whTo := newStockTestApp(t)
+	ctx := context.Background()
+
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, payol1).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	var payolBrand, caeteBrand int64
+	if err := a.db.QueryRow(`INSERT INTO brands(name) VALUES ($1) RETURNING id`, t.Name()+"-Payol").Scan(&payolBrand); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`INSERT INTO brands(name) VALUES ($1) RETURNING id`, t.Name()+"-Caete").Scan(&caeteBrand); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE product_skus SET brand_id=$1,content_quantity=1 WHERE id=$2`, payolBrand, payol1); err != nil {
+		t.Fatal(err)
+	}
+
+	var payol10, caete1 int64
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus(item_id,brand_id,name,barcode,content_quantity,active)
+VALUES($1,$2,'Payol 10 kg',$3,10,true) RETURNING id`, itemID,payolBrand,t.Name()+"-payol10").Scan(&payol10); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus(item_id,brand_id,name,barcode,content_quantity,active)
+VALUES($1,$2,'Caete 1 kg',$3,1,true) RETURNING id`, itemID,caeteBrand,t.Name()+"-caete1").Scan(&caete1); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.createEntry(ctx,movementRequest{
+		OperationID:"brand-payol-entry",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:payol10,WarehouseID:whFrom,Quantity:"1",UnitCost:"50",
+	},"brand-payol-entry-hash"); err != nil { t.Fatal(err) }
+	if _, err := a.createEntry(ctx,movementRequest{
+		OperationID:"brand-caete-entry",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:caete1,WarehouseID:whFrom,Quantity:"50",UnitCost:"5",
+	},"brand-caete-entry-hash"); err != nil { t.Fatal(err) }
+
+	if _, err := a.createExit(ctx,movementRequest{
+		OperationID:"brand-payol-exit",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:payol1,WarehouseID:whFrom,Quantity:"3",
+	},"brand-payol-exit-hash"); err != nil {
+		t.Fatalf("same-brand presentation must consume shared Payol balance: %v",err)
+	}
+
+	payol, err := getStockSnapshot(ctx,a.db,payol1,whFrom)
+	if err != nil { t.Fatal(err) }
+	caete, err := getStockSnapshot(ctx,a.db,caete1,whFrom)
+	if err != nil { t.Fatal(err) }
+	if payol.Quantity!="7.000" || caete.Quantity!="50.000" {
+		t.Fatalf("brand isolation failed: Payol=%s Caete=%s",payol.Quantity,caete.Quantity)
+	}
+
+	if _, err := a.createExit(ctx,movementRequest{
+		OperationID:"brand-payol-too-much",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:payol1,WarehouseID:whFrom,Quantity:"8",
+	},"brand-payol-too-much-hash"); !errors.Is(err,errInsufficientStock) {
+		t.Fatalf("Payol must not consume Caete balance: %v",err)
+	}
+
+	if _, err := a.createTransfer(ctx,movementRequest{
+		OperationID:"brand-payol-transfer",QuantitySemantics:presentationQuantitySemantics,
+		SKUID:payol1,FromWarehouseID:whFrom,ToWarehouseID:whTo,Quantity:"2",
+	},"brand-payol-transfer-hash"); err != nil { t.Fatal(err) }
+
+	fromPayol, _ := getStockSnapshot(ctx,a.db,payol10,whFrom)
+	toPayol, _ := getStockSnapshot(ctx,a.db,payol1,whTo)
+	fromCaete, _ := getStockSnapshot(ctx,a.db,caete1,whFrom)
+	if fromPayol.Quantity!="5.000" || toPayol.Quantity!="2.000" || fromCaete.Quantity!="50.000" {
+		t.Fatalf("transfer crossed brand boundary: Payol from=%s to=%s Caete=%s",fromPayol.Quantity,toPayol.Quantity,fromCaete.Quantity)
+	}
+}
