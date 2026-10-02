@@ -417,3 +417,30 @@ func TestBalanceReportReconstructsHistoricalAverageCostAtCutoff(t *testing.T) {
 		t.Fatalf("historical balance=%+v want qty 20 avg 12",rows)
 	}
 }
+
+
+func TestMovementReportPreservesLegacyResponsible(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	ctx:=context.Background()
+	if _,err:=a.db.Exec(`UPDATE movements SET occurred_at='2026-09-05T12:00:00Z', responsible='Davi', user_id=NULL WHERE legacy_id IS NOT NULL OR id=(SELECT min(id) FROM movements)`);err!=nil{t.Fatal(err)}
+	start:=time.Date(2026,9,1,0,0,0,0,time.UTC);end:=time.Date(2026,10,1,0,0,0,0,time.UTC)
+	rows,err:=a.listMovementReport(ctx,"ENTRADA",start,end,0)
+	if err!=nil{t.Fatal(err)}
+	found:=false
+	for _,r:=range rows{if r.Responsible=="Davi"{found=true;break}}
+	if !found{t.Fatalf("legacy responsible not preserved: %+v",rows)}
+}
+
+func TestReportEndpointsRequireOperationsRead(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	if _,err:=a.db.Exec(`
+INSERT INTO profile_permissions(profile_id,permission_id)
+SELECT p.id,perm.id FROM profiles p JOIN permissions perm ON perm.resource='stock' AND perm.action='read'
+WHERE p.name='Estoquista' ON CONFLICT DO NOTHING`);err!=nil{t.Fatal(err)}
+	createTestUser(t,a,"report-stock-only","secret","Estoquista",true)
+	login:=doLogin(t,a,"report-stock-only","secret")
+	rr:=authReq(a,http.MethodGet,"/api/reports/movements?type=ENTRADA&start=2026-09-01T00:00:00Z&end=2026-10-01T00:00:00Z",nil,login,"")
+	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only movement report status=%d body=%s",rr.Code,rr.Body.String())}
+	rr=authReq(a,http.MethodGet,"/api/reports/balance?before=2026-10-01T00:00:00Z",nil,login,"")
+	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only balance report status=%d body=%s",rr.Code,rr.Body.String())}
+}
