@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -14,12 +15,19 @@ import (
 var decimalPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]{1,4})?$`)
 
 var (
-	errValidation              = errors.New("validation rejected")
-	errNotFound                = errors.New("resource not found")
-	errInsufficientStock       = errors.New("insufficient stock")
-	errOperationConflict       = errors.New("operation_id conflicts with existing operation")
-	errOperationNotFound       = errors.New("operation not found")
-	errDuplicateFiscalDocument = errors.New("fiscal document already confirmed")
+	errValidation                    = errors.New("validation rejected")
+	errMovementOperationIDMissing    = fmt.Errorf("%w: operation id missing", errValidation)
+	errMovementProductRequired       = fmt.Errorf("%w: product required", errValidation)
+	errMovementQuantityInvalid       = fmt.Errorf("%w: invalid quantity", errValidation)
+	errMovementCostInvalid           = fmt.Errorf("%w: invalid unit cost", errValidation)
+	errMovementWarehouseRequired     = fmt.Errorf("%w: warehouse required", errValidation)
+	errTransferWarehousesRequired    = fmt.Errorf("%w: transfer warehouses required", errValidation)
+	errTransferSameWarehouse         = fmt.Errorf("%w: transfer warehouses must differ", errValidation)
+	errNotFound                      = errors.New("resource not found")
+	errInsufficientStock             = errors.New("insufficient stock")
+	errOperationConflict             = errors.New("operation_id conflicts with existing operation")
+	errOperationNotFound             = errors.New("operation not found")
+	errDuplicateFiscalDocument       = errors.New("fiscal document already confirmed")
 )
 
 type insufficientStockError struct {
@@ -67,6 +75,7 @@ func (a *app) registerMovementHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/operations/{operation_id}", a.requireAuthenticatedRead(a.handleGetOperation))
 	mux.HandleFunc("GET /api/reports/movements", a.requireAuth("operations", "read", a.handleMovementReport))
 	mux.HandleFunc("GET /api/reports/balance", a.requireAuth("operations", "read", a.handleBalanceReport))
+	mux.HandleFunc("GET /api/reports/warehouses", a.requireAuth("operations", "read", a.handleWarehouses))
 }
 
 func (a *app) handleEntry(w http.ResponseWriter, r *http.Request) {
@@ -152,12 +161,20 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 	req.UnitCost = normalizeDecimalInput(req.UnitCost)
 	body, _ := json.Marshal(req)
 	h := sha256.Sum256(body)
-	if req.OperationID == "" || req.SKUID <= 0 || !positiveDecimal(req.Quantity) {
-		writeJSONError(w, http.StatusBadRequest, "Revise produto, depósito e valores da movimentação.")
+	if req.OperationID == "" {
+		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar esta operação. Recarregue a página antes de tentar novamente.")
+		return req, "", false
+	}
+	if req.SKUID <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "Selecione um produto antes de registrar a movimentação.")
+		return req, "", false
+	}
+	if !positiveDecimal(req.Quantity) {
+		writeJSONError(w, http.StatusBadRequest, "Informe uma quantidade maior que zero, com até 4 casas decimais.")
 		return req, "", false
 	}
 	if requireCost && !nonNegativeDecimal(req.UnitCost) {
-		writeJSONError(w, http.StatusBadRequest, "Revise produto, depósito e valores da movimentação.")
+		writeJSONError(w, http.StatusBadRequest, "Informe um custo unitário válido, igual ou maior que zero, com até 4 casas decimais.")
 		return req, "", false
 	}
 	return req, hex.EncodeToString(h[:]), true
