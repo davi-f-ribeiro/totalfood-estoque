@@ -362,7 +362,7 @@ func TestFrontendCleanupKeepsSingleCanonicalHelpers(t *testing.T) {
 			t.Fatalf("dead or competing frontend helper reintroduced %q", forbidden)
 		}
 	}
-	if strings.Count(js, `async function loadWarehouses(includeGeneral=false)`) != 1 {
+	if strings.Count(js, `async function loadWarehouses(includeGeneral=false,endpoint='/api/warehouses')`) != 1 {
 		t.Fatal("operational warehouse loader must have one canonical global implementation")
 	}
 }
@@ -853,5 +853,34 @@ func TestCRUDOptimisticConcurrencyUIContracts(t *testing.T) {
 		if !strings.Contains(js, want) {
 			t.Fatalf("CRUD optimistic concurrency UI contract missing %q", want)
 		}
+	}
+}
+
+
+func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlb, err := os.ReadFile(filepath.Join("templates", "reports.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	html := string(htmlb)
+	for _, want := range []string{
+		"loadWarehouses(true,'/api/reports/warehouses')",
+		"a.setDate(a.getDate()-a.getDay())",
+		"Semana até hoje (WTD)",
+		"Mês até hoje (MTD)",
+		`data-period="custom"`,
+		"WTD considera domingo como início da semana.",
+	} {
+		if !strings.Contains(js+html, want) {
+			t.Fatalf("reports WTD/MTD contract missing %q", want)
+		}
+	}
+	if strings.Contains(js, "(a.getDay()+6)%7") {
+		t.Fatal("week-to-date must start on Sunday, not Monday")
 	}
 }
