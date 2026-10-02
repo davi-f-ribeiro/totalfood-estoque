@@ -168,3 +168,31 @@
 .report-shortcuts button[aria-pressed="true"]{background:var(--brand-primary-soft);color:var(--brand-primary-active);border-color:var(--brand-primary);box-shadow:inset 0 0 0 1px var(--brand-primary)}
 
 .report-actions{margin-top:0}.report-actions button{min-height:40px}@media print{.top,.nav,#reportForm,.report-actions{display:none!important}body,.main,.panel{background:#fff;box-shadow:none;border:0}.main{max-width:none;padding:0}.reports h1{display:none}.report-result{margin:0}.report-table-wrap{overflow:visible;border:0}.report-table{min-width:0;font-size:10pt}.report-table th,.report-table td{padding:6px;border-color:#999}.section-heading{break-after:avoid}.report-table tr{break-inside:avoid}}
+
+
+/* Administration: desktop master/detail, one operational context per section. */
+.admin{display:grid;grid-template-columns:1fr;gap:18px}
+.admin-intro,.admin-users,.admin-profiles-access,.admin-warehouses{grid-column:1/-1}
+.admin-master-detail{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:24px;align-items:start;margin-top:16px}
+.admin-list-pane{min-width:0;border-right:1px solid var(--border);padding-right:20px}
+.admin-list-pane h3,.admin-editor-pane h3{margin:0 0 12px}
+.admin-editor-pane{min-width:0}
+.admin-editor-pane form{margin:0}
+.admin-permissions{margin-top:22px;padding-top:20px;border-top:1px solid var(--border)}
+.permission-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0 16px}
+.permission-group{margin:0;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-secondary)}
+.permission-group legend{padding:0 6px;font-weight:800;color:var(--text-primary)}
+.permission-group .check{margin:8px 0 0;font-weight:500}
+.admin-users #adminUsersList,.admin-profiles-access #adminProfilesList,.admin-warehouses #adminWarehousesList{max-height:62vh;overflow:auto}
+.admin .list-action.selected{background:var(--brand-primary-soft);border-left:4px solid var(--brand-primary)}
+@media(max-width:900px){
+ .admin-master-detail{grid-template-columns:1fr;gap:18px}
+ .admin-list-pane{border-right:0;border-bottom:1px solid var(--border);padding:0 0 18px}
+ .admin-users #adminUsersList,.admin-profiles-access #adminProfilesList,.admin-warehouses #adminWarehousesList{max-height:320px}
+ .permission-grid{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+ .admin{gap:12px}
+ .admin-master-detail{margin-top:12px}
+ .admin>.panel{padding:12px}
+}
