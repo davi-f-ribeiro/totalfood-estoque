@@ -433,3 +433,70 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 		t.Fatalf("updated content=%s want 3.0000", content)
 	}
 }
+
+
+func TestCanonicalStockSharesBalanceAcrossBrandsOfSameParent(t *testing.T) {
+	a, skuBrandB, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+
+	var itemID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuBrandB).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`
+UPDATE product_skus
+SET brand='Marca B',name='Marca B 10kg',content_quantity=10
+WHERE id=$1`, skuBrandB); err != nil {
+		t.Fatal(err)
+	}
+
+	var skuBrandA int64
+	if err := a.db.QueryRow(`
+INSERT INTO product_skus (item_id,brand,name,barcode,content_quantity,active)
+VALUES ($1,'Marca A','Marca A 1kg',$2,1,true)
+RETURNING id`, itemID, t.Name()+"-marca-a").Scan(&skuBrandA); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "cross-brand-entry",
+		SKUID: skuBrandB,
+		WarehouseID: wh,
+		Quantity: "1",
+		UnitCost: "50",
+	}, "cross-brand-entry-hash"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.createExit(ctx, movementRequest{
+		OperationID: "cross-brand-exit",
+		SKUID: skuBrandA,
+		WarehouseID: wh,
+		Quantity: "1",
+	}, "cross-brand-exit-hash"); err != nil {
+		t.Fatalf("brands under the same parent must share stock: %v", err)
+	}
+
+	s, err := getStockSnapshot(ctx, a.db, skuBrandA, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Quantity != "9.000" || s.AvgCost != "5.0000" {
+		t.Fatalf("shared cross-brand balance qty=%s avg=%s want 9.000 and 5.0000", s.Quantity, s.AvgCost)
+	}
+
+	var inSKU, outSKU int64
+	if err := a.db.QueryRow(`
+SELECT
+  max(sku_id) FILTER (WHERE direction='IN'),
+  max(sku_id) FILTER (WHERE direction='OUT')
+FROM movement_lines
+WHERE movement_id IN (
+  SELECT id FROM movements WHERE operation_id IN ('cross-brand-entry','cross-brand-exit')
+)`).Scan(&inSKU, &outSKU); err != nil {
+		t.Fatal(err)
+	}
+	if inSKU != skuBrandB || outSKU != skuBrandA {
+		t.Fatalf("presentation trace lost: entry sku=%d want %d, exit sku=%d want %d", inSKU, skuBrandB, outSKU, skuBrandA)
+	}
+}
