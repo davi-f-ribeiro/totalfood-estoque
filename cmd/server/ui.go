@@ -339,4 +339,3 @@ func setSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("Referrer-Policy", "same-origin")
 }
 
-const stockSQL = `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text, CASE WHEN i.minimum_stock IS NULL THEN false ELSE COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < i.minimum_stock END FROM inventory_items i JOIN product_skus s ON s.item_id=i.id LEFT JOIN movement_lines ml ON ml.sku_id=s.id AND ml.warehouse_id=$1 GROUP BY i.id ORDER BY i.name`
