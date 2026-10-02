@@ -158,6 +158,18 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 		t.Fatalf("reassign current=%d history=%d want current=%d history=%d", currentParent, historicalParent, parentBID, parentAID)
 	}
 
+	historicalUnitEdit := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(parentAID), map[string]any{
+		"name": "Feijão Teste Pai A",
+		"category_id": catID,
+		"unit_code": "UN",
+		"minimum_stock": "2.5",
+		"active": true,
+		"version": crudVersion(t, a, "inventory_items", parentAID),
+	}, director, "")
+	if historicalUnitEdit.Code != http.StatusConflict || !strings.Contains(historicalUnitEdit.Body.String(), "Unidade não pode ser alterada") {
+		t.Fatalf("historical parent unit edit status=%d body=%s", historicalUnitEdit.Code, historicalUnitEdit.Body.String())
+	}
+
 	badMove := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(skuID), map[string]any{"item_id": parentCID, "name": "Feijão Teste Marca", "barcode": "7890000999911", "active": true, "version": crudVersion(t, a, "product_skus", skuID)}, director, "")
 	if badMove.Code != http.StatusConflict || !strings.Contains(badMove.Body.String(), "mesma unidade") {
 		t.Fatalf("cross-unit historical reassign status=%d body=%s", badMove.Code, badMove.Body.String())
