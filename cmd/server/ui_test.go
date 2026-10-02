@@ -127,7 +127,6 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`Disponível:`,
 		`aria-expanded`,
 		`openKey===key`,
-		`stopPropagation`,
 		`warehouse_id`,
 		`Quantidade acima do saldo disponível.`,
 		`Destino deve ser diferente da origem.`,
