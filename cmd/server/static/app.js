@@ -219,7 +219,7 @@ applyInventoryCreatePending();loadWarehouses();loadList();let initial=Number(new
 }
 
 function initForcedPassword(){let f=document.getElementById('forcedPasswordForm');if(!f)return;let st=document.getElementById('forcedPasswordStatus');f.addEventListener('submit',async e=>{e.preventDefault();let submit=e.submitter||f.querySelector('button[type="submit"]');if(submit?.dataset.busy==='1')return;if(!requireFields(f,st))return;await runLocked(submit,async()=>{setFeedback(st,'loading','Salvando nova senha…');try{await api('/api/me/password',{method:'PATCH',body:JSON.stringify({current_password:forcedCurrent.value,new_password:forcedNew.value,confirm_password:forcedConfirm.value})});setFeedback(st,'success','Senha alterada.');location.href='/stock'}catch(err){setFeedback(st,'error',uiErrorMessage(err,'Não foi possível alterar a senha. Revise os dados e tente novamente.'))}})})}
-initForcedPassword();initAccount();initStock();initReports();initMovement();initInventory();initCatalog();initFiscal();initAssets();initAdmin();
+initForcedPassword();initAccount();initStock();initMovement();initInventory();initCatalog();initFiscal();initAssets();initAdmin();
 
 async function initReports(){
 let form=document.getElementById('reportForm');if(!form)return;
@@ -239,3 +239,5 @@ if(type.value==='SALDO'){header(['Produto / SKU','Depósito','Saldo','Preço mé
 if(!rows.length){let tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=type.value==='SALDO'?4:6;td.textContent='Nenhum registro encontrado para os filtros selecionados.';tr.append(td);body.append(tr)}
 result.scrollIntoView({block:'nearest',behavior:'smooth'})}
 }
+
+initReports();
