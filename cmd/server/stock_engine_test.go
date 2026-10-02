@@ -496,3 +496,35 @@ func TestMovementValidationMessagesAreSpecific(t *testing.T) {
 		})
 	}
 }
+
+
+func TestLegacyMovementHashRemainsStableAcrossPresentationUpgrade(t *testing.T) {
+	body := `{"operation_id":"op-legacy-hash","sku_id":1,"warehouse_id":2,"quantity":"3","unit_cost":"13.30"}`
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/movements/entry", strings.NewReader(body))
+	decoded, hash, ok := decodeMovementRequest(rr, req, true)
+	if !ok {
+		t.Fatalf("legacy payload rejected status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if decoded.QuantitySemantics != "" {
+		t.Fatalf("legacy payload unexpectedly gained semantics %q", decoded.QuantitySemantics)
+	}
+	const legacyHash = "b0a40cf3c6dab36b27c417ecd6788fd4ae45821aa7b687c4d1e6e883ef5aec43"
+	if hash != legacyHash {
+		t.Fatalf("legacy request hash changed got=%s want=%s", hash, legacyHash)
+	}
+
+	newBody := `{"operation_id":"op-legacy-hash","sku_id":1,"warehouse_id":2,"quantity":"3","quantity_semantics":"presentation","unit_cost":"13.30"}`
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/movements/entry", strings.NewReader(newBody))
+	decoded, presentationHash, ok := decodeMovementRequest(rr, req, true)
+	if !ok {
+		t.Fatalf("presentation payload rejected status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if decoded.QuantitySemantics != presentationQuantitySemantics {
+		t.Fatalf("presentation semantics=%q", decoded.QuantitySemantics)
+	}
+	if presentationHash == legacyHash {
+		t.Fatal("legacy and presentation payloads must not share request hash")
+	}
+}
