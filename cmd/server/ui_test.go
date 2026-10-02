@@ -214,7 +214,7 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 	hb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
 	combined:=string(pb)+string(hb)
 	for _, want := range []string{
-		`id="productStatus" class="operation-feedback" hidden`,
+		`id="productStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
 		`function msg(type,text){setFeedback(status,type,text)}`,
 		`msg('loading',(editing?'Atualizando ':'Criando ')+label+'…')`,
 		`msg('success',label+(editing?' atualizado.':' criado.'))`,
