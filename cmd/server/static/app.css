@@ -190,3 +190,20 @@
  .admin-master-detail{margin-top:12px}
  .admin>.panel{padding:12px}
 }
+
+
+/* UX context corrections: keep feedback and operations beside the object that caused them. */
+.context-note{margin:0 0 12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-secondary);font-weight:700;color:var(--text-secondary)}
+.fiscal-line-feedback{grid-column:1/-1;margin-top:2px}
+.asset-unit-layout{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:22px;align-items:start}
+.asset-unit-list-pane{min-width:0;border-right:1px solid var(--border);padding-right:18px}
+.asset-unit-list-pane h2{margin:0 0 10px;font-size:1rem}
+.asset-unit-editor-pane{min-width:0}
+#assetUnitOperations:empty{display:none}
+#assetUnitOperations:not(:empty){margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+#assetUnitOperations #assetCurrent{margin-top:0}
+#assetsList .list-action.selected{background:var(--brand-primary-soft);border-left:4px solid var(--brand-primary)}
+@media(max-width:900px){
+ .asset-unit-layout{grid-template-columns:1fr;gap:16px}
+ .asset-unit-list-pane{border-right:0;border-bottom:1px solid var(--border);padding:0 0 16px}
+}
