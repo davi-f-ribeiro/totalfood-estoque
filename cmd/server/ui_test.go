@@ -159,12 +159,14 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 		`if(seq!==detailSeq||openKey!==key)return`,
 		`card.after(detail)`,
 		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
-		`Detalhes das embalagens`,
+		`sum.textContent='Embalagens'`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
 		if !strings.Contains(js+css,want) { t.Fatalf("brand stock contextual detail missing %q",want) }
 	}
-	if strings.Contains(js,"Composição do saldo") { t.Fatal("stock detail must not duplicate balance composition") }
+	for _, forbidden := range []string{"Composição do saldo","detail-head","movementURL(path,d,x)","['Entrada','/entry']","x.warehouse"} {
+		if strings.Contains(js,forbidden) { t.Fatalf("stock detail repeats context or movement actions: %q",forbidden) }
+	}
 }
 
 func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T) {
