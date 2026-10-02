@@ -27,11 +27,14 @@ FROM warehouses w
 JOIN product_skus requested_sku ON requested_sku.id=$1
 JOIN inventory_items i ON i.id=requested_sku.item_id
 JOIN (
-  SELECT ml.warehouse_id, ml.item_id,
+  SELECT ml.warehouse_id,ml.item_id,s.brand_id,
          COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) AS quantity
   FROM movement_lines ml
-  GROUP BY ml.warehouse_id,ml.item_id
-) bal ON bal.warehouse_id=w.id AND bal.item_id=requested_sku.item_id
+  JOIN product_skus s ON s.id=ml.sku_id
+  GROUP BY ml.warehouse_id,ml.item_id,s.brand_id
+) bal ON bal.warehouse_id=w.id
+     AND bal.item_id=requested_sku.item_id
+     AND bal.brand_id=requested_sku.brand_id
 WHERE w.active=true AND bal.quantity > 0
 ORDER BY w.name`, skuID)
 	if err != nil {
@@ -53,15 +56,20 @@ ORDER BY w.name`, skuID)
 
 func (a *app) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 	itemID, err := strconv.ParseInt(r.PathValue("item_id"), 10, 64)
-	if err != nil || itemID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid item")
+	brandID, brandErr := strconv.ParseInt(r.URL.Query().Get("brand_id"), 10, 64)
+	if err != nil || itemID <= 0 || brandErr != nil || brandID <= 0 {
+		writeJSONError(w, http.StatusBadRequest, "invalid stock identity")
 		return
 	}
 	var head struct {
-		ID                  int64
-		Name, Unit, Minimum string
+		ID, BrandID                  int64
+		Name, Brand, Unit, Minimum string
 	}
-	err = a.db.QueryRowContext(r.Context(), `SELECT id,name,unit_code,COALESCE(minimum_stock::text,'') FROM inventory_items WHERE id=$1`, itemID).Scan(&head.ID, &head.Name, &head.Unit, &head.Minimum)
+	err = a.db.QueryRowContext(r.Context(), `
+SELECT i.id,b.id,i.name,b.name,i.unit_code,COALESCE(i.minimum_stock::text,'')
+FROM inventory_items i
+JOIN brands b ON b.id=$2
+WHERE i.id=$1`, itemID,brandID).Scan(&head.ID,&head.BrandID,&head.Name,&head.Brand,&head.Unit,&head.Minimum)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "item not found")
 		return
@@ -74,11 +82,12 @@ func (a *app) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 SELECT w.id,w.name,
        sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text
 FROM movement_lines ml
+JOIN product_skus s ON s.id=ml.sku_id
 JOIN warehouses w ON w.id=ml.warehouse_id
-WHERE ml.item_id=$1
+WHERE ml.item_id=$1 AND s.brand_id=$2
 GROUP BY w.id,w.name
-HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) <> 0
-ORDER BY w.name`, itemID)
+HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
+ORDER BY w.name`, itemID,brandID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -100,10 +109,11 @@ ORDER BY w.name`, itemID)
 	}
 
 	presentationRows, err := a.db.QueryContext(r.Context(), `
-SELECT id,COALESCE(name,''),COALESCE(brand,''),COALESCE(barcode,''),content_quantity::text
-FROM product_skus
-WHERE item_id=$1 AND active=true
-ORDER BY COALESCE(name,''),COALESCE(brand,''),id`, itemID)
+SELECT s.id,COALESCE(s.name,''),b.name,COALESCE(s.barcode,''),s.content_quantity::text
+FROM product_skus s
+JOIN brands b ON b.id=s.brand_id
+WHERE s.item_id=$1 AND s.brand_id=$2 AND s.active=true
+ORDER BY s.content_quantity,s.id`, itemID,brandID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -147,8 +157,9 @@ JOIN LATERAL (
     WHERE a.stock_lot_id=l.id
 ) alloc ON true
 WHERE l.item_id=$1
+  AND l.brand_id=$2
   AND l.initial_quantity-alloc.allocated > 0
-ORDER BY w.name,(l.expires_at IS NULL),l.expires_at,l.received_at,l.id`, itemID)
+ORDER BY w.name,(l.expires_at IS NULL),l.expires_at,l.received_at,l.id`, itemID,brandID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -179,18 +190,27 @@ ORDER BY w.name,(l.expires_at IS NULL),l.expires_at,l.received_at,l.id`, itemID)
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": head.ID, "name": head.Name, "unit": head.Unit, "minimum": head.Minimum, "details": details, "presentations": presentations, "lots": lots})
+	writeJSON(w, http.StatusOK, map[string]any{"id": head.ID, "brand_id": head.BrandID, "name": head.Name, "brand": head.Brand, "unit": head.Unit, "minimum": head.Minimum, "details": details, "presentations": presentations, "lots": lots})
 }
 
 func stockRowsSQL(general bool, showZero bool) string {
-	where := "HAVING COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) <> 0"
-	if showZero {
-		where = ""
-	}
+	_ = showZero // zero balances are intentionally not part of the operational stock view
+	base := `SELECT i.id,b.id,b.name,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),
+       sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text AS qty,
+       false
+FROM movement_lines ml
+JOIN product_skus s ON s.id=ml.sku_id
+JOIN brands b ON b.id=s.brand_id
+JOIN inventory_items i ON i.id=ml.item_id`
 	if general {
-		return `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS qty, CASE WHEN i.minimum_stock IS NULL THEN false ELSE COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < i.minimum_stock END FROM inventory_items i LEFT JOIN movement_lines ml ON ml.item_id=i.id GROUP BY i.id ` + where + ` ORDER BY i.name`
+		return base + ` GROUP BY i.id,b.id,b.name,i.name,i.unit_code,i.minimum_stock
+HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
+ORDER BY i.name,b.name`
 	}
-	return `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text AS qty, CASE WHEN i.minimum_stock IS NULL THEN false ELSE COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) < i.minimum_stock END FROM inventory_items i LEFT JOIN movement_lines ml ON ml.item_id=i.id AND ml.warehouse_id=$1 GROUP BY i.id ` + where + ` ORDER BY i.name`
+	return base + ` WHERE ml.warehouse_id=$1
+GROUP BY i.id,b.id,b.name,i.name,i.unit_code,i.minimum_stock
+HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
+ORDER BY i.name,b.name`
 }
 
 func normalizeOpText(v string) string { return strings.TrimSpace(v) }
