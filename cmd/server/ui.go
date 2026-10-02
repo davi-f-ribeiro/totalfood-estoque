@@ -25,18 +25,26 @@ type uiData struct {
 	CSRF              string
 	Page              string
 	Error             string
-	CanAdmin          bool
-	CanWarehouseAdmin bool
+	CanStock          bool
+	CanEntry          bool
+	CanExit           bool
+	CanTransfer       bool
+	CanReports        bool
+	CanCatalog        bool
+	CanAssets         bool
 	CanInventory      bool
 	CanInventoryWrite bool
-	CanReports        bool
+	CanAdmin          bool
+	CanUserAdmin      bool
+	CanProfileAdmin   bool
+	CanWarehouseAdmin bool
 }
 
 func (a *app) registerUIHandlers(mux *http.ServeMux) {
 	staticFS, _ := fs.Sub(uiFS, "static")
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-	mux.HandleFunc("GET /{$}", redirectToStock)
-	mux.HandleFunc("GET /app", redirectToStock)
+	mux.HandleFunc("GET /{$}", a.redirectToAuthorizedHome)
+	mux.HandleFunc("GET /app", a.redirectToAuthorizedHome)
 	mux.HandleFunc("GET /login", a.showLogin)
 	mux.HandleFunc("POST /login", a.handleLoginForm)
 	mux.HandleFunc("GET /change-password", a.showChangePassword)
@@ -53,9 +61,6 @@ func (a *app) registerUIHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/products/lookup", a.requireAuth("stock", "read", a.handleLookup))
 }
 
-func redirectToStock(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/stock", http.StatusSeeOther)
-}
 
 func (a *app) showLogin(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "login.html", uiData{Title: "Estoque"})
@@ -99,7 +104,7 @@ func (a *app) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setSessionCookie(w, tok, exp)
-	http.Redirect(w, r, "/stock", http.StatusSeeOther)
+	http.Redirect(w, r, "/app", http.StatusSeeOther)
 }
 
 func (a *app) verifyPassword(ctx context.Context, login, pass string) (int64, bool) {
@@ -130,13 +135,115 @@ func (a *app) uiPage(tmpl, title, res, act string) http.HandlerFunc {
 			return
 		}
 		csrf, _ := a.rotateCSRF(r.Context(), r)
-		canAdmin, _ := a.hasPermission(r.Context(), u.ID, "users", "write")
-		canWarehouseAdmin, _ := a.hasPermission(r.Context(), u.ID, "warehouses", "write")
-		canInventory, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "read")
-		canInventoryWrite, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "write")
-		canReports, _ := a.hasPermission(r.Context(), u.ID, "operations", "read")
-		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin, CanWarehouseAdmin: canWarehouseAdmin, CanInventory: canInventory, CanInventoryWrite: canInventoryWrite, CanReports: canReports})
+		data, err := a.uiDataForUser(r.Context(), u, csrf, tmpl, title)
+		if err != nil {
+			http.Error(w, "Não foi possível carregar a página.", http.StatusInternalServerError)
+			return
+		}
+		a.render(w, tmpl+".html", data)
 	}
+}
+
+func (a *app) uiDataForUser(ctx context.Context, u authUser, csrf, page, title string) (uiData, error) {
+	rows, err := a.db.QueryContext(ctx, `SELECT p.resource,p.action
+FROM profile_permissions pp
+JOIN permissions p ON p.id=pp.permission_id
+WHERE pp.profile_id=$1`, u.ProfileID)
+	if err != nil {
+		return uiData{}, err
+	}
+	defer rows.Close()
+	perms := map[string]bool{}
+	for rows.Next() {
+		var resource, action string
+		if err := rows.Scan(&resource, &action); err != nil {
+			return uiData{}, err
+		}
+		perms[resource+"/"+action] = true
+	}
+	if err := rows.Err(); err != nil {
+		return uiData{}, err
+	}
+	has := func(resource, action string) bool { return perms[resource+"/"+action] }
+	canUserAdmin := has("users", "write")
+	canProfileAdmin := has("profiles", "write")
+	canWarehouseAdmin := has("warehouses", "write")
+	return uiData{
+		Title: title, User: u, CSRF: csrf, Page: page,
+		CanStock: has("stock", "read"),
+		CanEntry: has("movement_entry", "write"),
+		CanExit: has("movement_exit", "write"),
+		CanTransfer: has("movement_transfer", "write"),
+		CanReports: has("operations", "read"),
+		CanCatalog: has("catalog", "read"),
+		CanAssets: has("assets", "read"),
+		CanInventory: has("inventory_validation", "read"),
+		CanInventoryWrite: has("inventory_validation", "write"),
+		CanAdmin: canUserAdmin || canProfileAdmin || canWarehouseAdmin,
+		CanUserAdmin: canUserAdmin,
+		CanProfileAdmin: canProfileAdmin,
+		CanWarehouseAdmin: canWarehouseAdmin,
+	}, nil
+}
+
+func (a *app) adminPage(w http.ResponseWriter, r *http.Request) {
+	u, _, err := a.authenticate(r.Context(), r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if u.MustChangePassword {
+		http.Redirect(w, r, "/change-password", http.StatusSeeOther)
+		return
+	}
+	csrf, _ := a.rotateCSRF(r.Context(), r)
+	data, err := a.uiDataForUser(r.Context(), u, csrf, "admin", "Administração")
+	if err != nil {
+		http.Error(w, "Não foi possível carregar a página.", http.StatusInternalServerError)
+		return
+	}
+	if !data.CanAdmin {
+		http.Redirect(w, r, "/no-access", http.StatusSeeOther)
+		return
+	}
+	a.render(w, "admin.html", data)
+}
+
+func (a *app) redirectToAuthorizedHome(w http.ResponseWriter, r *http.Request) {
+	u, _, err := a.authenticate(r.Context(), r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if u.MustChangePassword {
+		http.Redirect(w, r, "/change-password", http.StatusSeeOther)
+		return
+	}
+	data, err := a.uiDataForUser(r.Context(), u, "", "", "")
+	if err != nil {
+		http.Error(w, "Não foi possível carregar seus acessos.", http.StatusInternalServerError)
+		return
+	}
+	for _, candidate := range []struct {
+		allowed bool
+		path    string
+	}{
+		{data.CanStock, "/stock"},
+		{data.CanEntry, "/entry"},
+		{data.CanExit, "/exit"},
+		{data.CanTransfer, "/transfer"},
+		{data.CanReports, "/reports"},
+		{data.CanCatalog, "/catalog"},
+		{data.CanAssets, "/assets"},
+		{data.CanInventory, "/inventory"},
+		{data.CanAdmin, "/admin"},
+	} {
+		if candidate.allowed {
+			http.Redirect(w, r, candidate.path, http.StatusSeeOther)
+			return
+		}
+	}
+	http.Redirect(w, r, "/no-access", http.StatusSeeOther)
 }
 
 func (a *app) rotateCSRF(ctx context.Context, r *http.Request) (string, error) {
