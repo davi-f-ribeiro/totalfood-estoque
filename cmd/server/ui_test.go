@@ -22,8 +22,8 @@ func TestUIRoutesAndEscaping(t *testing.T) {
 	}
 	rr = httptest.NewRecorder()
 	newHTTPServer("127.0.0.1:0", a).Handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/app", nil))
-	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/stock" {
-		t.Fatalf("app redirect status=%d loc=%s", rr.Code, rr.Header().Get("Location"))
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/login" {
+		t.Fatalf("unauthenticated app redirect status=%d loc=%s", rr.Code, rr.Header().Get("Location"))
 	}
 
 	rr = httptest.NewRecorder()
@@ -601,7 +601,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"setCrudMode(skuForm,true,'Criar SKU','Atualizar SKU')",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
 		"function setAssetUnitEditMode(editing)",
-		"setCrudMode(form,true,'Criar usuário','Atualizar usuário')",
+		"setCrudMode(userForm,true,'Criar usuário','Atualizar usuário')",
 		"true,'Criar perfil','Atualizar perfil'",
 		"body.name+(id?' atualizado.':' criado.')",
 		"body.login+(id?' atualizado.':' criado.')",
