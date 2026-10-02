@@ -72,15 +72,22 @@ func (a *app) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
-SELECT s.id,COALESCE(s.name,''),COALESCE(s.barcode,''),w.id,w.name,
-       COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text
-FROM product_skus s
-LEFT JOIN movement_lines ml ON ml.sku_id=s.id
-LEFT JOIN warehouses w ON w.id=ml.warehouse_id
-WHERE s.item_id=$1
-GROUP BY s.id,w.id,w.name
-HAVING COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) <> 0
-ORDER BY COALESCE(s.name,''),w.name`, itemID)
+SELECT rep.id,COALESCE(rep.name,''),COALESCE(rep.barcode,''),w.id,w.name,
+       sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text
+FROM movement_lines ml
+JOIN product_skus line_sku ON line_sku.id=ml.sku_id
+JOIN warehouses w ON w.id=ml.warehouse_id
+JOIN LATERAL (
+    SELECT s.id,s.name,s.barcode
+    FROM product_skus s
+    WHERE s.item_id=$1 AND s.active=true
+    ORDER BY s.id
+    LIMIT 1
+) rep ON true
+WHERE line_sku.item_id=$1
+GROUP BY rep.id,rep.name,rep.barcode,w.id,w.name
+HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) <> 0
+ORDER BY w.name`, itemID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
