@@ -33,6 +33,7 @@ type fiscalConfirmRequest struct {
 	OperationID string             `json:"operation_id"`
 	AccessKey   string             `json:"access_key"`
 	WarehouseID int64              `json:"warehouse_id"`
+	QuantitySemantics string       `json:"quantity_semantics,omitempty"`
 	Lines       []entryLineRequest `json:"lines"`
 }
 
@@ -108,10 +109,15 @@ func (a *app) handleFiscalConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
+	req.QuantitySemantics = strings.TrimSpace(req.QuantitySemantics)
 	req.AccessKey = strings.TrimSpace(req.AccessKey)
 	key, err := parseFiscalAccessKey(req.AccessKey)
 	if err != nil || key.Model != "65" {
 		writeJSONError(w, http.StatusBadRequest, "chave fiscal inválida")
+		return
+	}
+	if req.QuantitySemantics != "" && req.QuantitySemantics != presentationQuantitySemantics {
+		writeJSONError(w, http.StatusBadRequest, "Semântica de quantidade inválida.")
 		return
 	}
 	if req.OperationID == "" {
@@ -128,7 +134,7 @@ func (a *app) handleFiscalConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	body, _ := json.Marshal(req)
 	h := sha256.Sum256(body)
-	mreq := movementRequest{OperationID: req.OperationID, WarehouseID: req.WarehouseID, DocumentNumber: req.AccessKey, Notes: "Entrada por fallback manual de NFC-e", UserID: userFromContext(r.Context()).ID}
+	mreq := movementRequest{OperationID: req.OperationID, WarehouseID: req.WarehouseID, QuantitySemantics: req.QuantitySemantics, DocumentNumber: req.AccessKey, Notes: "Entrada por fallback manual de NFC-e", UserID: userFromContext(r.Context()).ID}
 	res, err := a.createEntryLines(r.Context(), mreq, req.Lines, hex.EncodeToString(h[:]), req.AccessKey)
 	a.writeOperationResponse(w, "ENTRADA", req.OperationID, res, err)
 }
