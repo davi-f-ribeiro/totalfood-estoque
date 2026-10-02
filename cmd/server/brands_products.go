@@ -19,7 +19,7 @@ func (a *app) handleCatalogBrands(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
 SELECT id,name,active,version
 FROM brands
-WHERE $1='' OR lower(name) LIKE lower($2)
+WHERE id<>0 AND ($1='' OR lower(name) LIKE lower($2))
 ORDER BY active DESC,name,id
 LIMIT 100`, q, "%"+q+"%")
 	if err != nil {
