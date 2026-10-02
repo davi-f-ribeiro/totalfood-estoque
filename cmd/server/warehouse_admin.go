@@ -27,14 +27,14 @@ func (a *app) registerWarehouseAdminHandlers(mux *http.ServeMux) {
 
 func (a *app) handleAdminWarehouses(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
-		SELECT w.id,w.name,w.active,w.created_at::text,COALESCE(b.nonzero_skus,0),COALESCE(a.asset_count,0)
+		SELECT w.id,w.name,w.active,w.created_at::text,COALESCE(b.nonzero_items,0),COALESCE(a.asset_count,0)
 		FROM warehouses w
 		LEFT JOIN (
-			SELECT warehouse_id,count(*)::bigint AS nonzero_skus
+			SELECT warehouse_id,count(*)::bigint AS nonzero_items
 			FROM (
-				SELECT warehouse_id,sku_id
+				SELECT warehouse_id,item_id
 				FROM movement_lines
-				GROUP BY warehouse_id,sku_id
+				GROUP BY warehouse_id,item_id
 				HAVING SUM(CASE direction WHEN 'IN' THEN quantity ELSE -quantity END) <> 0
 			) balances
 			GROUP BY warehouse_id
@@ -56,12 +56,12 @@ func (a *app) handleAdminWarehouses(w http.ResponseWriter, r *http.Request) {
 		var id int64
 		var name, created string
 		var active bool
-		var nonZeroSKUs, assetCount int64
-		if err := rows.Scan(&id, &name, &active, &created, &nonZeroSKUs, &assetCount); err != nil {
+		var nonZeroItems, assetCount int64
+		if err := rows.Scan(&id, &name, &active, &created, &nonZeroItems, &assetCount); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		out = append(out, map[string]any{"id": id, "name": name, "active": active, "created_at": created, "nonzero_skus": nonZeroSKUs, "asset_count": assetCount, "empty": nonZeroSKUs == 0 && assetCount == 0})
+		out = append(out, map[string]any{"id": id, "name": name, "active": active, "created_at": created, "nonzero_items": nonZeroItems, "asset_count": assetCount, "empty": nonZeroItems == 0 && assetCount == 0})
 	}
 	if err := rows.Err(); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -151,7 +151,7 @@ func (a *app) setWarehouseActive(w http.ResponseWriter, r *http.Request, active 
 				SELECT 1
 				FROM movement_lines
 				WHERE warehouse_id=$1
-				GROUP BY sku_id
+				GROUP BY item_id
 				HAVING SUM(CASE direction WHEN 'IN' THEN quantity ELSE -quantity END) <> 0
 			)`, id).Scan(&nonZero)
 		if err != nil {
