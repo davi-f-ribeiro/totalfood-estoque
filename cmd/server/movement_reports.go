@@ -36,7 +36,7 @@ SELECT m.occurred_at,m.id,m.movement_type,i.name,
 FROM movements m
 JOIN movement_lines ml ON ml.movement_id=m.id
 JOIN product_skus s ON s.id=ml.sku_id
-JOIN inventory_items i ON i.id=s.item_id
+JOIN inventory_items i ON i.id=ml.item_id
 JOIN warehouses w ON w.id=ml.warehouse_id
 LEFT JOIN users u ON u.id=m.user_id
 WHERE m.movement_type=$1
@@ -111,7 +111,7 @@ SELECT i.name,w.id,w.name,
 FROM movement_lines ml
 JOIN movements m ON m.id=ml.movement_id
 JOIN product_skus s ON s.id=ml.sku_id
-JOIN inventory_items i ON i.id=s.item_id
+JOIN inventory_items i ON i.id=ml.item_id
 JOIN warehouses w ON w.id=ml.warehouse_id
 WHERE m.occurred_at < $1
   AND ($2::bigint=0 OR ml.warehouse_id=$2)
