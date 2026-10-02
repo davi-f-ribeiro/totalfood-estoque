@@ -40,6 +40,7 @@ func (a *app) registerUIHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login", a.handleLoginForm)
 	mux.HandleFunc("GET /change-password", a.showChangePassword)
 	mux.HandleFunc("GET /stock", a.uiPage("stock", "Estoque", "stock", "read"))
+	mux.HandleFunc("GET /reports", a.uiPage("reports", "Relatórios", "stock", "read"))
 	mux.HandleFunc("GET /entry", a.uiPage("movement", "Entrada", "movement_entry", "write"))
 	mux.HandleFunc("GET /exit", a.uiPage("movement", "Saída", "movement_exit", "write"))
 	mux.HandleFunc("GET /transfer", a.uiPage("movement", "Transferência", "movement_transfer", "write"))
