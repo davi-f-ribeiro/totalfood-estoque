@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+const presentationQuantitySemantics = "presentation"
+
 var decimalPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]{1,4})?$`)
 
 var (
@@ -45,6 +47,7 @@ type movementRequest struct {
 	FromWarehouseID int64  `json:"warehouse_from_id"`
 	ToWarehouseID   int64  `json:"warehouse_to_id"`
 	Quantity        string `json:"quantity"`
+	QuantitySemantics string `json:"quantity_semantics,omitempty"`
 	UnitCost        string `json:"unit_cost"`
 	DocumentNumber  string `json:"document_number"`
 	Responsible     string `json:"responsible"`
@@ -158,7 +161,12 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
 	req.Quantity = normalizeDecimalInput(req.Quantity)
+	req.QuantitySemantics = strings.TrimSpace(req.QuantitySemantics)
 	req.UnitCost = normalizeDecimalInput(req.UnitCost)
+	if req.QuantitySemantics != "" && req.QuantitySemantics != presentationQuantitySemantics {
+		writeJSONError(w, http.StatusBadRequest, "Semântica de quantidade inválida.")
+		return req, "", false
+	}
 	body, _ := json.Marshal(req)
 	h := sha256.Sum256(body)
 	if req.OperationID == "" {
