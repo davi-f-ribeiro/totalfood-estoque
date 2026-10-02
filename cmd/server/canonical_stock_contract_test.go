@@ -923,7 +923,8 @@ func TestLotChoiceDoesNotChangeWeightedAverageCost(t *testing.T) {
 	var lot1, lot2 int64
 	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, e1.MovementID).Scan(&lot1); err != nil { t.Fatal(err) }
 	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, e2.MovementID).Scan(&lot2); err != nil { t.Fatal(err) }
-	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-31' WHERE id=$1; UPDATE stock_lots SET expires_at='2026-11-30' WHERE id=$2`, lot1, lot2); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-31' WHERE id=$1`, lot1); err != nil { t.Fatal(err) }
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-11-30' WHERE id=$1`, lot2); err != nil { t.Fatal(err) }
 
 	exit, err := a.createExit(ctx, movementRequest{
 		OperationID: "cost-lot-exit", SKUID: sku, WarehouseID: wh, Quantity: "5",
