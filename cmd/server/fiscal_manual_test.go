@@ -118,3 +118,51 @@ func TestFiscalManualRejectsDuplicateSKUWithinSameNote(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	if stock.Quantity != "0" { t.Fatalf("duplicate SKU changed stock: %+v", stock) }
 }
+
+
+func TestFiscalManualPresentationConversionUsesCanonicalEngine(t *testing.T) {
+	a, _, wh, _ := newStockTestApp(t)
+	createTestUser(t, a, "director-fiscal-presentation", "secret", "Diretor", true)
+	director := doLogin(t, a, "director-fiscal-presentation", "secret")
+	sku := createFiscalTestSKU(t, a, director, "Fiscal Presentation Item", "Fiscal Presentation 3x", "7898000003012")
+	if _, err := a.db.Exec(`UPDATE product_skus SET content_quantity=3 WHERE id=$1`, sku); err != nil {
+		t.Fatal(err)
+	}
+	key := validAccessKeyForTest("2326090372088200341665007000039196107125050")
+	payload := map[string]any{
+		"operation_id": "fiscal-presentation-conversion",
+		"access_key": key,
+		"warehouse_id": wh,
+		"quantity_semantics": presentationQuantitySemantics,
+		"lines": []map[string]any{{
+			"sku_id": sku,
+			"quantity": "1",
+			"unit_cost": "39.90",
+		}},
+	}
+	rr := authReq(a, http.MethodPost, "/api/fiscal/confirm", payload, director, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("presentation fiscal status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	stock, err := getStockSnapshot(context.Background(), a.db, sku, wh)
+	if err != nil { t.Fatal(err) }
+	if stock.Quantity != "3.000" || stock.AvgCost != "13.3000" {
+		t.Fatalf("presentation fiscal stock=%+v", stock)
+	}
+	retry := authReq(a, http.MethodPost, "/api/fiscal/confirm", payload, director, "")
+	if retry.Code != http.StatusOK {
+		t.Fatalf("presentation fiscal retry status=%d body=%s", retry.Code, retry.Body.String())
+	}
+	var lots int
+	if err := a.db.QueryRow(`
+SELECT count(*)
+FROM stock_lots l
+JOIN movement_lines ml ON ml.id=l.source_movement_line_id
+JOIN movements m ON m.id=ml.movement_id
+WHERE m.operation_id='fiscal-presentation-conversion'`).Scan(&lots); err != nil {
+		t.Fatal(err)
+	}
+	if lots != 1 {
+		t.Fatalf("fiscal retry created %d lots want 1", lots)
+	}
+}
