@@ -397,3 +397,23 @@ func TestMovementReportFiltersTypePeriodWarehouseAndExcludesTransfers(t *testing
 		t.Fatalf("half-open interval violated: %+v", beforeEntry2)
 	}
 }
+
+
+func TestBalanceReportReconstructsHistoricalAverageCostAtCutoff(t *testing.T) {
+	a, sku, wh1, _ := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.db.Exec(`UPDATE movements SET occurred_at='2026-08-01T00:00:00Z'`); err != nil { t.Fatal(err) }
+	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
+	e1:=mv(a.createEntry(ctx,movementRequest{OperationID:"balance-report-1",SKUID:sku,WarehouseID:wh1,Quantity:"10",UnitCost:"10"},"br1"))
+	e2:=mv(a.createEntry(ctx,movementRequest{OperationID:"balance-report-2",SKUID:sku,WarehouseID:wh1,Quantity:"10",UnitCost:"14"},"br2"))
+	x:=mv(a.createExit(ctx,movementRequest{OperationID:"balance-report-3",SKUID:sku,WarehouseID:wh1,Quantity:"5"},"br3"))
+	for _,v:=range []struct{id int64;at string}{{e1.MovementID,"2026-09-01T10:00:00Z"},{e2.MovementID,"2026-09-10T10:00:00Z"},{x.MovementID,"2026-09-20T10:00:00Z"}} {
+		if _,err:=a.db.Exec(`UPDATE movements SET occurred_at=$1 WHERE id=$2`,v.at,v.id);err!=nil{t.Fatal(err)}
+	}
+	before:=time.Date(2026,9,15,0,0,0,0,time.UTC)
+	rows,err:=a.listBalanceReport(ctx,before,wh1)
+	if err!=nil{t.Fatal(err)}
+	if len(rows)!=1 || rows[0].Quantity!="20.000" || rows[0].AvgCost!="12.0000" {
+		t.Fatalf("historical balance=%+v want qty 20 avg 12",rows)
+	}
+}
