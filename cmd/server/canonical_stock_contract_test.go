@@ -455,9 +455,10 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 		t.Fatalf("create item status=%d body=%s", itemResp.Code, itemResp.Body.String())
 	}
 	itemID := jsonID(t, itemResp.Body.Bytes())
+	brandID := createTestBrand(t,a,"Marca Apresentacao Teste")
 
 	skuResp := authReq(a, "POST", "/api/catalog/skus", map[string]any{
-		"item_id": itemID, "name": "Pacote", "barcode": t.Name()+"-ean",
+		"item_id": itemID, "brand_id":brandID, "content_quantity":"1", "barcode": t.Name()+"-ean",
 	}, director, "")
 	if skuResp.Code != 201 {
 		t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
@@ -472,7 +473,7 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 	}
 
 	edit := authReq(a, "PATCH", "/api/catalog/skus/"+itoa(skuID), map[string]any{
-		"item_id": itemID, "name": "Pacote", "barcode": t.Name()+"-ean",
+		"item_id": itemID, "brand_id":brandID, "barcode": t.Name()+"-ean",
 		"content_quantity": "3", "active": true, "version": crudVersion(t, a, "product_skus", skuID),
 	}, director, "")
 	if edit.Code != 200 {
@@ -785,8 +786,8 @@ func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testin
 	}, "detail-lot-exit-hash"); err != nil {
 		t.Fatal(err)
 	}
-	var itemID, lotID int64
-	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, sku).Scan(&itemID); err != nil {
+	var itemID, brandID, lotID int64
+	if err := a.db.QueryRow(`SELECT item_id,brand_id FROM product_skus WHERE id=$1`, sku).Scan(&itemID,&brandID); err != nil {
 		t.Fatal(err)
 	}
 	var sibling int64
@@ -805,7 +806,7 @@ WHERE ml.movement_id=$1`, entry.MovementID).Scan(&lotID); err != nil {
 
 	createTestUser(t, a, "stock-lot-detail-reader", "secret", "Diretor", true)
 	login := doLogin(t, a, "stock-lot-detail-reader", "secret")
-	rr := authReq(a, "GET", "/api/stock/detail/"+itoa(itemID), nil, login, "")
+	rr := authReq(a, "GET", "/api/stock/detail/"+itoa(itemID)+"?brand_id="+itoa(brandID), nil, login, "")
 	if rr.Code != 200 {
 		t.Fatalf("stock detail status=%d body=%s", rr.Code, rr.Body.String())
 	}
