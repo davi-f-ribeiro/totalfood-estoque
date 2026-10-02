@@ -337,3 +337,99 @@ func TestPresentationNormalizationTransferUsesCanonicalQuantity(t *testing.T) {
 		t.Fatalf("transfer canonical balances from=%s to=%s want 10.000/10.000", from.Quantity, to.Quantity)
 	}
 }
+
+
+func TestCanonicalStockPreservesHistoricalParentAfterSKUReassignment(t *testing.T) {
+	a, sku, wh, _ := newStockTestApp(t)
+	ctx := context.Background()
+
+	var originalItem, catID int64
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, sku).Scan(&originalItem); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`SELECT category_id FROM inventory_items WHERE id=$1`, originalItem).Scan(&catID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "historical-parent-entry", SKUID: sku, WarehouseID: wh, Quantity: "5", UnitCost: "10",
+	}, "historical-parent-entry-hash"); err != nil {
+		t.Fatal(err)
+	}
+
+	var newItem int64
+	if err := a.db.QueryRow(`
+INSERT INTO inventory_items (name,category_id,unit_code,minimum_stock,active)
+VALUES ($1,$2,'KG',0,true) RETURNING id`, t.Name()+"-new-parent", catID).Scan(&newItem); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE product_skus SET item_id=$1 WHERE id=$2`, newItem, sku); err != nil {
+		t.Fatal(err)
+	}
+
+	var historicalItem int64
+	if err := a.db.QueryRow(`SELECT item_id FROM movement_lines WHERE sku_id=$1 LIMIT 1`, sku).Scan(&historicalItem); err != nil {
+		t.Fatal(err)
+	}
+	if historicalItem != originalItem {
+		t.Fatalf("movement history item=%d want original=%d", historicalItem, originalItem)
+	}
+
+	var qtyOriginal, qtyNew string
+	if err := a.db.QueryRow(`
+SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::text
+FROM movement_lines WHERE item_id=$1 AND warehouse_id=$2`, originalItem, wh).Scan(&qtyOriginal); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`
+SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::text
+FROM movement_lines WHERE item_id=$1 AND warehouse_id=$2`, newItem, wh).Scan(&qtyNew); err != nil {
+		t.Fatal(err)
+	}
+	if qtyOriginal != "5.000" || qtyNew != "0" {
+		t.Fatalf("historical balances original=%s new=%s", qtyOriginal, qtyNew)
+	}
+}
+
+func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "director-content-quantity", "secret", "Diretor", true)
+	director := doLogin(t, a, "director-content-quantity", "secret")
+	catID := lookupID(t, a, `SELECT id FROM categories ORDER BY id LIMIT 1`)
+
+	itemResp := authReq(a, "POST", "/api/catalog/items", map[string]any{
+		"name": "Apresentacao Teste", "category_id": catID, "unit_code": "KG", "minimum_stock": "0",
+	}, director, "")
+	if itemResp.Code != 201 {
+		t.Fatalf("create item status=%d body=%s", itemResp.Code, itemResp.Body.String())
+	}
+	itemID := jsonID(t, itemResp.Body.Bytes())
+
+	skuResp := authReq(a, "POST", "/api/catalog/skus", map[string]any{
+		"item_id": itemID, "name": "Pacote", "barcode": t.Name()+"-ean",
+	}, director, "")
+	if skuResp.Code != 201 {
+		t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
+	}
+	skuID := jsonID(t, skuResp.Body.Bytes())
+	var content string
+	if err := a.db.QueryRow(`SELECT content_quantity::text FROM product_skus WHERE id=$1`, skuID).Scan(&content); err != nil {
+		t.Fatal(err)
+	}
+	if content != "1.0000" {
+		t.Fatalf("default content=%s want 1.0000", content)
+	}
+
+	edit := authReq(a, "PATCH", "/api/catalog/skus/"+itoa(skuID), map[string]any{
+		"item_id": itemID, "name": "Pacote", "barcode": t.Name()+"-ean",
+		"content_quantity": "3", "active": true, "version": crudVersion(t, a, "product_skus", skuID),
+	}, director, "")
+	if edit.Code != 200 {
+		t.Fatalf("update sku status=%d body=%s", edit.Code, edit.Body.String())
+	}
+	if err := a.db.QueryRow(`SELECT content_quantity::text FROM product_skus WHERE id=$1`, skuID).Scan(&content); err != nil {
+		t.Fatal(err)
+	}
+	if content != "3.0000" {
+		t.Fatalf("updated content=%s want 3.0000", content)
+	}
+}
