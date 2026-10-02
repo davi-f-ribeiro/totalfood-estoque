@@ -188,5 +188,5 @@ func TestInventoryGate07UIRoutesAndNoDuplication(t *testing.T){
 		body,err:=os.ReadFile(name);if err!=nil{t.Fatal(err)}
 		for _,line:=range strings.Split(string(body),"\n"){if strings.Contains(line,"HandleFunc(")&&strings.Contains(line,"/api/inventory")&&!strings.Contains(line,"requireAuth("){t.Fatalf("unauth inventory endpoint %s: %s",name,line)}}
 	}
-	if !strings.Contains(js,"r==='inventory_validation'?'Auditoria de Estoque':r"){t.Fatal("existing admin does not label inventory permissions")}
+	if !strings.Contains(js,"inventory_validation:'Auditoria de Estoque'"){t.Fatal("existing admin does not label inventory permissions")}
 }
