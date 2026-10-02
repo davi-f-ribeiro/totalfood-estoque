@@ -433,7 +433,9 @@ func insertInventoryHistory(t *testing.T, e inventoryTestEnv, warehouseID int64,
 		t.Fatalf("history header: %v", err)
 	}
 	for _, sku := range skuIDs {
-		if _, err := e.db.Exec(`INSERT INTO inventory_validation_lines (validation_id,sku_id,status,created_at) VALUES ($1,$2,'OPEN',$3)`, id, sku, createdAt); err != nil {
+		if _, err := e.db.Exec(`
+INSERT INTO inventory_validation_lines (validation_id,sku_id,item_id,status,created_at)
+SELECT $1,$2,item_id,'OPEN',$3 FROM product_skus WHERE id=$2`, id, sku, createdAt); err != nil {
 			t.Fatalf("history line: %v", err)
 		}
 	}
