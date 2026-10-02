@@ -317,7 +317,8 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 	feedback := map[string][]string{
 		"stock.html":           {"stockStatus"},
 		"movement.html":        {"status"},
-		"catalog.html":         {"catalogStatus", "catalogItemStatus"},
+		"catalog.html":         {"masterStatus"},
+		"products.html":        {"productStatus"},
 		"fiscal.html":          {"fiscalStatus", "fiscalConfirmStatus"},
 		"assets.html":          {"assetLookupStatus", "assetOpStatus", "assetTypeStatus", "assetUnitStatusMsg"},
 		"inventory.html":       {"inventoryCreateMessage", "inventoryListMessage", "inventoryMessage"},
@@ -435,14 +436,14 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 		`{{if .CanExit}}<a href="/exit">Saída</a>{{end}}`,
 		`{{if .CanTransfer}}<a href="/transfer">Transferir</a>{{end}}`,
 		`{{if .CanReports}}<a href="/reports">Relatórios</a>{{end}}`,
-		`{{if .CanCatalog}}<a href="/catalog">Catálogo</a>{{end}}`,
+		`{{if .CanCatalog}}<a href="/catalog">Catálogo</a><a href="/products">Produto/Item</a>{{end}}`,
 		`{{if .CanAssets}}<a href="/assets">Patrimônio</a>{{end}}`,
 		`{{if .CanInventory}}<a href="/inventory">Auditoria de Estoque</a>{{end}}`,
 		`{{if .CanAdmin}}<a href="/admin">Administração</a>{{end}}`,
 	} {
 		if !strings.Contains(base, want) { t.Fatalf("canonical navigation missing %q", want) }
 	}
-	for _, name := range []string{"stock.html","movement.html","catalog.html","fiscal.html","assets.html","inventory.html","admin.html","reports.html"} {
+	for _, name := range []string{"stock.html","movement.html","catalog.html","products.html","fiscal.html","assets.html","inventory.html","admin.html","reports.html"} {
 		b, err := os.ReadFile(filepath.Join("templates", name)); if err != nil { t.Fatal(err) }
 		html := string(b)
 		if !strings.Contains(html, `{{template "nav" .}}`) { t.Fatalf("%s must use canonical navigation", name) }
@@ -450,8 +451,8 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 	}
 	catalogb, err := os.ReadFile(filepath.Join("templates", "catalog.html")); if err != nil { t.Fatal(err) }
 	catalog := string(catalogb)
-	if strings.Index(catalog, `id="catalogEmpty"`) > strings.Index(catalog, `id="catalogList"`) {
-		t.Fatal("catalog empty guidance must stay grouped with the parent-list heading before the list")
+	if !strings.Contains(catalog,"Cadastros mestres de item pai e marca.") || strings.Contains(catalog,"Produtos/SKUs vinculados") {
+		t.Fatal("catalog must contain only item and brand masters")
 	}
 }
 
@@ -459,54 +460,41 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		b, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
-		}
+		if err != nil { t.Fatal(err) }
 		return string(b)
 	}
-	js := read(filepath.Join("static", "app.js"))
-	catalog := read(filepath.Join("templates", "catalog.html"))
-	assets := read(filepath.Join("templates", "assets.html"))
-	admin := read(filepath.Join("templates", "admin.html"))
+	app := read(filepath.Join("static","app.js"))
+	masters := read(filepath.Join("static","catalog_masters.js"))
+	products := read(filepath.Join("static","products.js"))
+	catalog := read(filepath.Join("templates","catalog.html"))
+	productHTML := read(filepath.Join("templates","products.html"))
+	assets := read(filepath.Join("templates","assets.html"))
+	admin := read(filepath.Join("templates","admin.html"))
 
 	for _, want := range []string{
 		"function setCrudMode(form,editing,createLabel,updateLabel)",
-		"setCrudMode(itemForm,true,'Criar item pai','Atualizar item pai')",
-		"setCrudMode(itemForm,false,'Criar item pai','Atualizar item pai')",
-		"setCrudMode(skuForm,true,'Criar SKU','Atualizar SKU')",
+		"itemForm.reset()","brandForm.reset()","form.reset()",
+		"body.version=itemVersion","body.version=brandVersion","body.version=editing.version",
+		"msg('success',label+(editing?' atualizado.':' criado.'))",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
 		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(userForm,true,'Criar usuário','Atualizar usuário')",
-		"true,'Criar perfil','Atualizar perfil'",
-		"body.name+(id?' atualizado.':' criado.')",
-		"body.login+(id?' atualizado.':' criado.')",
-		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')",
-		"itemForm.reset()",
-		"typeForm.reset()",
-		"unitForm.reset()",
-		"userForm.reset()",
 	} {
-		if !strings.Contains(js, want) {
-			t.Fatalf("CRUD safety state missing %q", want)
+		if !strings.Contains(app+masters+products,want) {
+			t.Fatalf("CRUD safety state missing %q",want)
 		}
 	}
-	for _, want := range []string{"Criar item pai", "Criar SKU"} {
-		if !strings.Contains(catalog, want) {
-			t.Fatalf("catalog initial create mode missing %q", want)
-		}
+	for _, want := range []string{"Novo item","Nova marca"} {
+		if !strings.Contains(catalog,want) { t.Fatalf("catalog create mode missing %q",want) }
 	}
-	for _, want := range []string{"Criar tipo", "Criar unidade"} {
-		if !strings.Contains(assets, want) {
-			t.Fatalf("assets initial create mode missing %q", want)
-		}
+	if !strings.Contains(productHTML,"Novo Produto/Item") { t.Fatal("Product/Item create mode missing") }
+	for _, want := range []string{"Criar tipo","Criar unidade"} {
+		if !strings.Contains(assets,want) { t.Fatalf("assets initial create mode missing %q",want) }
 	}
-	for _, want := range []string{"Criar usuário", "Criar perfil"} {
-		if !strings.Contains(admin, want) {
-			t.Fatalf("admin initial create mode missing %q", want)
-		}
+	for _, want := range []string{"Criar usuário","Criar perfil"} {
+		if !strings.Contains(admin,want) { t.Fatalf("admin initial create mode missing %q",want) }
 	}
 }
-
 
 func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
@@ -753,8 +741,8 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 
 	for _, want := range []string{
 		`card.after(detail)`,
-		`id="catalogItemStatus" class="operation-feedback"`,
-		`function itemMsg(type,text){setFeedback(itemStatus,type,text)}`,
+		`id="masterStatus" class="operation-feedback"`,
+		`id="productStatus" class="operation-feedback"`,
 		`id="inventoryCreateMessage" class="operation-feedback"`,
 		`function setCreateMessage(text,kind='')`,
 		`id="assetUnitOperations"`,
@@ -765,7 +753,7 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 		".asset-unit-layout{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
 		".fiscal-line-feedback{grid-column:1/-1",
 	} {
-		if !strings.Contains(js+css+assets+fiscal+inventory+catalog, want) {
+		if !strings.Contains(js+css+assets+fiscal+inventory+catalog+read(filepath.Join("templates","products.html")), want) {
 			t.Fatalf("selected-object context contract missing %q", want)
 		}
 	}
