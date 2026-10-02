@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"net/http"
 	"strconv"
 	"strings"
@@ -89,6 +88,3 @@ func (a *app) handleMovementReport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// Keep database/sql imported here so report row iteration remains explicit about the
-// standard database layer used throughout the server.
-var _ *sql.Rows
