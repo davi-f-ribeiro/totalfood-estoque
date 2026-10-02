@@ -101,7 +101,57 @@ ORDER BY w.name`, itemID)
 		}
 		details = append(details, map[string]any{"sku_id": skuID.Int64, "sku": sku, "barcode": barcode, "content_quantity": contentQuantity, "warehouse_id": whID.Int64, "warehouse": wh, "quantity": qty})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": head.ID, "name": head.Name, "unit": head.Unit, "minimum": head.Minimum, "details": details})
+	lotRows, err := a.db.QueryContext(r.Context(), `
+SELECT l.id,w.id,w.name,
+       (l.initial_quantity-alloc.allocated)::text,
+       COALESCE(l.manufacturer_lot_code,''),
+       COALESCE(l.expires_at::text,''),
+       COALESCE(NULLIF(src.name,''),NULLIF(src.brand,''),''),
+       COALESCE(src.barcode,''),
+       l.source_movement_line_id IS NULL
+FROM stock_lots l
+JOIN warehouses w ON w.id=l.warehouse_id
+LEFT JOIN movement_lines source_ml ON source_ml.id=l.source_movement_line_id
+LEFT JOIN product_skus src ON src.id=source_ml.sku_id
+JOIN LATERAL (
+    SELECT COALESCE(sum(a.quantity),0) AS allocated
+    FROM stock_lot_allocations a
+    WHERE a.stock_lot_id=l.id
+) alloc ON true
+WHERE l.item_id=$1
+  AND l.initial_quantity-alloc.allocated > 0
+ORDER BY w.name,(l.expires_at IS NULL),l.expires_at,l.received_at,l.id`, itemID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer lotRows.Close()
+	lots := []map[string]any{}
+	for lotRows.Next() {
+		var lotID, warehouseID int64
+		var warehouse, quantity, manufacturerLot, expiresAt, sourceSKU, sourceBarcode string
+		var legacyOpening bool
+		if err := lotRows.Scan(&lotID,&warehouseID,&warehouse,&quantity,&manufacturerLot,&expiresAt,&sourceSKU,&sourceBarcode,&legacyOpening); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		lots = append(lots, map[string]any{
+			"id": lotID,
+			"warehouse_id": warehouseID,
+			"warehouse": warehouse,
+			"quantity": quantity,
+			"manufacturer_lot": manufacturerLot,
+			"expires_at": expiresAt,
+			"source_sku": sourceSKU,
+			"source_barcode": sourceBarcode,
+			"legacy_opening": legacyOpening,
+		})
+	}
+	if err := lotRows.Err(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": head.ID, "name": head.Name, "unit": head.Unit, "minimum": head.Minimum, "details": details, "lots": lots})
 }
 
 func stockRowsSQL(general bool, showZero bool) string {
