@@ -331,3 +331,66 @@ func TestCanonicalStockSnapshotReconstructsHistoricalQuantityAndAverageCost(t *t
 		t.Fatalf("current snapshot changed semantics: qty=%s avg=%s", current.Quantity, current.AvgCost)
 	}
 }
+
+func TestMovementReportFiltersTypePeriodWarehouseAndExcludesTransfers(t *testing.T) {
+	a, sku, wh1, wh2 := newStockTestApp(t)
+	ctx := context.Background()
+	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
+
+	entry1 := mv(a.createEntry(ctx, movementRequest{OperationID: "report-list-entry-1", SKUID: sku, WarehouseID: wh1, Quantity: "10", UnitCost: "10", DocumentNumber: "E-1", SupplierName: "Fornecedor A"}, "rl1"))
+	exit1 := mv(a.createExit(ctx, movementRequest{OperationID: "report-list-exit-1", SKUID: sku, WarehouseID: wh1, Quantity: "2"}, "rl2"))
+	entry2 := mv(a.createEntry(ctx, movementRequest{OperationID: "report-list-entry-2", SKUID: sku, WarehouseID: wh2, Quantity: "3", UnitCost: "20"}, "rl3"))
+	transfer := mv(a.createTransfer(ctx, movementRequest{OperationID: "report-list-transfer", SKUID: sku, FromWarehouseID: wh1, ToWarehouseID: wh2, Quantity: "1"}, "rl4"))
+
+	for _, x := range []struct {
+		id int64
+		at string
+	}{
+		{entry1.MovementID, "2026-09-01T00:00:00Z"},
+		{exit1.MovementID, "2026-09-10T12:00:00Z"},
+		{entry2.MovementID, "2026-09-20T12:00:00Z"},
+		{transfer.MovementID, "2026-09-25T12:00:00Z"},
+	} {
+		if _, err := a.db.Exec(`UPDATE movements SET occurred_at=$1 WHERE id=$2`, x.at, x.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+
+	entries, err := a.listMovementReport(ctx, "ENTRADA", start, end, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries=%d want 2", len(entries))
+	}
+	if entries[0].MovementID != entry1.MovementID || entries[0].DocumentNumber != "E-1" || entries[0].SupplierName != "Fornecedor A" || entries[0].UnitCost != "10.0000" {
+		t.Fatalf("unexpected first entry: %+v", entries[0])
+	}
+	wh1Entries, err := a.listMovementReport(ctx, "ENTRADA", start, end, wh1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wh1Entries) != 1 || wh1Entries[0].MovementID != entry1.MovementID {
+		t.Fatalf("warehouse filter returned %+v", wh1Entries)
+	}
+	exits, err := a.listMovementReport(ctx, "SAIDA", start, end, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exits) != 1 || exits[0].MovementID != exit1.MovementID || exits[0].UnitCost != "10.0000" {
+		t.Fatalf("unexpected exits: %+v", exits)
+	}
+
+	// Half-open interval: movement exactly at start is included; exactly at end is excluded.
+	endAtEntry2 := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	beforeEntry2, err := a.listMovementReport(ctx, "ENTRADA", start, endAtEntry2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(beforeEntry2) != 1 || beforeEntry2[0].MovementID != entry1.MovementID {
+		t.Fatalf("half-open interval violated: %+v", beforeEntry2)
+	}
+}
