@@ -336,6 +336,9 @@ func TestMovementReportFiltersTypePeriodWarehouseAndExcludesTransfers(t *testing
 	a, sku, wh1, wh2 := newStockTestApp(t)
 	ctx := context.Background()
 	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
+	if _, err := a.db.Exec(`UPDATE movements SET occurred_at='2026-08-01T00:00:00Z'`); err != nil {
+		t.Fatal(err)
+	}
 
 	entry1 := mv(a.createEntry(ctx, movementRequest{OperationID: "report-list-entry-1", SKUID: sku, WarehouseID: wh1, Quantity: "10", UnitCost: "10", DocumentNumber: "E-1", SupplierName: "Fornecedor A"}, "rl1"))
 	exit1 := mv(a.createExit(ctx, movementRequest{OperationID: "report-list-exit-1", SKUID: sku, WarehouseID: wh1, Quantity: "2"}, "rl2"))
