@@ -29,6 +29,7 @@ type uiData struct {
 	CanWarehouseAdmin bool
 	CanInventory      bool
 	CanInventoryWrite bool
+	CanReports        bool
 }
 
 func (a *app) registerUIHandlers(mux *http.ServeMux) {
@@ -40,6 +41,7 @@ func (a *app) registerUIHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login", a.handleLoginForm)
 	mux.HandleFunc("GET /change-password", a.showChangePassword)
 	mux.HandleFunc("GET /stock", a.uiPage("stock", "Estoque", "stock", "read"))
+	mux.HandleFunc("GET /reports", a.uiPage("reports", "Relatórios", "operations", "read"))
 	mux.HandleFunc("GET /entry", a.uiPage("movement", "Entrada", "movement_entry", "write"))
 	mux.HandleFunc("GET /exit", a.uiPage("movement", "Saída", "movement_exit", "write"))
 	mux.HandleFunc("GET /transfer", a.uiPage("movement", "Transferência", "movement_transfer", "write"))
@@ -132,7 +134,8 @@ func (a *app) uiPage(tmpl, title, res, act string) http.HandlerFunc {
 		canWarehouseAdmin, _ := a.hasPermission(r.Context(), u.ID, "warehouses", "write")
 		canInventory, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "read")
 		canInventoryWrite, _ := a.hasPermission(r.Context(), u.ID, "inventory_validation", "write")
-		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin, CanWarehouseAdmin: canWarehouseAdmin, CanInventory: canInventory, CanInventoryWrite: canInventoryWrite})
+		canReports, _ := a.hasPermission(r.Context(), u.ID, "operations", "read")
+		a.render(w, tmpl+".html", uiData{Title: title, User: u, CSRF: csrf, Page: tmpl, CanAdmin: canAdmin, CanWarehouseAdmin: canWarehouseAdmin, CanInventory: canInventory, CanInventoryWrite: canInventoryWrite, CanReports: canReports})
 	}
 }
 

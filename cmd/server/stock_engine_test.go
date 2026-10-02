@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestStockEngineEntryExitTransferIdempotencyAndIntegrity(t *testing.T) {
@@ -273,4 +274,173 @@ ON CONFLICT DO NOTHING`); err != nil {
 	if ownerID == otherID {
 		t.Fatal("test users unexpectedly identical")
 	}
+}
+
+
+func TestCanonicalStockSnapshotReconstructsHistoricalQuantityAndAverageCost(t *testing.T) {
+	a, sku, wh1, wh2 := newStockTestApp(t)
+	ctx := context.Background()
+	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
+
+	entry1 := mv(a.createEntry(ctx, movementRequest{OperationID: "report-entry-1", SKUID: sku, WarehouseID: wh1, Quantity: "10", UnitCost: "10"}, "report-h1"))
+	entry2 := mv(a.createEntry(ctx, movementRequest{OperationID: "report-entry-2", SKUID: sku, WarehouseID: wh1, Quantity: "10", UnitCost: "14"}, "report-h2"))
+	exit1 := mv(a.createExit(ctx, movementRequest{OperationID: "report-exit-1", SKUID: sku, WarehouseID: wh1, Quantity: "5"}, "report-h3"))
+	transfer := mv(a.createTransfer(ctx, movementRequest{OperationID: "report-transfer-1", SKUID: sku, FromWarehouseID: wh1, ToWarehouseID: wh2, Quantity: "5"}, "report-h4"))
+
+	times := []struct {
+		id int64
+		at string
+	}{
+		{entry1.MovementID, "2026-09-01T10:00:00Z"},
+		{entry2.MovementID, "2026-09-10T10:00:00Z"},
+		{exit1.MovementID, "2026-09-20T10:00:00Z"},
+		{transfer.MovementID, "2026-09-25T10:00:00Z"},
+	}
+	for _, x := range times {
+		if _, err := a.db.Exec(`UPDATE movements SET occurred_at=$1 WHERE id=$2`, x.at, x.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	assertAt := func(cutoff string, warehouseID int64, wantQty, wantAvg string) {
+		t.Helper()
+		at, err := time.Parse(time.RFC3339, cutoff)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := getStockSnapshotAt(ctx, a.db, sku, warehouseID, &at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Quantity != wantQty || s.AvgCost != wantAvg {
+			t.Fatalf("cutoff=%s warehouse=%d got qty=%s avg=%s want qty=%s avg=%s", cutoff, warehouseID, s.Quantity, s.AvgCost, wantQty, wantAvg)
+		}
+	}
+
+	assertAt("2026-09-05T00:00:00Z", wh1, "10.000", "10.0000")
+	assertAt("2026-09-15T00:00:00Z", wh1, "20.000", "12.0000")
+	assertAt("2026-09-22T00:00:00Z", wh1, "15.000", "12.0000")
+	assertAt("2026-09-26T00:00:00Z", wh1, "10.000", "12.0000")
+	assertAt("2026-09-26T00:00:00Z", wh2, "5.000", "12.0000")
+
+	current, err := getStockSnapshot(ctx, a.db, sku, wh1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Quantity != "10.000" || current.AvgCost != "12.0000" {
+		t.Fatalf("current snapshot changed semantics: qty=%s avg=%s", current.Quantity, current.AvgCost)
+	}
+}
+
+func TestMovementReportFiltersTypePeriodWarehouseAndExcludesTransfers(t *testing.T) {
+	a, sku, wh1, wh2 := newStockTestApp(t)
+	ctx := context.Background()
+	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
+	if _, err := a.db.Exec(`UPDATE movements SET occurred_at='2026-08-01T00:00:00Z'`); err != nil {
+		t.Fatal(err)
+	}
+
+	entry1 := mv(a.createEntry(ctx, movementRequest{OperationID: "report-list-entry-1", SKUID: sku, WarehouseID: wh1, Quantity: "10", UnitCost: "10", DocumentNumber: "E-1", SupplierName: "Fornecedor A"}, "rl1"))
+	exit1 := mv(a.createExit(ctx, movementRequest{OperationID: "report-list-exit-1", SKUID: sku, WarehouseID: wh1, Quantity: "2"}, "rl2"))
+	entry2 := mv(a.createEntry(ctx, movementRequest{OperationID: "report-list-entry-2", SKUID: sku, WarehouseID: wh2, Quantity: "3", UnitCost: "20"}, "rl3"))
+	transfer := mv(a.createTransfer(ctx, movementRequest{OperationID: "report-list-transfer", SKUID: sku, FromWarehouseID: wh1, ToWarehouseID: wh2, Quantity: "1"}, "rl4"))
+
+	for _, x := range []struct {
+		id int64
+		at string
+	}{
+		{entry1.MovementID, "2026-09-01T00:00:00Z"},
+		{exit1.MovementID, "2026-09-10T12:00:00Z"},
+		{entry2.MovementID, "2026-09-20T12:00:00Z"},
+		{transfer.MovementID, "2026-09-25T12:00:00Z"},
+	} {
+		if _, err := a.db.Exec(`UPDATE movements SET occurred_at=$1 WHERE id=$2`, x.at, x.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+
+	entries, err := a.listMovementReport(ctx, "ENTRADA", start, end, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("entries=%d want 2", len(entries))
+	}
+	if entries[0].MovementID != entry1.MovementID || entries[0].DocumentNumber != "E-1" || entries[0].SupplierName != "Fornecedor A" || entries[0].UnitCost != "10.0000" {
+		t.Fatalf("unexpected first entry: %+v", entries[0])
+	}
+	wh1Entries, err := a.listMovementReport(ctx, "ENTRADA", start, end, wh1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wh1Entries) != 1 || wh1Entries[0].MovementID != entry1.MovementID {
+		t.Fatalf("warehouse filter returned %+v", wh1Entries)
+	}
+	exits, err := a.listMovementReport(ctx, "SAIDA", start, end, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exits) != 1 || exits[0].MovementID != exit1.MovementID || exits[0].UnitCost != "10.0000" {
+		t.Fatalf("unexpected exits: %+v", exits)
+	}
+
+	// Half-open interval: movement exactly at start is included; exactly at end is excluded.
+	endAtEntry2 := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	beforeEntry2, err := a.listMovementReport(ctx, "ENTRADA", start, endAtEntry2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(beforeEntry2) != 1 || beforeEntry2[0].MovementID != entry1.MovementID {
+		t.Fatalf("half-open interval violated: %+v", beforeEntry2)
+	}
+}
+
+
+func TestBalanceReportReconstructsHistoricalAverageCostAtCutoff(t *testing.T) {
+	a, sku, wh1, _ := newStockTestApp(t)
+	ctx := context.Background()
+	if _, err := a.db.Exec(`UPDATE movements SET occurred_at='2026-08-01T00:00:00Z'`); err != nil { t.Fatal(err) }
+	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
+	e1:=mv(a.createEntry(ctx,movementRequest{OperationID:"balance-report-1",SKUID:sku,WarehouseID:wh1,Quantity:"10",UnitCost:"10"},"br1"))
+	e2:=mv(a.createEntry(ctx,movementRequest{OperationID:"balance-report-2",SKUID:sku,WarehouseID:wh1,Quantity:"10",UnitCost:"14"},"br2"))
+	x:=mv(a.createExit(ctx,movementRequest{OperationID:"balance-report-3",SKUID:sku,WarehouseID:wh1,Quantity:"5"},"br3"))
+	for _,v:=range []struct{id int64;at string}{{e1.MovementID,"2026-09-01T10:00:00Z"},{e2.MovementID,"2026-09-10T10:00:00Z"},{x.MovementID,"2026-09-20T10:00:00Z"}} {
+		if _,err:=a.db.Exec(`UPDATE movements SET occurred_at=$1 WHERE id=$2`,v.at,v.id);err!=nil{t.Fatal(err)}
+	}
+	before:=time.Date(2026,9,15,0,0,0,0,time.UTC)
+	rows,err:=a.listBalanceReport(ctx,before,wh1)
+	if err!=nil{t.Fatal(err)}
+	if len(rows)!=1 || rows[0].Quantity!="20.000" || rows[0].AvgCost!="12.0000" {
+		t.Fatalf("historical balance=%+v want qty 20 avg 12",rows)
+	}
+}
+
+
+func TestMovementReportPreservesLegacyResponsible(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	ctx:=context.Background()
+	if _,err:=a.db.Exec(`UPDATE movements SET occurred_at='2026-09-05T12:00:00Z', responsible='Davi', user_id=NULL WHERE legacy_id IS NOT NULL OR id=(SELECT min(id) FROM movements)`);err!=nil{t.Fatal(err)}
+	start:=time.Date(2026,9,1,0,0,0,0,time.UTC);end:=time.Date(2026,10,1,0,0,0,0,time.UTC)
+	rows,err:=a.listMovementReport(ctx,"ENTRADA",start,end,0)
+	if err!=nil{t.Fatal(err)}
+	found:=false
+	for _,r:=range rows{if r.Responsible=="Davi"{found=true;break}}
+	if !found{t.Fatalf("legacy responsible not preserved: %+v",rows)}
+}
+
+func TestReportEndpointsRequireOperationsRead(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	if _,err:=a.db.Exec(`
+INSERT INTO profile_permissions(profile_id,permission_id)
+SELECT p.id,perm.id FROM profiles p JOIN permissions perm ON perm.resource='stock' AND perm.action='read'
+WHERE p.name='Estoquista' ON CONFLICT DO NOTHING`);err!=nil{t.Fatal(err)}
+	createTestUser(t,a,"report-stock-only","secret","Estoquista",true)
+	login:=doLogin(t,a,"report-stock-only","secret")
+	rr:=authReq(a,http.MethodGet,"/api/reports/movements?type=ENTRADA&start=2026-09-01T00:00:00Z&end=2026-10-01T00:00:00Z",nil,login,"")
+	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only movement report status=%d body=%s",rr.Code,rr.Body.String())}
+	rr=authReq(a,http.MethodGet,"/api/reports/balance?before=2026-10-01T00:00:00Z",nil,login,"")
+	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only balance report status=%d body=%s",rr.Code,rr.Body.String())}
 }
