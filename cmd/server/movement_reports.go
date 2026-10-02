@@ -92,8 +92,6 @@ func (a *app) handleMovementReport(w http.ResponseWriter, r *http.Request) {
 
 type balanceReportRow struct {
 	Item        string `json:"item"`
-	SKU         string `json:"sku"`
-	Barcode     string `json:"barcode"`
 	WarehouseID int64  `json:"warehouse_id"`
 	Warehouse   string `json:"warehouse"`
 	Quantity    string `json:"quantity"`
@@ -103,8 +101,7 @@ type balanceReportRow struct {
 
 func (a *app) listBalanceReport(ctx context.Context, before time.Time, warehouseID int64) ([]balanceReportRow, error) {
 	rows, err := a.db.QueryContext(ctx, `
-SELECT i.name,COALESCE(NULLIF(s.name,''),NULLIF(s.brand,''),''),COALESCE(s.barcode,''),
-       w.id,w.name,
+SELECT i.name,w.id,w.name,
        COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text,
        i.unit_code,
        CASE WHEN COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)=0 THEN '0'
@@ -118,9 +115,9 @@ JOIN inventory_items i ON i.id=s.item_id
 JOIN warehouses w ON w.id=ml.warehouse_id
 WHERE m.occurred_at < $1
   AND ($2::bigint=0 OR ml.warehouse_id=$2)
-GROUP BY i.id,i.name,i.unit_code,s.id,s.name,s.brand,s.barcode,w.id,w.name
+GROUP BY i.id,i.name,i.unit_code,w.id,w.name
 HAVING COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0) <> 0
-ORDER BY i.name,COALESCE(NULLIF(s.name,''),NULLIF(s.brand,''),''),w.name`, before, warehouseID)
+ORDER BY i.name,w.name`, before, warehouseID)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +125,7 @@ ORDER BY i.name,COALESCE(NULLIF(s.name,''),NULLIF(s.brand,''),''),w.name`, befor
 	out := []balanceReportRow{}
 	for rows.Next() {
 		var x balanceReportRow
-		if err := rows.Scan(&x.Item,&x.SKU,&x.Barcode,&x.WarehouseID,&x.Warehouse,&x.Quantity,&x.Unit,&x.AvgCost); err != nil {
+		if err := rows.Scan(&x.Item,&x.WarehouseID,&x.Warehouse,&x.Quantity,&x.Unit,&x.AvgCost); err != nil {
 			return nil, err
 		}
 		out=append(out,x)
