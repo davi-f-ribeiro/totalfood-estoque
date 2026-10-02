@@ -285,7 +285,7 @@ func (a *app) handleLookup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, []any{})
 		return
 	}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT s.id, i.name, COALESCE(NULLIF(s.name,''),NULLIF(s.brand,''),''), COALESCE(s.barcode,''), i.unit_code FROM product_skus s JOIN inventory_items i ON i.id=s.item_id WHERE s.active=true AND i.active=true AND (s.barcode=$1 OR lower(i.name) LIKE lower($2) OR lower(COALESCE(s.name,'')) LIKE lower($2) OR lower(COALESCE(s.brand,'')) LIKE lower($2)) ORDER BY i.name,COALESCE(s.name,s.brand) LIMIT 10`, q, "%"+q+"%")
+	rows, err := a.db.QueryContext(r.Context(), `SELECT s.id, i.name, COALESCE(NULLIF(s.name,''),NULLIF(s.brand,''),''), COALESCE(s.barcode,''), i.unit_code, s.content_quantity::text FROM product_skus s JOIN inventory_items i ON i.id=s.item_id WHERE s.active=true AND i.active=true AND (s.barcode=$1 OR lower(i.name) LIKE lower($2) OR lower(COALESCE(s.name,'')) LIKE lower($2) OR lower(COALESCE(s.brand,'')) LIKE lower($2)) ORDER BY i.name,COALESCE(s.name,s.brand) LIMIT 10`, q, "%"+q+"%")
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
@@ -294,9 +294,9 @@ func (a *app) handleLookup(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id int64
-		var item, brand, barcode, unit string
-		rows.Scan(&id, &item, &brand, &barcode, &unit)
-		out = append(out, map[string]any{"sku_id": id, "item": item, "brand": brand, "barcode": barcode, "unit": unit})
+		var item, brand, barcode, unit, contentQuantity string
+		rows.Scan(&id, &item, &brand, &barcode, &unit, &contentQuantity)
+		out = append(out, map[string]any{"sku_id": id, "item": item, "brand": brand, "barcode": barcode, "unit": unit, "content_quantity": contentQuantity})
 	}
 	writeJSON(w, 200, out)
 }
