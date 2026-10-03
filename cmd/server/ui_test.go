@@ -673,7 +673,7 @@ func TestCRUDOptimisticConcurrencyUIContracts(t *testing.T) {
 	for _, want := range []string{
 		"registro foi alterado por outro operador",
 		"body.version=Number(currentItem?.version||0)",
-		"body.version=editingSKUVersion",
+		"body.version=editing.version",
 		"version:editingAssetVersion",
 		"body.version=selectedUserVersion",
 		"body.version=Number(selected?.version||0)",
