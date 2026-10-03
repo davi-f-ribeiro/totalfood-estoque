@@ -1,4 +1,4 @@
-DO $$
+DO $bis$
 DECLARE
     v_sku_id bigint;
     v_item_id bigint;
@@ -68,4 +68,4 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM product_skus WHERE brand_id=v_brand_id)
        AND NOT EXISTS (SELECT 1 FROM stock_lots WHERE brand_id=v_brand_id)
        AND NOT EXISTS (SELECT 1 FROM stock_locks WHERE brand_id=v_brand_id);
-END $;
+END $bis$;
