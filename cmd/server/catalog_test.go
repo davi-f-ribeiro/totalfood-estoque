@@ -27,11 +27,15 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 	itemID := jsonID(t, itemResp.Body.Bytes())
 	brandA := createTestBrand(t,a,"Marca A Catalog")
 	brandB := createTestBrand(t,a,"Marca B Catalog")
-	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandA, "content_quantity":"1", "barcode": "7891000000011"}, director, "")
+	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandA, "name":"Original", "content_quantity":"1", "barcode": "7891000000011"}, director, "")
 	if skuResp.Code != http.StatusCreated {
 		t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
 	}
 	firstSKU := jsonID(t, skuResp.Body.Bytes())
+	var productName string
+	if err := a.db.QueryRow(`SELECT name FROM product_skus WHERE id=$1`, firstSKU).Scan(&productName); err != nil || productName != "Original" {
+		t.Fatalf("product identity after create=%q err=%v", productName, err)
+	}
 	secondResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandB, "content_quantity":"1", "barcode": "7891000000028"}, director, "")
 	if secondResp.Code != http.StatusCreated {
 		t.Fatalf("create second sku status=%d body=%s", secondResp.Code, secondResp.Body.String())
@@ -78,9 +82,12 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 	if editOK.Code != http.StatusOK {
 		t.Fatalf("allowed item edit status=%d body=%s", editOK.Code, editOK.Body.String())
 	}
-	skuEdit := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(firstSKU), map[string]any{"item_id":itemID,"brand_id":brandA,"content_quantity":"1","barcode": "7891000000011", "active": true, "version": crudVersion(t, a, "product_skus", firstSKU)}, director, "")
+	skuEdit := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(firstSKU), map[string]any{"item_id":itemID,"brand_id":brandA,"name":"Oreo","content_quantity":"1","barcode": "7891000000011", "active": true, "version": crudVersion(t, a, "product_skus", firstSKU)}, director, "")
 	if skuEdit.Code != http.StatusOK {
 		t.Fatalf("sku edit status=%d body=%s", skuEdit.Code, skuEdit.Body.String())
+	}
+	if err := a.db.QueryRow(`SELECT name FROM product_skus WHERE id=$1`, firstSKU).Scan(&productName); err != nil || productName != "Oreo" {
+		t.Fatalf("product identity after update=%q err=%v", productName, err)
 	}
 }
 
