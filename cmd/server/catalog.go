@@ -416,8 +416,8 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogSKURequest(&req)
-	if req.ItemID<=0 || req.BrandID<=0 || req.Name=="" || req.Barcode=="" || !positiveDecimal(req.ContentQuantity) {
-		writeJSONError(w, http.StatusBadRequest, "Preencha item pai, marca, Produto/Item, conteúdo da apresentação e código de barras.")
+	if req.ItemID<=0 || req.BrandID<=0 || req.Barcode=="" || !positiveDecimal(req.ContentQuantity) {
+		writeJSONError(w, http.StatusBadRequest, "Preencha item pai, marca, conteúdo da apresentação e código de barras.")
 		return
 	}
 	active := true
