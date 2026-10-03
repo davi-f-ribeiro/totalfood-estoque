@@ -153,18 +153,24 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	js, css := string(jsb), string(cssb)
 	for _, want := range []string{
-		`let openKey='',detailSeq=0`,
-		`let key=row.item_id+':'+row.brand_id`,
-		`/api/stock/detail/'+row.item_id+'?brand_id='+row.brand_id`,
-		`if(seq!==detailSeq||openKey!==key)return`,
+		`let openItem=0,detailSeq=0`,
+		`/api/stock/detail/'+row.item_id+qs`,
+		`sum.textContent=x.brand+' — '+displayDecimal(x.quantity)+' '+x.unit`,
+		`/api/stock/detail/'+row.item_id+'?brand_id='+x.brand_id`,
+		`1 un = '+displayDecimal(p.content_quantity||'1',4)+' '+bd.unit`,
 		`card.after(detail)`,
 		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
-		`Detalhes das embalagens`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
-		if !strings.Contains(js+css,want) { t.Fatalf("brand stock contextual detail missing %q",want) }
+		if !strings.Contains(js+css,want) { t.Fatalf("parent-first stock contextual detail missing %q",want) }
 	}
-	if strings.Contains(js,"Composição do saldo") { t.Fatal("stock detail must not duplicate balance composition") }
+	for _, forbidden := range []string{
+		`row.item_id+':'+row.brand_id`,
+		`r.name+' - '+r.brand`,
+		"Composição do saldo",
+	} {
+		if strings.Contains(js,forbidden) { t.Fatalf("stock UI flattened or duplicated parent hierarchy with %q",forbidden) }
+	}
 }
 
 func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T) {
@@ -192,11 +198,15 @@ func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 	hb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
 	combined:=string(pb)+string(hb)
 	for _, want := range []string{
-		`id="productParent"`,`id="productBrand"`,`id="productContent"`,`id="productBarcode"`,
+		`id="productParent"`,`id="productBrand"`,`id="productName"`,`id="productContent"`,`id="productBarcode"`,
 		`parent.disabled=!!x.has_history`,`brand.disabled=!!x.has_history`,
-		`O nome é gerado automaticamente.`,
+		`Identificação específica do produto, por exemplo Original, Branco ou Oreo.`,
+		`name:name.value.trim()`,
 	} {
 		if !strings.Contains(combined,want) { t.Fatalf("Product/Item identity UI missing %q",want) }
+	}
+	if strings.Contains(combined,`O nome é gerado automaticamente.`) {
+		t.Fatal("Product/Item identity must not be overwritten by an automatically generated name")
 	}
 }
 
