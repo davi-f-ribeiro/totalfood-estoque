@@ -254,6 +254,39 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 	}
 }
 
+func TestOfflineStoreIsDurableStorageOnly(t *testing.T) {
+	storeb, err := os.ReadFile(filepath.Join("static", "utils", "offline-store.js"))
+	if err != nil { t.Fatal(err) }
+	baseb, err := os.ReadFile(filepath.Join("templates", "base.html"))
+	if err != nil { t.Fatal(err) }
+	store, base := string(storeb), string(baseb)
+
+	for _, want := range []string{
+		"class OfflineStore",
+		"indexedDB.open(this.dbName,1)",
+		"db.createObjectStore(this.storeName,{keyPath:'id'})",
+		"async save(record)",
+		"async get(id)",
+		"async getAll()",
+		"async remove(id)",
+	} {
+		if !strings.Contains(store, want) { t.Fatalf("offline store contract missing %q", want) }
+	}
+	for _, forbidden := range []string{
+		"addEventListener('online'",
+		"beforeunload",
+		"setInterval(",
+		"syncAll(",
+	} {
+		if strings.Contains(store, forbidden) { t.Fatalf("offline store must not auto-replay operations: %q", forbidden) }
+	}
+	storePos := strings.Index(base, `/static/utils/offline-store.js`)
+	appPos := strings.Index(base, `/static/app.js`)
+	if storePos < 0 || appPos < 0 || storePos > appPos {
+		t.Fatal("offline store must load before app.js")
+	}
+}
+
 func TestFiscalWarehouseUsesCanonicalWarehouseLoader(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
