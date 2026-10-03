@@ -146,6 +146,28 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 	}
 }
 
+func TestBetterInterfaceOperationalContracts(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js")); if err != nil { t.Fatal(err) }
+	cssb, err := os.ReadFile(filepath.Join("static", "app.css")); if err != nil { t.Fatal(err) }
+	hb, err := os.ReadFile(filepath.Join("templates", "movement.html")); if err != nil { t.Fatal(err) }
+	combined := string(jsb)+string(cssb)+string(hb)
+	for _, want := range []string{
+		`role="combobox"`, `aria-controls="lookup"`, `aria-expanded="false"`, `role="listbox"`,
+		`b.setAttribute('role','option')`, `prefers-reduced-motion: reduce`, `function scrollToContext(`,
+		`Nenhum item com saldo neste depósito.`, `Abaixo do estoque mínimo`, `className='stock-expand'`,
+		`--focus-ring:`, `body{font-size:16px}`,
+	} {
+		if !strings.Contains(combined,want) { t.Fatalf("better-interface contract missing %q",want) }
+	}
+	for _, forbidden := range []string{
+		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
+		`q.textContent=displayDecimal(r.quantity)+' '+r.unit+' ▼'`,
+		`body{font-size:15px}`,
+	} {
+		if strings.Contains(combined,forbidden) { t.Fatalf("better-interface regression %q",forbidden) }
+	}
+}
+
 func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
@@ -159,7 +181,7 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 		`/api/stock/detail/'+row.item_id+'?brand_id='+x.brand_id`,
 		`1 un = '+displayDecimal(p.content_quantity||'1',4)+' '+bd.unit`,
 		`card.after(detail)`,
-		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
+		`scrollToContext(detail)`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
 		if !strings.Contains(js+css,want) { t.Fatalf("parent-first stock contextual detail missing %q",want) }
