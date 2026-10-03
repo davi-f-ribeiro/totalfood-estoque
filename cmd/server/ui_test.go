@@ -152,8 +152,7 @@ func TestBetterInterfaceOperationalContracts(t *testing.T) {
 	hb, err := os.ReadFile(filepath.Join("templates", "movement.html")); if err != nil { t.Fatal(err) }
 	combined := string(jsb)+string(cssb)+string(hb)
 	for _, want := range []string{
-		`role="combobox"`, `aria-controls="lookup"`, `aria-expanded="false"`, `role="listbox"`,
-		`b.setAttribute('role','option')`, `prefers-reduced-motion: reduce`, `function scrollToContext(`,
+		`prefers-reduced-motion: reduce`, `function scrollToContext(`,
 		`Nenhum item com saldo neste depósito.`, `Abaixo do estoque mínimo`, `className='stock-expand'`,
 		`--focus-ring:`, `body{font-size:16px}`,
 	} {
@@ -163,6 +162,7 @@ func TestBetterInterfaceOperationalContracts(t *testing.T) {
 		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
 		`q.textContent=displayDecimal(r.quantity)+' '+r.unit+' ▼'`,
 		`body{font-size:15px}`,
+		`role="combobox"`, `role="listbox"`, `b.setAttribute('role','option')`,
 	} {
 		if strings.Contains(combined,forbidden) { t.Fatalf("better-interface regression %q",forbidden) }
 	}
