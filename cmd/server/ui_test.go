@@ -572,6 +572,35 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	}
 }
 
+func TestFiscalPendingUsesDurableStore(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+
+	for _, want := range []string{
+		"async function loadFiscalPending()",
+		"await store.get('fiscal-confirm')",
+		"id:'fiscal-confirm',operation_id:p.body.operation_id",
+		"await saveFiscalPending(pending)",
+		"await clearFiscalPending()",
+		"await loadFiscalPending();showFiscalPending()",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("durable fiscal pending contract missing %q", want) }
+	}
+	savePos := strings.Index(js, "await saveFiscalPending(pending)")
+	sendPos := strings.Index(js, "await api(pending.url,{method:'POST',body:JSON.stringify(pending.body)})")
+	if savePos < 0 || sendPos < 0 || savePos > sendPos {
+		t.Fatal("fiscal confirmation must persist pending operation before request")
+	}
+	for _, forbidden := range []string{
+		"addEventListener('online'",
+		"beforeunload",
+		"setInterval(",
+	} {
+		if strings.Contains(js, forbidden) { t.Fatalf("fiscal pending must not auto-replay operations: %q", forbidden) }
+	}
+}
+
 func TestInventoryCreationPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
