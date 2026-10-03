@@ -126,7 +126,7 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`Selecione um produto`,
 		`Disponível:`,
 		`aria-expanded`,
-		`openKey===key`,
+		`openItem===row.item_id`,
 		`warehouse_id`,
 		`Quantidade acima do saldo disponível.`,
 		`Destino deve ser diferente da origem.`,
@@ -153,18 +153,24 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	js, css := string(jsb), string(cssb)
 	for _, want := range []string{
-		`let openKey='',detailSeq=0`,
-		`let key=row.item_id+':'+row.brand_id`,
-		`/api/stock/detail/'+row.item_id+'?brand_id='+row.brand_id`,
-		`if(seq!==detailSeq||openKey!==key)return`,
+		`let openItem=0,detailSeq=0`,
+		`/api/stock/detail/'+row.item_id+qs`,
+		`sum.textContent=x.brand+' — '+displayDecimal(x.quantity)+' '+x.unit`,
+		`/api/stock/detail/'+row.item_id+'?brand_id='+x.brand_id`,
+		`1 un = '+displayDecimal(p.content_quantity||'1',4)+' '+bd.unit`,
 		`card.after(detail)`,
 		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
-		`Detalhes das embalagens`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
-		if !strings.Contains(js+css,want) { t.Fatalf("brand stock contextual detail missing %q",want) }
+		if !strings.Contains(js+css,want) { t.Fatalf("parent-first stock contextual detail missing %q",want) }
 	}
-	if strings.Contains(js,"Composição do saldo") { t.Fatal("stock detail must not duplicate balance composition") }
+	for _, forbidden := range []string{
+		`row.item_id+':'+row.brand_id`,
+		`r.name+' - '+r.brand`,
+		"Composição do saldo",
+	} {
+		if strings.Contains(js,forbidden) { t.Fatalf("stock UI flattened or duplicated parent hierarchy with %q",forbidden) }
+	}
 }
 
 func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T) {
@@ -192,11 +198,15 @@ func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 	hb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
 	combined:=string(pb)+string(hb)
 	for _, want := range []string{
-		`id="productParent"`,`id="productBrand"`,`id="productContent"`,`id="productBarcode"`,
+		`id="productParent"`,`id="productBrand"`,`id="productName"`,`id="productContent"`,`id="productBarcode"`,
 		`parent.disabled=!!x.has_history`,`brand.disabled=!!x.has_history`,
-		`O nome é gerado automaticamente.`,
+		`Identificação específica do produto, por exemplo Original, Branco ou Oreo.`,
+		`name:name.value.trim()`,
 	} {
 		if !strings.Contains(combined,want) { t.Fatalf("Product/Item identity UI missing %q",want) }
+	}
+	if strings.Contains(combined,`O nome é gerado automaticamente.`) {
+		t.Fatal("Product/Item identity must not be overwritten by an automatically generated name")
 	}
 }
 
@@ -216,7 +226,7 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 		`id="productStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
 		`function msg(type,text){setFeedback(status,type,text)}`,
 		`msg('loading',(editing?'Atualizando ':'Criando ')+label+'…')`,
-		`msg('success',label+(editing?' atualizado.':' criado.'))`,
+		`msg('success',label+(wasEditing?' atualizado.':' criado.'))`,
 	} {
 		if !strings.Contains(combined,want) { t.Fatalf("Product/Item feedback missing %q",want) }
 	}
@@ -474,7 +484,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"function setCrudMode(form,editing,createLabel,updateLabel)",
 		"itemForm.reset()","brandForm.reset()","form.reset()",
 		"body.version=itemVersion","body.version=brandVersion","body.version=editing.version",
-		"msg('success',label+(editing?' atualizado.':' criado.'))",
+		"msg('success',label+(wasEditing?' atualizado.':' criado.'))",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
 		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(userForm,true,'Criar usuário','Atualizar usuário')",
@@ -659,11 +669,15 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 func TestCRUDOptimisticConcurrencyUIContracts(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
-	js := string(jsb)
+	mb, err := os.ReadFile(filepath.Join("static", "catalog_masters.js"))
+	if err != nil { t.Fatal(err) }
+	pb, err := os.ReadFile(filepath.Join("static", "products.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)+string(mb)+string(pb)
 	for _, want := range []string{
 		"registro foi alterado por outro operador",
-		"body.version=Number(currentItem?.version||0)",
-		"body.version=editingSKUVersion",
+		"body.version=itemVersion",
+		"body.version=editing.version",
 		"version:editingAssetVersion",
 		"body.version=selectedUserVersion",
 		"body.version=Number(selected?.version||0)",
