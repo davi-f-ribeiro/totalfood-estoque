@@ -20,8 +20,16 @@ jobs:
       - name: Prepare self-hosted Docker
         run: |
           if ! command -v docker >/dev/null 2>&1; then
+            for i in $(seq 1 60); do
+              if ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 \
+                && ! sudo fuser /var/lib/apt/lists/lock >/dev/null 2>&1 \
+                && ! sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
             sudo apt-get update
-            sudo apt-get install -y docker.io
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io
           fi
           sudo systemctl start docker || true
           docker --version
