@@ -572,6 +572,35 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	}
 }
 
+func TestMovementPendingUsesDurableStoreWithoutAutomaticReplay(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+
+	for _, want := range []string{
+		"async function loadPending()",
+		"await store.get('movement')",
+		"id:'movement',operation_id:p.body.operation_id,endpoint:p.url,payload:p.body",
+		"await loadPending();",
+		"await savePending(payload)",
+		"await new OfflineStore().remove('movement')",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("durable movement pending contract missing %q", want) }
+	}
+	savePos := strings.Index(js, "await savePending(payload)")
+	sendPos := strings.Index(js, "await api(payload.url,{method:'POST'")
+	if savePos < 0 || sendPos < 0 || savePos > sendPos {
+		t.Fatal("movement must durably persist operation before mutation request")
+	}
+	for _, forbidden := range []string{
+		"addEventListener('online'",
+		"beforeunload",
+		"setInterval(",
+	} {
+		if strings.Contains(js, forbidden) { t.Fatalf("movement must not auto-replay pending operations: %q", forbidden) }
+	}
+}
+
 func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil {
