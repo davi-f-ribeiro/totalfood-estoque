@@ -195,22 +195,20 @@ ORDER BY w.name,(l.expires_at IS NULL),l.expires_at,l.received_at,l.id`, itemID,
 
 func stockRowsSQL(general bool, showZero bool) string {
 	_ = showZero // zero balances are intentionally not part of the operational stock view
-	base := `SELECT i.id,b.id,b.name,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),
+	base := `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),
        sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text AS qty,
-       false
+       sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) < COALESCE(i.minimum_stock,0)
 FROM movement_lines ml
-JOIN product_skus s ON s.id=ml.sku_id
-JOIN brands b ON b.id=s.brand_id
 JOIN inventory_items i ON i.id=ml.item_id`
 	if general {
-		return base + ` GROUP BY i.id,b.id,b.name,i.name,i.unit_code,i.minimum_stock
+		return base + ` GROUP BY i.id,i.name,i.unit_code,i.minimum_stock
 HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
-ORDER BY i.name,b.name`
+ORDER BY i.name`
 	}
 	return base + ` WHERE ml.warehouse_id=$1
-GROUP BY i.id,b.id,b.name,i.name,i.unit_code,i.minimum_stock
+GROUP BY i.id,i.name,i.unit_code,i.minimum_stock
 HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
-ORDER BY i.name,b.name`
+ORDER BY i.name`
 }
 
 func normalizeOpText(v string) string { return strings.TrimSpace(v) }
