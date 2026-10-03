@@ -14,23 +14,33 @@ jobs:
   validate:
     runs-on: self-hosted
     timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: estoque_test
-          POSTGRES_USER: estoque
-          POSTGRES_PASSWORD: estoque_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U estoque -d estoque_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       TEST_DATABASE_URL: postgres://estoque:estoque_test@127.0.0.1:5432/estoque_test?sslmode=disable
     steps:
+      - name: Prepare self-hosted Docker
+        run: |
+          if ! command -v docker >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y docker.io
+          fi
+          sudo systemctl start docker || true
+          docker --version
+      - name: Start PostgreSQL 17
+        run: |
+          docker rm -f totalfood-pg-ci >/dev/null 2>&1 || true
+          docker run -d --name totalfood-pg-ci \
+            -e POSTGRES_DB=estoque_test \
+            -e POSTGRES_USER=estoque \
+            -e POSTGRES_PASSWORD=estoque_test \
+            -p 5432:5432 postgres:17-alpine
+          for i in $(seq 1 30); do
+            if docker exec totalfood-pg-ci pg_isready -U estoque -d estoque_test >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs totalfood-pg-ci
+          exit 1
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up Go
@@ -56,3 +66,6 @@ jobs:
         run: go build ./...
       - name: Docker build
         run: docker build -t totalfood-estoque:production-gate .
+      - name: Stop PostgreSQL 17
+        if: always()
+        run: docker rm -f totalfood-pg-ci >/dev/null 2>&1 || true
