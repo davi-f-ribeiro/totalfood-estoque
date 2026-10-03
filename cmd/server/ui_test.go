@@ -254,6 +254,18 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 	}
 }
 
+func TestFiscalWarehouseUsesCanonicalWarehouseLoader(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+	if !strings.Contains(js, `document.querySelectorAll('select[id^="warehouse"],#fiscalWarehouse')`) {
+		t.Fatal("canonical warehouse loader must include fiscalWarehouse")
+	}
+	if strings.Contains(js, "loadWarehouses().then(ws=>{if(warehouse&&ws)") {
+		t.Fatal("fiscal must not duplicate canonical warehouse rendering")
+	}
+}
+
 func TestFrontendCleanupKeepsSingleCanonicalHelpers(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil {
