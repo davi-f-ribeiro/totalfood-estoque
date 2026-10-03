@@ -424,16 +424,17 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 	if req.Active != nil {
 		active = *req.Active
 	}
-	var valid bool
+	var itemName,brandName,unit string
 	if err:=a.db.QueryRowContext(r.Context(), `
-SELECT EXISTS(
-  SELECT 1
-  FROM inventory_items i
-  JOIN brands b ON b.id=$2
-  WHERE i.id=$1 AND i.active=true AND b.active=true
-)`,req.ItemID,req.BrandID).Scan(&valid); err!=nil || !valid {
+SELECT i.name,b.name,i.unit_code
+FROM inventory_items i
+JOIN brands b ON b.id=$2
+WHERE i.id=$1 AND i.active=true AND b.active=true`,req.ItemID,req.BrandID).Scan(&itemName,&brandName,&unit); err!=nil {
 		writeJSONError(w,http.StatusBadRequest,"Item pai ou marca inválidos.")
 		return
+	}
+	if req.Name=="" {
+		req.Name=productDisplayName(itemName,brandName,req.ContentQuantity,unit)
 	}
 	var id int64
 	err := a.db.QueryRowContext(r.Context(), `INSERT INTO product_skus (item_id,brand_id,name,barcode,content_quantity,active) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, req.ItemID,req.BrandID,req.Name,req.Barcode,req.ContentQuantity,active).Scan(&id)
