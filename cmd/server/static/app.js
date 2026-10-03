@@ -23,8 +23,7 @@ document.addEventListener('click',e=>{if(e.target.id==='logout')api('/api/logout
 async function productLookup(q){q=normalizeBarcode(q);if(q.length<2)return[];return api('/api/products/lookup?q='+encodeURIComponent(q))}
 function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function skuLabel(r){let item=r.item||'',brand=r.brand||'',barcode=r.barcode||'',content=Number(String(r.content_quantity||'1').replace(',','.'))||1;let meta=[];if(brand&&brand!==item)meta.push(brand);if(barcode)meta.push('EAN '+barcode);if(r.unit)meta.push('1 un = '+displayDecimal(content,4)+' '+r.unit);return {item,meta:meta.join(' · ')}}
-function setLookupState(lookup,open){lookup.hidden=!open;let input=lookup.previousElementSibling?.querySelector?.('input')||document.getElementById('productSearch');if(input&&input.getAttribute('aria-controls')===lookup.id)input.setAttribute('aria-expanded',open?'true':'false')}
-function showLookup(rows,lookup,onPick){lookup.textContent='';if(!rows||!rows.length){setLookupState(lookup,false);return}setLookupState(lookup,true);rows.forEach(r=>{let b=document.createElement('button');b.type='button';b.setAttribute('role','option');let l=skuLabel(r),strong=document.createElement('strong'),small=document.createElement('small');strong.textContent=l.item;small.textContent=l.meta;b.append(strong,small);b.onclick=()=>onPick(r);lookup.append(b)})}
+function showLookup(rows,lookup,onPick){lookup.textContent='';if(!rows||!rows.length){lookup.hidden=true;return}lookup.hidden=false;rows.forEach(r=>{let b=document.createElement('button');b.type='button';let l=skuLabel(r),strong=document.createElement('strong'),small=document.createElement('small');strong.textContent=l.item;small.textContent=l.meta;b.append(strong,small);b.onclick=()=>onPick(r);lookup.append(b)})}
 function scrollToContext(el,block='nearest'){el?.scrollIntoView({block,behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})}
 async function loadWarehouses(includeGeneral=false,endpoint='/api/warehouses'){let s=document.querySelectorAll('select[id^="warehouse"]');if(!s.length)return;let ws=await api(endpoint);s.forEach(sel=>{sel.textContent='';if(includeGeneral){let g=document.createElement('option');g.value='';g.textContent='Estoque geral';sel.append(g)}ws.forEach(w=>{let o=document.createElement('option');o.value=w.id;o.textContent=w.name;sel.append(o)})});return ws}
 async function initStock(){
@@ -56,7 +55,7 @@ if(isTransfer){to.textContent='';let p=document.createElement('option');p.value=
 lookup.hidden=true;status.hidden=true;
 function parseQty(v){return Number(String(v||'0').replace(',','.'))||0}
 function selectedAvailability(){let opt=wh.selectedOptions[0];return opt?parseQty(opt.dataset.quantity):0}
-function clearLookup(){lookup.textContent='';setLookupState(lookup,false)}
+function clearLookup(){lookup.textContent='';lookup.hidden=true}
 function productMsg(type,html){pf.className='product-feedback '+(type||'');pf.innerHTML=html||'';pf.hidden=!html}
 function movementMsg(type,msg){status.className='operation-feedback '+(type||'');status.textContent=msg||'';status.hidden=!msg}
 function selectedHTML(r){let l=skuLabel(r);return '<p>Produto selecionado</p><strong>'+esc(l.item)+'</strong><small>'+esc(l.meta)+'</small><button id="changeProduct" class="secondary" type="button">Alterar</button>'}
