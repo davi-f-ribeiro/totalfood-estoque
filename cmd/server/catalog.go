@@ -178,7 +178,7 @@ WITH parent_page AS (
             SELECT 1 FROM product_skus sx
             WHERE sx.item_id=i.id
               AND (lower(COALESCE(sx.name,'')) LIKE lower($2)
-                   OR lower(COALESCE(sx.brand,'')) LIKE lower($2)
+                   OR EXISTS (SELECT 1 FROM brands bx WHERE bx.id=sx.brand_id AND lower(bx.name) LIKE lower($2))
                    OR COALESCE(sx.barcode,'') LIKE $2)
         )
     )
@@ -245,7 +245,7 @@ WHERE $1='' OR lower(i.name) LIKE lower($2)
        SELECT 1 FROM product_skus sx
        WHERE sx.item_id=i.id
          AND (lower(COALESCE(sx.name,'')) LIKE lower($2)
-              OR lower(COALESCE(sx.brand,'')) LIKE lower($2)
+              OR EXISTS (SELECT 1 FROM brands bx WHERE bx.id=sx.brand_id AND lower(bx.name) LIKE lower($2))
               OR COALESCE(sx.barcode,'') LIKE $2)
    )
 GROUP BY i.id,c.name
@@ -416,24 +416,25 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogSKURequest(&req)
-	if req.ItemID<=0 || req.BrandID<=0 || req.Barcode=="" || !positiveDecimal(req.ContentQuantity) {
-		writeJSONError(w, http.StatusBadRequest, "Preencha item pai, marca, conteúdo da apresentação e código de barras.")
+	if req.ItemID<=0 || req.BrandID<=0 || req.Name=="" || req.Barcode=="" || !positiveDecimal(req.ContentQuantity) {
+		writeJSONError(w, http.StatusBadRequest, "Preencha item pai, marca, Produto/Item, conteúdo da apresentação e código de barras.")
 		return
 	}
 	active := true
 	if req.Active != nil {
 		active = *req.Active
 	}
-	var itemName,brandName,unit string
+	var valid bool
 	if err:=a.db.QueryRowContext(r.Context(), `
-SELECT i.name,b.name,i.unit_code
-FROM inventory_items i
-JOIN brands b ON b.id=$2
-WHERE i.id=$1 AND i.active=true AND b.active=true`,req.ItemID,req.BrandID).Scan(&itemName,&brandName,&unit); err!=nil {
+SELECT EXISTS(
+  SELECT 1
+  FROM inventory_items i
+  JOIN brands b ON b.id=$2
+  WHERE i.id=$1 AND i.active=true AND b.active=true
+)`,req.ItemID,req.BrandID).Scan(&valid); err!=nil || !valid {
 		writeJSONError(w,http.StatusBadRequest,"Item pai ou marca inválidos.")
 		return
 	}
-	req.Name=productDisplayName(itemName,brandName,req.ContentQuantity,unit)
 	var id int64
 	err := a.db.QueryRowContext(r.Context(), `INSERT INTO product_skus (item_id,brand_id,name,barcode,content_quantity,active) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, req.ItemID,req.BrandID,req.Name,req.Barcode,req.ContentQuantity,active).Scan(&id)
 	if err != nil {
@@ -458,14 +459,14 @@ func (a *app) handleUpdateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var currentItem,currentBrand,currentVersion int64
-	var currentUnit,targetUnit,currentContentQuantity string
+	var currentUnit,targetUnit,currentContentQuantity,currentName string
 	var hasHistory bool
 	err := a.db.QueryRowContext(r.Context(), `
-SELECT s.item_id,s.brand_id,s.version,src.unit_code,s.content_quantity::text,
+SELECT s.item_id,s.brand_id,s.version,src.unit_code,s.content_quantity::text,COALESCE(s.name,''),
        EXISTS(SELECT 1 FROM movement_lines ml WHERE ml.sku_id=s.id)
 FROM product_skus s
 JOIN inventory_items src ON src.id=s.item_id
-WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,&currentContentQuantity,&hasHistory)
+WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,&currentContentQuantity,&currentName,&hasHistory)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "SKU não encontrado.")
 		return
@@ -483,15 +484,17 @@ WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,
 	if req.ContentQuantity == "" {
 		req.ContentQuantity = currentContentQuantity
 	}
+	if req.Name == "" {
+		req.Name = currentName
+	}
 	if !positiveDecimal(req.ContentQuantity) {
 		writeJSONError(w, http.StatusBadRequest, "Informe um conteúdo por apresentação maior que zero.")
 		return
 	}
-	var itemName,brandName string
 	if err := a.db.QueryRowContext(r.Context(), `
-SELECT i.unit_code,i.name,b.name
+SELECT i.unit_code
 FROM inventory_items i JOIN brands b ON b.id=$2
-WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&itemName,&brandName); errors.Is(err, sql.ErrNoRows) {
+WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit); errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusBadRequest, "Item pai de destino não encontrado.")
 		return
 	} else if err != nil {
@@ -506,7 +509,6 @@ WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&itemName,&brandName); e
 	if req.Active != nil {
 		active = *req.Active
 	}
-	req.Name=productDisplayName(itemName,brandName,req.ContentQuantity,targetUnit)
 	var newVersion int64
 	err = a.db.QueryRowContext(r.Context(), `
 UPDATE product_skus
