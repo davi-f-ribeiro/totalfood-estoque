@@ -152,7 +152,7 @@ func TestBetterInterfaceOperationalContracts(t *testing.T) {
 	hb, err := os.ReadFile(filepath.Join("templates", "movement.html")); if err != nil { t.Fatal(err) }
 	combined := string(jsb)+string(cssb)+string(hb)
 	for _, want := range []string{
-		`prefers-reduced-motion: reduce`, `function scrollToContext(`,
+		`prefers-reduced-motion: no-preference`, `function scrollToContext(`,
 		`Nenhum item com saldo neste depósito.`, `Abaixo do estoque mínimo`, `className='stock-expand'`,
 		`--focus-ring:`, `body{font-size:16px}`,
 	} {
