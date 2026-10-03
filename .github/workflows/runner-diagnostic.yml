@@ -1,0 +1,19 @@
+name: runner-diagnostic
+
+on:
+  push:
+    branches:
+      - 'hotfix/actions-runner-diagnostic'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Runner alive
+        run: echo "runner-ok"
+      - name: Node available
+        run: node --version
