@@ -126,7 +126,7 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`Selecione um produto`,
 		`Disponível:`,
 		`aria-expanded`,
-		`openKey===key`,
+		`openItem===row.item_id`,
 		`warehouse_id`,
 		`Quantidade acima do saldo disponível.`,
 		`Destino deve ser diferente da origem.`,
@@ -226,7 +226,7 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 		`id="productStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
 		`function msg(type,text){setFeedback(status,type,text)}`,
 		`msg('loading',(editing?'Atualizando ':'Criando ')+label+'…')`,
-		`msg('success',label+(editing?' atualizado.':' criado.'))`,
+		`msg('success',label+(wasEditing?' atualizado.':' criado.'))`,
 	} {
 		if !strings.Contains(combined,want) { t.Fatalf("Product/Item feedback missing %q",want) }
 	}
@@ -669,10 +669,14 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 func TestCRUDOptimisticConcurrencyUIContracts(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
-	js := string(jsb)
+	mb, err := os.ReadFile(filepath.Join("static", "catalog_masters.js"))
+	if err != nil { t.Fatal(err) }
+	pb, err := os.ReadFile(filepath.Join("static", "products.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)+string(mb)+string(pb)
 	for _, want := range []string{
 		"registro foi alterado por outro operador",
-		"body.version=Number(currentItem?.version||0)",
+		"body.version=itemVersion",
 		"body.version=editing.version",
 		"version:editingAssetVersion",
 		"body.version=selectedUserVersion",
