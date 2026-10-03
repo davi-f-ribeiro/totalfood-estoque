@@ -572,6 +572,33 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	}
 }
 
+func TestInventoryCreationPendingUsesDurableStore(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+
+	for _, want := range []string{
+		"async function loadInventoryCreatePending()",
+		"await store.get('inventory-create')",
+		"id:'inventory-create',operation_id:p.operation_id",
+		"await loadInventoryCreatePending();",
+		"await saveInventoryCreatePending(pending)",
+		"await new OfflineStore().remove('inventory-create')",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("durable inventory pending contract missing %q", want) }
+	}
+	if strings.Count(js, "await saveInventoryCreatePending(pending)") != 2 {
+		t.Fatal("total and blind inventory creation must persist pending operation before request")
+	}
+	for _, forbidden := range []string{
+		"addEventListener('online'",
+		"beforeunload",
+		"setInterval(",
+	} {
+		if strings.Contains(js, forbidden) { t.Fatalf("inventory pending must not auto-replay operations: %q", forbidden) }
+	}
+}
+
 func TestMovementPendingUsesDurableStoreWithoutAutomaticReplay(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
