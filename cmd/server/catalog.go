@@ -460,14 +460,15 @@ func (a *app) handleUpdateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var currentItem,currentBrand,currentVersion int64
-	var currentUnit,targetUnit,currentContentQuantity,currentName string
+	var currentUnit,targetUnit,currentContentQuantity,currentName,currentItemName,currentBrandName string
 	var hasHistory bool
 	err := a.db.QueryRowContext(r.Context(), `
-SELECT s.item_id,s.brand_id,s.version,src.unit_code,s.content_quantity::text,COALESCE(s.name,''),
+SELECT s.item_id,s.brand_id,s.version,src.unit_code,s.content_quantity::text,COALESCE(s.name,''),src.name,b.name,
        EXISTS(SELECT 1 FROM movement_lines ml WHERE ml.sku_id=s.id)
 FROM product_skus s
 JOIN inventory_items src ON src.id=s.item_id
-WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,&currentContentQuantity,&currentName,&hasHistory)
+JOIN brands b ON b.id=s.brand_id
+WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,&currentContentQuantity,&currentName,&currentItemName,&currentBrandName,&hasHistory)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "SKU não encontrado.")
 		return
@@ -485,22 +486,29 @@ WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,
 	if req.ContentQuantity == "" {
 		req.ContentQuantity = currentContentQuantity
 	}
-	if req.Name == "" {
-		req.Name = currentName
-	}
+	nameProvided := req.Name!=""
 	if !positiveDecimal(req.ContentQuantity) {
 		writeJSONError(w, http.StatusBadRequest, "Informe um conteúdo por apresentação maior que zero.")
 		return
 	}
+	var targetItemName,targetBrandName string
 	if err := a.db.QueryRowContext(r.Context(), `
-SELECT i.unit_code
+SELECT i.unit_code,i.name,b.name
 FROM inventory_items i JOIN brands b ON b.id=$2
-WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit); errors.Is(err, sql.ErrNoRows) {
+WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&targetItemName,&targetBrandName); errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusBadRequest, "Item pai de destino não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, 500, "Erro interno.")
 		return
+	}
+	if !nameProvided {
+		legacyGenerated := productDisplayName(currentItemName,currentBrandName,currentContentQuantity,currentUnit)
+		if currentName==legacyGenerated {
+			req.Name=productDisplayName(targetItemName,targetBrandName,req.ContentQuantity,targetUnit)
+		} else {
+			req.Name=currentName
+		}
 	}
 	if hasHistory && (currentItem!=req.ItemID || currentBrand!=req.BrandID) {
 		writeJSONError(w,http.StatusConflict,"Item pai e marca não podem ser alterados porque este Produto/Item possui histórico.")
