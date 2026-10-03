@@ -484,7 +484,7 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 		"function setCrudMode(form,editing,createLabel,updateLabel)",
 		"itemForm.reset()","brandForm.reset()","form.reset()",
 		"body.version=itemVersion","body.version=brandVersion","body.version=editing.version",
-		"msg('success',label+(editing?' atualizado.':' criado.'))",
+		"msg('success',label+(wasEditing?' atualizado.':' criado.'))",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
 		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(userForm,true,'Criar usuário','Atualizar usuário')",
