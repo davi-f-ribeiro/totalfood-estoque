@@ -61,4 +61,11 @@ BEGIN
            name='Original',
            version=version+1
      WHERE id=v_sku_id;
-END $$;
+
+    DELETE FROM brands
+     WHERE id=v_brand_id
+       AND name='Original'
+       AND NOT EXISTS (SELECT 1 FROM product_skus WHERE brand_id=v_brand_id)
+       AND NOT EXISTS (SELECT 1 FROM stock_lots WHERE brand_id=v_brand_id)
+       AND NOT EXISTS (SELECT 1 FROM stock_locks WHERE brand_id=v_brand_id);
+END $;
