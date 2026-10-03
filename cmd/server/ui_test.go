@@ -668,7 +668,7 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 		"function clearInventoryCreatePending()",
 		"Reenviar criação pendente",
 		"operation_id:pending.operation_id",
-		"definitiveInventoryCreateError(err)",
+		"definitiveWriteError(err)",
 		"sort.Slice(skuIDs",
 		"for _, skuID := range skuIDs",
 		"ADD COLUMN operation_id text",
