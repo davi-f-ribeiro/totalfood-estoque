@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"strconv"
 	"sync"
 	"testing"
 )
@@ -337,5 +338,129 @@ func TestInventoryAdjustmentConcurrentRequestsCreateOneMovement(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("adjustment links=%d want 1", count)
+	}
+}
+
+func TestInventoryAdjustmentPositiveFallsBackToLastRealEntryCost(t *testing.T) {
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "fallback-cost", "12.000")
+	ctx := context.Background()
+	if _, err := e.a.createExit(ctx, movementRequest{
+		OperationID: "drain-before-fallback",
+		SKUID: sku,
+		WarehouseID: inv.WarehouseID,
+		Quantity: "10",
+		UserID: e.userID,
+	}, "drain-before-fallback"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "adjust-fallback-cost")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cost string
+	if err := e.db.QueryRow(`
+SELECT unit_cost::numeric(14,4)::text
+FROM movement_lines
+WHERE movement_id=$1 AND direction='IN'`, res.MovementID).Scan(&cost); err != nil {
+		t.Fatal(err)
+	}
+	if cost != "5.0000" {
+		t.Fatalf("fallback adjustment cost=%s want 5.0000", cost)
+	}
+}
+
+func TestInventoryAdjustmentPositiveBlocksWithoutValidCostBasis(t *testing.T) {
+	e := newInventoryTestEnv(t)
+	ctx := context.Background()
+	wh := e.warehouse(t, "no-cost-warehouse", true)
+	sku := e.sku(t, "no-cost-sku", true, true)
+	if _, err := e.a.createEntry(ctx, movementRequest{
+		OperationID: "seed-zero-cost",
+		SKUID: sku,
+		WarehouseID: wh,
+		Quantity: "10",
+		UnitCost: "0",
+		UserID: e.userID,
+	}, "seed-zero-cost"); err != nil {
+		t.Fatal(err)
+	}
+	inv, err := e.a.createTotalInventory(ctx, e.userID, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	countInventoryToReview(t, e, inv, map[int64]string{sku: "12.000"})
+	review, err := e.a.getInventoryReviewView(ctx, inv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := reviewBySKU(t, review)[sku]
+	if _, err := e.a.saveInventoryRecount(ctx, inv.ID, sku, "12.000", line.Version, e.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.completeInventory(ctx, inv.ID, e.userID, "Divergência física confirmada."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.createExit(ctx, movementRequest{
+		OperationID: "drain-zero-cost",
+		SKUID: sku,
+		WarehouseID: wh,
+		Quantity: "10",
+		UserID: e.userID,
+	}, "drain-zero-cost"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "adjust-no-cost"); !errors.Is(err, errInventoryAdjustmentCostUnavailable) {
+		t.Fatalf("adjustment error=%v want cost unavailable", err)
+	}
+	var links int
+	if err := e.db.QueryRow(`SELECT count(*) FROM inventory_stock_adjustments WHERE validation_id=$1 AND sku_id=$2`, inv.ID, sku).Scan(&links); err != nil {
+		t.Fatal(err)
+	}
+	if links != 0 {
+		t.Fatalf("blocked no-cost adjustment persisted %d links", links)
+	}
+}
+
+func TestInventoryAdjustmentRouteAndOperationLookupRespectGranularPermissionAndOwner(t *testing.T) {
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "permission-owner", "12.000")
+	ctx := context.Background()
+	if _, err := e.db.Exec(`
+INSERT INTO profile_permissions (profile_id,permission_id)
+SELECT p.id,perm.id
+FROM profiles p
+JOIN permissions perm ON perm.resource='stock_adjustment' AND perm.action='write'
+WHERE p.name='Estoquista'
+ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	ownerID := createTestUser(t, e.a, "adjust-owner-"+t.Name(), "secret", "Estoquista", true)
+	otherID := createTestUser(t, e.a, "adjust-other-"+t.Name(), "secret", "Estoquista", true)
+	denied := createTestUser(t, e.a, "adjust-denied-"+t.Name(), "secret", "Vendas", true)
+	_ = denied
+
+	deniedLogin := doLogin(t, e.a, "adjust-denied-"+t.Name(), "secret")
+	rr := authReq(e.a, http.MethodPost,
+		"/api/inventory-validations/"+strconv.FormatInt(inv.ID,10)+"/lines/"+strconv.FormatInt(sku,10)+"/adjust",
+		map[string]any{"operation_id":"adjust-authz"}, deniedLogin, "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("denied adjustment status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	ownerLogin := doLogin(t, e.a, "adjust-owner-"+t.Name(), "secret")
+	rr = authReq(e.a, http.MethodPost,
+		"/api/inventory-validations/"+strconv.FormatInt(inv.ID,10)+"/lines/"+strconv.FormatInt(sku,10)+"/adjust",
+		map[string]any{"operation_id":"adjust-authz"}, ownerLogin, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("authorized adjustment status=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rr = authReq(e.a, http.MethodGet, "/api/operations/adjust-authz", nil, ownerLogin, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("owner lookup status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	otherLogin := doLogin(t, e.a, "adjust-other-"+t.Name(), "secret")
+	rr = authReq(e.a, http.MethodGet, "/api/operations/adjust-authz", nil, otherLogin, "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("other operator lookup status=%d body=%s owner=%d other=%d", rr.Code, rr.Body.String(), ownerID, otherID)
 	}
 }
