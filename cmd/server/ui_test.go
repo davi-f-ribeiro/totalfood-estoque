@@ -630,8 +630,8 @@ func TestFiscalPendingUsesDurableStore(t *testing.T) {
 
 	for _, want := range []string{
 		"async function loadFiscalPending()",
-		"await store.get('fiscal-confirm')",
-		"id:'fiscal-confirm',operation_id:p.body.operation_id",
+		"await store.listPending('fiscal-confirm')",
+		"await store.savePending('fiscal-confirm',p.body.operation_id,p.url,p.body)",
 		"await saveFiscalPending(pending)",
 		"await clearFiscalPending()",
 		"await loadFiscalPending();showFiscalPending()",
@@ -649,6 +649,22 @@ func TestFiscalPendingUsesDurableStore(t *testing.T) {
 		"setInterval(",
 	} {
 		if strings.Contains(js, forbidden) { t.Fatalf("fiscal pending must not auto-replay operations: %q", forbidden) }
+	}
+}
+
+func TestFiscalPendingIsScopedByUserAndOperation(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+	for _, want := range []string{
+		"await store.listPending('fiscal-confirm')",
+		"await store.savePending('fiscal-confirm',p.body.operation_id,p.url,p.body)",
+		"await new OfflineStore().removePending('fiscal-confirm',operationId)",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("scoped fiscal pending contract missing %q", want) }
+	}
+	if strings.Contains(js, "store.save({id:'fiscal-confirm'") {
+		t.Fatal("fiscal pending must not use a fixed IndexedDB id")
 	}
 }
 
