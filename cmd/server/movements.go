@@ -131,7 +131,7 @@ func (a *app) handleGetOperation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !global {
-		resource := map[string]string{"ENTRADA": "movement_entry", "SAIDA": "movement_exit", "TRANSFERENCIA": "movement_transfer"}[res.Type]
+		resource := map[string]string{"ENTRADA": "movement_entry", "SAIDA": "movement_exit", "TRANSFERENCIA": "movement_transfer", "AJUSTE": "stock_adjustment"}[res.Type]
 		own := res.UserID > 0 && res.UserID == u.ID
 		allowed := false
 		if own && resource != "" {
