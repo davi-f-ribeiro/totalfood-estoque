@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 )
 
 func TestInventoryAdjustmentCandidateRequiresCompletedDivergence(t *testing.T) {
-	db := openTestDB(t)
+	db := openTestDatabase(t)
 	seedCanonicalStockTest(t, db)
 
 	ctx := context.Background()
@@ -56,7 +55,7 @@ FROM product_skus s WHERE s.id=$3`, validationID, userID, skuID); err != nil { t
 }
 
 func TestApplyInventoryStockAdjustmentGate3DoesNotMutateStock(t *testing.T) {
-	db := openTestDB(t)
+	db := openTestDatabase(t)
 	seedCanonicalStockTest(t, db)
 	a := &app{db: db}
 	ctx := context.Background()
@@ -94,4 +93,3 @@ FROM product_skus s WHERE s.id=$3`, validationID, userID, skuID); err != nil { t
 	}
 }
 
-var _ *sql.DB
