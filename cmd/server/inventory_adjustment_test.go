@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"strconv"
 	"sync"
@@ -488,5 +490,92 @@ func TestInventoryAdjustmentRejectsInactiveWarehouse(t *testing.T) {
 	}
 	if links != 0 {
 		t.Fatalf("inactive warehouse adjustment persisted %d links", links)
+	}
+}
+
+func TestMigration030AppliesIncrementallyWithoutChangingLedger(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	migrationsDir := filepath.Join("..", "..", "migrations")
+	preDir := t.TempDir()
+	entries, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".sql") || name >= "030_" {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(migrationsDir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(preDir, name), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runMigrations(ctx, db, preDir); err != nil {
+		t.Fatalf("apply 001-029: %v", err)
+	}
+	var movementsBefore, linesBefore int
+	if err := db.QueryRow(`SELECT count(*) FROM movements`).Scan(&movementsBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&linesBefore); err != nil {
+		t.Fatal(err)
+	}
+
+	incDir := t.TempDir()
+	body, err := os.ReadFile(filepath.Join(migrationsDir, "030_inventory_stock_adjustments.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(incDir, "030_inventory_stock_adjustments.sql"), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runMigrations(ctx, db, incDir); err != nil {
+		t.Fatalf("apply migration 030: %v", err)
+	}
+
+	var movementsAfter, linesAfter int
+	if err := db.QueryRow(`SELECT count(*) FROM movements`).Scan(&movementsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&linesAfter); err != nil {
+		t.Fatal(err)
+	}
+	if movementsBefore != movementsAfter || linesBefore != linesAfter {
+		t.Fatalf("migration 030 changed ledger rows: movements %d->%d lines %d->%d", movementsBefore, movementsAfter, linesBefore, linesAfter)
+	}
+	var constraint string
+	if err := db.QueryRow(`
+SELECT pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid='movements'::regclass AND conname='movements_movement_type_check'`).Scan(&constraint); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(constraint, "AJUSTE") {
+		t.Fatalf("movement type constraint missing AJUSTE: %s", constraint)
+	}
+	var permissionCount int
+	if err := db.QueryRow(`SELECT count(*) FROM permissions WHERE resource='stock_adjustment' AND action='write'`).Scan(&permissionCount); err != nil {
+		t.Fatal(err)
+	}
+	if permissionCount != 1 {
+		t.Fatalf("stock_adjustment/write permissions=%d want 1", permissionCount)
+	}
+	var appliedBefore, appliedAfter int
+	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&appliedBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := runMigrations(ctx, db, incDir); err != nil {
+		t.Fatalf("rerun migration 030: %v", err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&appliedAfter); err != nil {
+		t.Fatal(err)
+	}
+	if appliedBefore != appliedAfter {
+		t.Fatalf("migration 030 reapplied: %d -> %d", appliedBefore, appliedAfter)
 	}
 }
