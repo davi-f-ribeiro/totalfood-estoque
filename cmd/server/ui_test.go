@@ -265,10 +265,9 @@ func TestOfflineStoreIsDurableStorageOnly(t *testing.T) {
 		"class OfflineStore",
 		"indexedDB.open(this.dbName,1)",
 		"db.createObjectStore(this.storeName,{keyPath:'id'})",
-		"async save(record)",
-		"async get(id)",
-		"async getAll()",
-		"async remove(id)",
+		"async getPending(kind)",
+		"async claimPending(kind,operationId,endpoint,payload)",
+		"async clearPending(kind,operationId)",
 	} {
 		if !strings.Contains(store, want) { t.Fatalf("offline store contract missing %q", want) }
 	}
