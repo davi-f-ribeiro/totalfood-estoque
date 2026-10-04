@@ -659,11 +659,11 @@ func TestInventoryCreationPendingUsesDurableStore(t *testing.T) {
 
 	for _, want := range []string{
 		"async function loadInventoryCreatePending()",
-		"await store.get('inventory-create')",
-		"id:'inventory-create',operation_id:p.operation_id",
+		"await store.listPending('inventory-create')",
+		"await store.savePending('inventory-create',p.operation_id",
 		"await loadInventoryCreatePending();",
 		"await saveInventoryCreatePending(pending)",
-		"await new OfflineStore().remove('inventory-create')",
+		"await new OfflineStore().removePending('inventory-create',operationId)",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable inventory pending contract missing %q", want) }
 	}
@@ -676,6 +676,22 @@ func TestInventoryCreationPendingUsesDurableStore(t *testing.T) {
 		"setInterval(",
 	} {
 		if strings.Contains(js, forbidden) { t.Fatalf("inventory pending must not auto-replay operations: %q", forbidden) }
+	}
+}
+
+func TestInventoryPendingIsScopedByUserAndOperation(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+	for _, want := range []string{
+		"await store.listPending('inventory-create')",
+		"await store.savePending('inventory-create',p.operation_id",
+		"await new OfflineStore().removePending('inventory-create',operationId)",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("scoped inventory pending contract missing %q", want) }
+	}
+	if strings.Contains(js, "store.save({id:'inventory-create'") {
+		t.Fatal("inventory pending must not use a fixed IndexedDB id")
 	}
 }
 
