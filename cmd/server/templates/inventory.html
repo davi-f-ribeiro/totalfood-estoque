@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><title>{{.Title}} · Estoque</title><link rel="stylesheet" href="/static/app.css"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><meta name="current-user-id" content="{{.User.ID}}"><title>{{.Title}} · Estoque</title><link rel="stylesheet" href="/static/app.css"></head><body>
 <header class="top"><div class="brand"><span class="brand-slot" aria-hidden="true"></span><span class="brand-copy"><strong>Gestão de Estoque</strong><small>Qualidade todo dia!</small></span></div><details class="account"><summary>{{.User.Login}}</summary><div><button id="changePasswordOpen" class="linkish" type="button">Alterar senha</button><button id="logout" class="linkish" type="button">Sair</button><p id="accountStatus" class="msg" aria-live="polite"></p></div></details></header>
 {{template "nav" .}}
 <main class="main inventory-shell" data-can-write="{{.CanInventoryWrite}}" data-can-adjust="{{.CanStockAdjustment}}">
@@ -45,4 +45,4 @@
 <p id="inventoryMessage" class="operation-feedback" role="status" aria-live="polite" hidden></p><section id="inventoryTerminalActions" class="inventory-terminal-actions" hidden></section><div id="inventoryLines" class="inventory-lines"></div>
 </div></section>
 </main>
-<script src="/static/vendor/zxing-browser.min.js" defer></script><script src="/static/app.js" defer></script></body></html>
+<script src="/static/vendor/zxing-browser.min.js" defer></script><script src="/static/utils/offline-store.js" defer></script><script src="/static/app.js" defer></script></body></html>
