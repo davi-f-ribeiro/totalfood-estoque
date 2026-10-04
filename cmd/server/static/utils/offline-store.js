@@ -2,10 +2,48 @@
 'use strict';
 
 class OfflineStore{
-  constructor(dbName='AppStore',storeName='pendingOps'){
+  constructor(dbName='AppStore',storeName='pendingOps',ownerId=null){
     this.dbName=dbName;
     this.storeName=storeName;
+    this.ownerId=String(ownerId??document.querySelector('meta[name="current-user-id"]')?.content??'').trim();
     this.dbPromise=null;
+  }
+
+  pendingId(kind,operationId){
+    if(!this.ownerId)throw new TypeError('pending operation owner is required');
+    if(!kind)throw new TypeError('pending operation kind is required');
+    if(!operationId)throw new TypeError('pending operation id is required');
+    return this.ownerId+':'+kind+':'+operationId;
+  }
+
+  async savePending(kind,operationId,endpoint,payload,status='pending',lastError=''){
+    return this.save({
+      id:this.pendingId(kind,operationId),
+      owner_id:this.ownerId,
+      kind,
+      operation_id:operationId,
+      endpoint,
+      payload,
+      timestamp:Date.now(),
+      status,
+      last_error:lastError
+    });
+  }
+
+  async listPending(kind){
+    const rows=await this.getAll();
+    return rows.filter(r=>r&&String(r.owner_id||'')===this.ownerId&&r.kind===kind&&r.status==='pending');
+  }
+
+  async removePending(kind,operationId){
+    return this.remove(this.pendingId(kind,operationId));
+  }
+
+  async removeOwnerPending(){
+    const rows=await this.getAll();
+    for(const row of rows){
+      if(row&&String(row.owner_id||'')===this.ownerId)await this.remove(row.id);
+    }
   }
 
   init(){
