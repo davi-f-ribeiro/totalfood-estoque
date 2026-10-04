@@ -9,41 +9,10 @@ class OfflineStore{
     this.dbPromise=null;
   }
 
-  pendingId(kind,operationId){
+  pendingId(kind){
     if(!this.ownerId)throw new TypeError('pending operation owner is required');
     if(!kind)throw new TypeError('pending operation kind is required');
-    if(!operationId)throw new TypeError('pending operation id is required');
-    return this.ownerId+':'+kind+':'+operationId;
-  }
-
-  async savePending(kind,operationId,endpoint,payload,status='pending',lastError=''){
-    return this.save({
-      id:this.pendingId(kind,operationId),
-      owner_id:this.ownerId,
-      kind,
-      operation_id:operationId,
-      endpoint,
-      payload,
-      timestamp:Date.now(),
-      status,
-      last_error:lastError
-    });
-  }
-
-  async listPending(kind){
-    const rows=await this.getAll();
-    return rows.filter(r=>r&&String(r.owner_id||'')===this.ownerId&&r.kind===kind&&r.status==='pending');
-  }
-
-  async removePending(kind,operationId){
-    return this.remove(this.pendingId(kind,operationId));
-  }
-
-  async removeOwnerPending(){
-    const rows=await this.getAll();
-    for(const row of rows){
-      if(row&&String(row.owner_id||'')===this.ownerId)await this.remove(row.id);
-    }
+    return this.ownerId+':'+kind;
   }
 
   init(){
@@ -52,9 +21,7 @@ class OfflineStore{
       const request=indexedDB.open(this.dbName,1);
       request.onupgradeneeded=()=>{
         const db=request.result;
-        if(!db.objectStoreNames.contains(this.storeName)){
-          db.createObjectStore(this.storeName,{keyPath:'id'});
-        }
+        if(!db.objectStoreNames.contains(this.storeName))db.createObjectStore(this.storeName,{keyPath:'id'});
       };
       request.onsuccess=()=>resolve(request.result);
       request.onerror=()=>reject(request.error);
@@ -62,30 +29,56 @@ class OfflineStore{
     return this.dbPromise;
   }
 
-  async store(mode='readonly'){
-    const db=await this.init();
-    return db.transaction(this.storeName,mode).objectStore(this.storeName);
+  async getPending(kind){
+    const db=await this.init(),id=this.pendingId(kind);
+    const record=await requestResult(db.transaction(this.storeName).objectStore(this.storeName).get(id));
+    return record&&record.owner_id===this.ownerId&&record.kind===kind&&record.status==='pending'?record:null;
   }
 
-  async save(record){
-    if(!record||!record.id)throw new TypeError('pending operation id is required');
-    const store=await this.store('readwrite');
-    return requestResult(store.put(record));
+  async claimPending(kind,operationId,endpoint,payload){
+    if(!operationId)throw new TypeError('pending operation id is required');
+    const db=await this.init(),id=this.pendingId(kind);
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(this.storeName,'readwrite'),store=tx.objectStore(this.storeName);
+      let result;
+      tx.oncomplete=()=>resolve(result);
+      tx.onerror=()=>reject(tx.error);
+      tx.onabort=()=>reject(tx.error||new Error('pending operation transaction aborted'));
+      const get=store.get(id);
+      get.onerror=()=>reject(get.error);
+      get.onsuccess=()=>{
+        const current=get.result;
+        if(current&&current.status==='pending'){
+          result={claimed:current.operation_id===operationId,record:current};
+          return;
+        }
+        const record={id,owner_id:this.ownerId,kind,operation_id:operationId,endpoint,payload,timestamp:Date.now(),status:'pending',last_error:''};
+        const put=store.put(record);
+        put.onerror=()=>reject(put.error);
+        put.onsuccess=()=>{result={claimed:true,record}};
+      };
+    });
   }
 
-  async get(id){
-    const store=await this.store();
-    return requestResult(store.get(id));
-  }
-
-  async getAll(){
-    const store=await this.store();
-    return requestResult(store.getAll());
-  }
-
-  async remove(id){
-    const store=await this.store('readwrite');
-    await requestResult(store.delete(id));
+  async clearPending(kind,operationId){
+    if(!operationId)return false;
+    const db=await this.init(),id=this.pendingId(kind);
+    return new Promise((resolve,reject)=>{
+      const tx=db.transaction(this.storeName,'readwrite'),store=tx.objectStore(this.storeName);
+      let cleared=false;
+      tx.oncomplete=()=>resolve(cleared);
+      tx.onerror=()=>reject(tx.error);
+      tx.onabort=()=>reject(tx.error||new Error('pending operation transaction aborted'));
+      const get=store.get(id);
+      get.onerror=()=>reject(get.error);
+      get.onsuccess=()=>{
+        const current=get.result;
+        if(!current||current.operation_id!==operationId)return;
+        const del=store.delete(id);
+        del.onerror=()=>reject(del.error);
+        del.onsuccess=()=>{cleared=true};
+      };
+    });
   }
 }
 
