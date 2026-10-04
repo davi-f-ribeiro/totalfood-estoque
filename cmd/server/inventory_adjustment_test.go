@@ -244,8 +244,14 @@ func TestInventoryHistoryExposesAppliedAdjustment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	line := historyLineBySKU(t, history)[sku]
-	if line.AdjustmentMovementID == nil || *line.AdjustmentMovementID != res.MovementID {
-		t.Fatalf("adjustment movement=%v want %d", line.AdjustmentMovementID, res.MovementID)
+	var movementID *int64
+	for _, line := range history.Lines {
+		if line.SKUID == sku {
+			movementID = line.AdjustmentMovementID
+			break
+		}
+	}
+	if movementID == nil || *movementID != res.MovementID {
+		t.Fatalf("adjustment movement=%v want %d", movementID, res.MovementID)
 	}
 }
