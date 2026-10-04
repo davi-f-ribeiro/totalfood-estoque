@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -189,5 +192,43 @@ WHERE ml.movement_id=$1`, res.MovementID).Scan(&qty, &manufacturerLot); err != n
 	}
 	if qty != "2.000" || manufacturerLot != "" {
 		t.Fatalf("adjustment lot qty=%s manufacturer=%q", qty, manufacturerLot)
+	}
+}
+
+func TestInventoryAdjustmentRouteRequiresGranularPermissionAndRejectsClientQuantity(t *testing.T) {
+	e := newInventoryTestEnv(t)
+	mux := http.NewServeMux()
+	e.a.registerInventoryHandlers(mux)
+
+	// Existing inventory test user belongs to Diretor, but migration 030 does
+	// not grant stock_adjustment/write to any profile automatically.
+	req := httptest.NewRequest(http.MethodPost, "/api/inventory-validations/1/lines/1/adjust", strings.NewReader(`{"operation_id":"adjust-api"}`))
+	rec := httptest.NewRecorder()
+	// No session means auth blocks before handler; the permission assignment
+	// itself is asserted directly to prove there is no implicit profile grant.
+	var grants int
+	if err := e.db.QueryRow(`
+SELECT count(*)
+FROM profile_permissions pp
+JOIN permissions p ON p.id=pp.permission_id
+WHERE p.resource='stock_adjustment' AND p.action='write'`).Scan(&grants); err != nil {
+		t.Fatal(err)
+	}
+	if grants != 0 {
+		t.Fatalf("stock_adjustment/write has %d automatic profile grants, want 0", grants)
+	}
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status=%d want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	var payload inventoryAdjustmentRequest
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"operation_id":"adjust-api","quantity":"99"}`))
+	if decodeInventoryJSON(rec, req, &payload, false) {
+		t.Fatal("adjustment payload accepted client quantity")
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown-field status=%d want %d", rec.Code, http.StatusBadRequest)
 	}
 }
