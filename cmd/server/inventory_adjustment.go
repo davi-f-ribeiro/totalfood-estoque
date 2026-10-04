@@ -40,6 +40,9 @@ func (a *app) applyInventoryStockAdjustment(ctx context.Context, validationID, s
 	if err != nil {
 		return operationResult{}, err
 	}
+	if err := lockActiveWarehouses(ctx, tx, candidate.WarehouseID); err != nil {
+		return operationResult{}, err
+	}
 	if err := lockStock(ctx, tx, candidate.SKUID, candidate.WarehouseID); err != nil {
 		return operationResult{}, err
 	}
