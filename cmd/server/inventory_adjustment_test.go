@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -253,5 +254,88 @@ func TestInventoryHistoryExposesAppliedAdjustment(t *testing.T) {
 	}
 	if movementID == nil || *movementID != res.MovementID {
 		t.Fatalf("adjustment movement=%v want %d", movementID, res.MovementID)
+	}
+}
+
+func TestInventoryCompletionRemainsReadOnlyUntilExplicitAdjustment(t *testing.T) {
+	e, inv, _ := completedAdjustmentWithEngineStock(t, "readonly-contract", "8.000")
+	var adjustments int
+	if err := e.db.QueryRow(`SELECT count(*) FROM inventory_stock_adjustments WHERE validation_id=$1`, inv.ID).Scan(&adjustments); err != nil {
+		t.Fatal(err)
+	}
+	if adjustments != 0 {
+		t.Fatalf("audit completion created %d adjustments", adjustments)
+	}
+	var adjustmentMovements int
+	if err := e.db.QueryRow(`SELECT count(*) FROM movements WHERE movement_type='AJUSTE'`).Scan(&adjustmentMovements); err != nil {
+		t.Fatal(err)
+	}
+	if adjustmentMovements != 0 {
+		t.Fatalf("audit completion created %d AJUSTE movements", adjustmentMovements)
+	}
+}
+
+func TestInventoryAdjustmentRejectsReductionWhenCurrentStockChanged(t *testing.T) {
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "changed-stock", "2.000")
+	ctx := context.Background()
+	if _, err := e.a.createExit(ctx, movementRequest{
+		OperationID: "post-audit-exit",
+		SKUID: sku,
+		WarehouseID: inv.WarehouseID,
+		Quantity: "5",
+		UserID: e.userID,
+	}, "post-audit-exit"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "adjust-after-change"); !errors.Is(err, errInsufficientStock) {
+		t.Fatalf("adjustment error=%v want insufficient stock", err)
+	}
+	var adjustments int
+	if err := e.db.QueryRow(`SELECT count(*) FROM inventory_stock_adjustments WHERE validation_id=$1`, inv.ID).Scan(&adjustments); err != nil {
+		t.Fatal(err)
+	}
+	if adjustments != 0 {
+		t.Fatalf("failed adjustment persisted %d links", adjustments)
+	}
+}
+
+func TestInventoryAdjustmentConcurrentRequestsCreateOneMovement(t *testing.T) {
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "concurrent-adjust", "12.000")
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	ids := make(chan int64, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "same-concurrent-adjustment")
+			if err != nil {
+				errs <- err
+				return
+			}
+			ids <- res.MovementID
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	close(ids)
+	for err := range errs {
+		t.Fatalf("concurrent adjustment failed: %v", err)
+	}
+	var first int64
+	for id := range ids {
+		if first == 0 {
+			first = id
+		} else if id != first {
+			t.Fatalf("concurrent movements differ: %d and %d", first, id)
+		}
+	}
+	var count int
+	if err := e.db.QueryRow(`SELECT count(*) FROM inventory_stock_adjustments WHERE validation_id=$1 AND sku_id=$2`, inv.ID, sku).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("adjustment links=%d want 1", count)
 	}
 }
