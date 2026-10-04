@@ -707,11 +707,11 @@ func TestMovementPendingUsesDurableStoreWithoutAutomaticReplay(t *testing.T) {
 
 	for _, want := range []string{
 		"async function loadPending()",
-		"await store.get('movement')",
-		"id:'movement',operation_id:p.body.operation_id,endpoint:p.url,payload:p.body",
+		"await store.listPending('movement')",
+		"await store.savePending('movement',p.body.operation_id,p.url,p.body)",
 		"await loadPending();",
 		"await savePending(payload)",
-		"await new OfflineStore().remove('movement')",
+		"await new OfflineStore().removePending('movement',operationId)",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable movement pending contract missing %q", want) }
 	}
