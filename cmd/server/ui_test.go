@@ -572,6 +572,30 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	}
 }
 
+func TestOfflineStoreNamespacesPendingOperationsByUserAndOperation(t *testing.T) {
+	baseb, err := os.ReadFile(filepath.Join("templates", "base.html"))
+	if err != nil { t.Fatal(err) }
+	base := string(baseb)
+	if !strings.Contains(base, `<meta name="current-user-id" content="{{.User.ID}}">`) {
+		t.Fatal("base template must expose stable authenticated user id for offline namespace")
+	}
+
+	storeb, err := os.ReadFile(filepath.Join("static", "utils", "offline-store.js"))
+	if err != nil { t.Fatal(err) }
+	store := string(storeb)
+	for _, want := range []string{
+		"this.ownerId=String(ownerId??document.querySelector('meta[name=\"current-user-id\"]')?.content??'').trim()",
+		"return this.ownerId+':'+kind+':'+operationId",
+		"owner_id:this.ownerId",
+		"async listPending(kind)",
+		"String(r.owner_id||'')===this.ownerId&&r.kind===kind&&r.status==='pending'",
+		"async removePending(kind,operationId)",
+		"async removeOwnerPending()",
+	} {
+		if !strings.Contains(store, want) { t.Fatalf("offline namespace contract missing %q", want) }
+	}
+}
+
 func TestAssetPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
