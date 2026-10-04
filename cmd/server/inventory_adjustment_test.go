@@ -463,3 +463,30 @@ ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatalf("other operator lookup status=%d body=%s owner=%d other=%d", rr.Code, rr.Body.String(), ownerID, otherID)
 	}
 }
+
+func TestInventoryAdjustmentRejectsInactiveWarehouse(t *testing.T) {
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "inactive-adjustment", "12.000")
+	ctx := context.Background()
+	if _, err := e.a.createExit(ctx, movementRequest{
+		OperationID: "drain-before-deactivate",
+		SKUID: sku,
+		WarehouseID: inv.WarehouseID,
+		Quantity: "10",
+		UserID: e.userID,
+	}, "drain-before-deactivate"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, inv.WarehouseID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "adjust-inactive-warehouse"); !errors.Is(err, errWarehouseInactive) {
+		t.Fatalf("adjustment error=%v want inactive warehouse", err)
+	}
+	var links int
+	if err := e.db.QueryRow(`SELECT count(*) FROM inventory_stock_adjustments WHERE validation_id=$1 AND sku_id=$2`, inv.ID, sku).Scan(&links); err != nil {
+		t.Fatal(err)
+	}
+	if links != 0 {
+		t.Fatalf("inactive warehouse adjustment persisted %d links", links)
+	}
+}
