@@ -192,4 +192,6 @@ func TestInventoryGate07UIRoutesAndNoDuplication(t *testing.T){
 	if !strings.Contains(js,"stock_adjustment:'Ajuste de estoque'"){t.Fatal("existing admin does not label stock adjustment permission")}
 	if strings.Count(invJS,"Ajustar estoque")!=1{t.Fatal("inventory history must expose one contextual stock adjustment action")}
 	if !strings.Contains(invJS,"canAdjust&&current.status==='COMPLETED'&&state==='DIVERGENT'"){t.Fatal("stock adjustment action must stay permissioned and limited to completed divergence")}
+	for _,want:=range []string{"claimPending('stock-adjustment'","getPending('stock-adjustment'","clearPending('stock-adjustment'","/api/operations/"}{if !strings.Contains(invJS,want){t.Fatalf("inventory adjustment durable pending contract missing %q",want)}}
+	for _,want:=range []string{"current-user-id","/static/utils/offline-store.js"}{if !strings.Contains(page,want){t.Fatalf("inventory page durable store dependency missing %q",want)}}
 }
