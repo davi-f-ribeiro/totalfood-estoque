@@ -66,14 +66,14 @@ func TestInventoryAdjustmentCandidateRequiresCompletedDivergence(t *testing.T) {
 }
 
 func TestApplyInventoryStockAdjustmentCreatesSingleMovement(t *testing.T) {
-	e, inv, sku := completedDivergentAdjustmentInventory(t, "no-mutation")
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "single-movement", "8.000")
 	ctx := context.Background()
 
 	var before int
 	if err := e.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	_, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "gate3-no-mutation")
+	_, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "single-adjustment")
 	if err != nil {
 		t.Fatalf("apply adjustment: %v", err)
 	}
