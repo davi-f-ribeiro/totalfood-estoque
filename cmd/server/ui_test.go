@@ -572,6 +572,33 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	}
 }
 
+func TestAssetPendingUsesDurableStore(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+
+	for _, want := range []string{
+		"async function loadAssetPending()",
+		"await store.get('asset-mutation')",
+		"id:'asset-mutation',operation_id:p.body.operation_id",
+		"await saveAssetPending(pending)",
+		"await clearAssetPending()",
+		"await loadAssetPending();assetPendingMessage()",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("durable asset pending contract missing %q", want) }
+	}
+	if strings.Count(js, "await saveAssetPending(pending)") != 2 {
+		t.Fatal("asset move and status must persist pending operation before request")
+	}
+	for _, forbidden := range []string{
+		"addEventListener('online'",
+		"beforeunload",
+		"setInterval(",
+	} {
+		if strings.Contains(js, forbidden) { t.Fatalf("asset pending must not auto-replay operations: %q", forbidden) }
+	}
+}
+
 func TestFiscalPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
