@@ -47,6 +47,7 @@ type inventoryHistoryLine struct {
 	EffectiveQuantity *string    `json:"effective_quantity,omitempty"`
 	Difference        *string    `json:"difference,omitempty"`
 	State             *string    `json:"state,omitempty"`
+	AdjustmentMovementID *int64 `json:"adjustment_movement_id,omitempty"`
 }
 
 type inventoryHistoryView struct {
@@ -371,13 +372,15 @@ SELECT l.sku_id,
        l.system_quantity_snapshot::text,
        COALESCE(r.quantity,l.physical_quantity)::text,
        (COALESCE(r.quantity,l.physical_quantity)-l.system_quantity_snapshot)::text,
-       CASE WHEN COALESCE(r.quantity,l.physical_quantity) IS NULL THEN NULL WHEN COALESCE(r.quantity,l.physical_quantity)=l.system_quantity_snapshot THEN 'MATCH' ELSE 'DIVERGENT' END
+       CASE WHEN COALESCE(r.quantity,l.physical_quantity) IS NULL THEN NULL WHEN COALESCE(r.quantity,l.physical_quantity)=l.system_quantity_snapshot THEN 'MATCH' ELSE 'DIVERGENT' END,
+       a.movement_id
 FROM inventory_validation_lines l
 JOIN product_skus s ON s.id=l.sku_id
 JOIN inventory_items i ON i.id=l.item_id
 LEFT JOIN users cu ON cu.id=l.counted_by_user_id
 LEFT JOIN inventory_validation_recounts r ON r.validation_id=l.validation_id AND r.sku_id=l.sku_id
 LEFT JOIN users ru ON ru.id=r.recounted_by_user_id
+LEFT JOIN inventory_stock_adjustments a ON a.validation_id=l.validation_id AND a.sku_id=l.sku_id
 WHERE l.validation_id=$1
 ORDER BY i.name,l.sku_id`, id)
 	if err != nil {
@@ -388,12 +391,13 @@ ORDER BY i.name,l.sku_id`, id)
 	for rows.Next() {
 		var line inventoryHistoryLine
 		var firstQty,recountQty,reference,effective,difference,state sql.NullString
+		var adjustmentMovementID sql.NullInt64
 		var firstAt,recountAt sql.NullTime
 		if err := rows.Scan(
 			&line.SKUID,&line.Code,&line.Description,&line.Unit,&line.Barcode,
 			&firstQty,&firstAt,&line.FirstCountedBy,
 			&recountQty,&recountAt,&line.RecountedBy,
-			&reference,&effective,&difference,&state,
+			&reference,&effective,&difference,&state,&adjustmentMovementID,
 		); err != nil {
 			return inventoryHistoryView{}, err
 		}
@@ -406,6 +410,7 @@ ORDER BY i.name,l.sku_id`, id)
 			if effective.Valid { q:=effective.String; line.EffectiveQuantity=&q }
 			if difference.Valid { q:=difference.String; line.Difference=&q }
 			if state.Valid { q:=state.String; line.State=&q }
+			if adjustmentMovementID.Valid { v:=adjustmentMovementID.Int64; line.AdjustmentMovementID=&v }
 		}
 		out.Lines=append(out.Lines,line)
 	}
