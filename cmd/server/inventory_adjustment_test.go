@@ -65,7 +65,7 @@ func TestInventoryAdjustmentCandidateRequiresCompletedDivergence(t *testing.T) {
 	}
 }
 
-func TestApplyInventoryStockAdjustmentGate3DoesNotMutateStock(t *testing.T) {
+func TestApplyInventoryStockAdjustmentCreatesSingleMovement(t *testing.T) {
 	e, inv, sku := completedDivergentAdjustmentInventory(t, "no-mutation")
 	ctx := context.Background()
 
@@ -73,22 +73,121 @@ func TestApplyInventoryStockAdjustmentGate3DoesNotMutateStock(t *testing.T) {
 	if err := e.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	_, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID)
-	if !errors.Is(err, errInventoryAdjustmentExecutionPending) {
-		t.Fatalf("apply error=%v, want %v", err, errInventoryAdjustmentExecutionPending)
+	_, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "gate3-no-mutation")
+	if err != nil {
+		t.Fatalf("apply adjustment: %v", err)
 	}
 	var after int
 	if err := e.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&after); err != nil {
 		t.Fatal(err)
 	}
-	if after != before {
-		t.Fatalf("movements changed in gate 3: before=%d after=%d", before, after)
+	if after != before+1 {
+		t.Fatalf("movements after adjustment: before=%d after=%d", before, after)
 	}
 	var adjustments int
 	if err := e.db.QueryRow(`SELECT count(*) FROM inventory_stock_adjustments`).Scan(&adjustments); err != nil {
 		t.Fatal(err)
 	}
-	if adjustments != 0 {
-		t.Fatalf("adjustments=%d, want 0", adjustments)
+	if adjustments != 1 {
+		t.Fatalf("adjustments=%d, want 1", adjustments)
+	}
+}
+
+func completedAdjustmentWithEngineStock(t *testing.T, label, physical string) (inventoryTestEnv, inventorySelection, int64) {
+	t.Helper()
+	e := newInventoryTestEnv(t)
+	ctx := context.Background()
+	wh := e.warehouse(t, label+"-warehouse", true)
+	sku := e.sku(t, label+"-sku", true, true)
+	if _, err := e.a.createEntry(ctx, movementRequest{
+		OperationID: "seed-" + label,
+		SKUID: sku,
+		WarehouseID: wh,
+		Quantity: "10",
+		UnitCost: "5",
+		UserID: e.userID,
+	}, "seed-"+label); err != nil {
+		t.Fatal(err)
+	}
+	inv, err := e.a.createTotalInventory(ctx, e.userID, wh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	countInventoryToReview(t, e, inv, map[int64]string{sku: physical})
+	review, err := e.a.getInventoryReviewView(ctx, inv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := reviewBySKU(t, review)[sku]
+	if _, err := e.a.saveInventoryRecount(ctx, inv.ID, sku, physical, line.Version, e.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.completeInventory(ctx, inv.ID, e.userID, "Divergência física confirmada."); err != nil {
+		t.Fatal(err)
+	}
+	return e, inv, sku
+}
+
+func TestInventoryAdjustmentNegativeUsesLotsAndIsIdempotent(t *testing.T) {
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "negative", "8.000")
+	ctx := context.Background()
+	res, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "adjust-negative")
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "adjust-negative")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry.MovementID != res.MovementID {
+		t.Fatalf("retry movement=%d want %d", retry.MovementID, res.MovementID)
+	}
+	s, err := getStockSnapshot(ctx, e.db, sku, inv.WarehouseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Quantity != "8.000" || s.AvgCost != "5.0000" {
+		t.Fatalf("stock after negative adjustment=%+v", s)
+	}
+	var allocated string
+	if err := e.db.QueryRow(`
+SELECT COALESCE(sum(a.quantity),0)::text
+FROM stock_lot_allocations a
+JOIN movement_lines ml ON ml.id=a.movement_line_id
+WHERE ml.movement_id=$1`, res.MovementID).Scan(&allocated); err != nil {
+		t.Fatal(err)
+	}
+	if allocated != "2.000" {
+		t.Fatalf("allocated=%s want 2.000", allocated)
+	}
+	if _, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "another-operation"); !errors.Is(err, errInventoryAdjustmentAlreadyApplied) {
+		t.Fatalf("second operation error=%v", err)
+	}
+}
+
+func TestInventoryAdjustmentPositiveCreatesTraceableLotAtAverageCost(t *testing.T) {
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "positive", "12.000")
+	ctx := context.Background()
+	res, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "adjust-positive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := getStockSnapshot(ctx, e.db, sku, inv.WarehouseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Quantity != "12.000" || s.AvgCost != "5.0000" {
+		t.Fatalf("stock after positive adjustment=%+v", s)
+	}
+	var qty, manufacturerLot string
+	if err := e.db.QueryRow(`
+SELECT l.initial_quantity::text,COALESCE(l.manufacturer_lot_code,'')
+FROM stock_lots l
+JOIN movement_lines ml ON ml.id=l.source_movement_line_id
+WHERE ml.movement_id=$1`, res.MovementID).Scan(&qty, &manufacturerLot); err != nil {
+		t.Fatal(err)
+	}
+	if qty != "2.000" || manufacturerLot != "" {
+		t.Fatalf("adjustment lot qty=%s manufacturer=%q", qty, manufacturerLot)
 	}
 }
