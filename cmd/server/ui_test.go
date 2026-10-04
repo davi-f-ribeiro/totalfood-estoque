@@ -572,6 +572,23 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	}
 }
 
+func TestLogoutClearsOnlyCurrentUserOfflinePending(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+	for _, want := range []string{
+		"if(e.target.id!=='logout')return",
+		"await api('/api/logout',{method:'POST',body:'{}'})",
+		"await new OfflineStore().removeOwnerPending()",
+		"location.href='/login'",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("logout offline cleanup contract missing %q", want) }
+	}
+	if strings.Contains(js, "new OfflineStore().getAll()") {
+		t.Fatal("logout must delegate scoped cleanup to OfflineStore instead of deleting all pending records")
+	}
+}
+
 func TestOfflineStoreNamespacesPendingOperationsByUserAndOperation(t *testing.T) {
 	baseb, err := os.ReadFile(filepath.Join("templates", "base.html"))
 	if err != nil { t.Fatal(err) }
