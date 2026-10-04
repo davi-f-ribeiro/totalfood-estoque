@@ -34,6 +34,7 @@ type uiData struct {
 	CanAssets         bool
 	CanInventory      bool
 	CanInventoryWrite bool
+	CanStockAdjustment bool
 	CanAdmin          bool
 	CanUserAdmin      bool
 	CanProfileAdmin   bool
@@ -179,6 +180,7 @@ WHERE pp.profile_id=$1`, u.ProfileID)
 		CanAssets: has("assets", "read"),
 		CanInventory: has("inventory_validation", "read"),
 		CanInventoryWrite: has("inventory_validation", "write"),
+		CanStockAdjustment: has("stock_adjustment", "write"),
 		CanAdmin: canUserAdmin || canProfileAdmin || canWarehouseAdmin,
 		CanUserAdmin: canUserAdmin,
 		CanProfileAdmin: canProfileAdmin,
