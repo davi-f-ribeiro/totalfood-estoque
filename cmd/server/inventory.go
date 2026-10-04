@@ -64,6 +64,7 @@ func (a *app) registerInventoryHandlers(mux *http.ServeMux) {
 	a.registerInventoryCountingHandlers(mux)
 	a.registerInventoryReviewHandlers(mux)
 	a.registerInventoryTerminalHandlers(mux)
+	a.registerInventoryAdjustmentHandlers(mux)
 	a.registerInventoryAdminHandlers(mux)
 }
 
