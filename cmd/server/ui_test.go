@@ -679,6 +679,27 @@ func TestInventoryCreationPendingUsesDurableStore(t *testing.T) {
 	}
 }
 
+func TestMovementPendingIsScopedByUserAndOperation(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+
+	for _, want := range []string{
+		"await store.listPending('movement')",
+		"await store.savePending('movement',p.body.operation_id,p.url,p.body)",
+		"await new OfflineStore().removePending('movement',operationId)",
+		"sort((a,b)=>Number(b.timestamp||0)-Number(a.timestamp||0))",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("scoped movement pending contract missing %q", want) }
+	}
+	if strings.Contains(js, "store.save({id:'movement'") {
+		t.Fatal("movement pending must not use a fixed IndexedDB id")
+	}
+	if strings.Contains(js, "new OfflineStore().remove('movement')") {
+		t.Fatal("movement clear must remove only the active operation")
+	}
+}
+
 func TestMovementPendingUsesDurableStoreWithoutAutomaticReplay(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
