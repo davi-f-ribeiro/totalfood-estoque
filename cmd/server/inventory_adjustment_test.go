@@ -6,90 +6,89 @@ import (
 	"testing"
 )
 
+func completedDivergentAdjustmentInventory(t *testing.T, label string) (inventoryTestEnv, inventorySelection, int64) {
+	t.Helper()
+	e := newInventoryTestEnv(t)
+	inv, sku := oneReviewInventory(t, e, label, "10.000", "8.000")
+	review, err := e.a.getInventoryReviewView(context.Background(), inv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := reviewBySKU(t, review)[sku]
+	if _, err := e.a.saveInventoryRecount(context.Background(), inv.ID, sku, "8.000", line.Version, e.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.completeInventory(context.Background(), inv.ID, e.userID, "Divergência física confirmada."); err != nil {
+		t.Fatal(err)
+	}
+	return e, inv, sku
+}
+
 func TestInventoryAdjustmentCandidateRequiresCompletedDivergence(t *testing.T) {
-	db := openTestDatabase(t)
-	seedCanonicalStockTest(t, db)
-
+	e := newInventoryTestEnv(t)
+	inv, sku := oneReviewInventory(t, e, "candidate", "10.000", "8.000")
 	ctx := context.Background()
-	var userID, warehouseID, skuID int64
-	if err := db.QueryRow(`SELECT id FROM users ORDER BY id LIMIT 1`).Scan(&userID); err != nil { t.Fatal(err) }
-	if err := db.QueryRow(`SELECT id FROM warehouses WHERE active ORDER BY id LIMIT 1`).Scan(&warehouseID); err != nil { t.Fatal(err) }
-	if err := db.QueryRow(`SELECT id FROM product_skus ORDER BY id LIMIT 1`).Scan(&skuID); err != nil { t.Fatal(err) }
 
-	var validationID int64
-	if err := db.QueryRow(`
-INSERT INTO inventory_validations (type,warehouse_id,status,responsible_user_id,started_at,snapshot_at)
-VALUES ('TOTAL',$1,'REVIEW',$2,now(),now()) RETURNING id`, warehouseID, userID).Scan(&validationID); err != nil { t.Fatal(err) }
-	if _, err := db.Exec(`
-INSERT INTO inventory_validation_lines
-(validation_id,sku_id,item_id,system_quantity_snapshot,physical_quantity,status,counted_by_user_id,counted_at)
-SELECT $1,s.id,s.item_id,10,8,'COUNTED',$2,now()
-FROM product_skus s WHERE s.id=$3`, validationID, userID, skuID); err != nil { t.Fatal(err) }
-
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil { t.Fatal(err) }
-	_, err = inventoryAdjustmentCandidateTx(ctx, tx, validationID, skuID)
+	tx, err := e.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = inventoryAdjustmentCandidateTx(ctx, tx, inv.ID, sku)
 	_ = tx.Rollback()
 	if !errors.Is(err, errInventoryAdjustmentNotEligible) {
 		t.Fatalf("REVIEW candidate error=%v, want %v", err, errInventoryAdjustmentNotEligible)
 	}
 
-	if _, err := db.Exec(`UPDATE inventory_validations SET status='COMPLETED',completed_at=now(),completed_by_user_id=$2 WHERE id=$1`, validationID, userID); err != nil { t.Fatal(err) }
-	tx, err = db.BeginTx(ctx, nil)
-	if err != nil { t.Fatal(err) }
-	candidate, err := inventoryAdjustmentCandidateTx(ctx, tx, validationID, skuID)
-	_ = tx.Rollback()
-	if err != nil { t.Fatal(err) }
-	if candidate.Difference != "-2.000" {
-		t.Fatalf("difference=%q, want -2.000", candidate.Difference)
+	review, err := e.a.getInventoryReviewView(ctx, inv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := reviewBySKU(t, review)[sku]
+	if _, err := e.a.saveInventoryRecount(ctx, inv.ID, sku, "8.000", line.Version, e.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.completeInventory(ctx, inv.ID, e.userID, "Divergência física confirmada."); err != nil {
+		t.Fatal(err)
 	}
 
-	if _, err := db.Exec(`UPDATE inventory_validation_lines SET physical_quantity=10 WHERE validation_id=$1 AND sku_id=$2`, validationID, skuID); err != nil { t.Fatal(err) }
-	tx, err = db.BeginTx(ctx, nil)
-	if err != nil { t.Fatal(err) }
-	_, err = inventoryAdjustmentCandidateTx(ctx, tx, validationID, skuID)
+	tx, err = e.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := inventoryAdjustmentCandidateTx(ctx, tx, inv.ID, sku)
 	_ = tx.Rollback()
-	if !errors.Is(err, errInventoryAdjustmentNotEligible) {
-		t.Fatalf("matching candidate error=%v, want %v", err, errInventoryAdjustmentNotEligible)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Difference != "-2.000" {
+		t.Fatalf("difference=%q, want -2.000", candidate.Difference)
 	}
 }
 
 func TestApplyInventoryStockAdjustmentGate3DoesNotMutateStock(t *testing.T) {
-	db := openTestDatabase(t)
-	seedCanonicalStockTest(t, db)
-	a := &app{db: db}
+	e, inv, sku := completedDivergentAdjustmentInventory(t, "no-mutation")
 	ctx := context.Background()
 
-	var userID, warehouseID, skuID int64
-	if err := db.QueryRow(`SELECT id FROM users ORDER BY id LIMIT 1`).Scan(&userID); err != nil { t.Fatal(err) }
-	if err := db.QueryRow(`SELECT id FROM warehouses WHERE active ORDER BY id LIMIT 1`).Scan(&warehouseID); err != nil { t.Fatal(err) }
-	if err := db.QueryRow(`SELECT id FROM product_skus ORDER BY id LIMIT 1`).Scan(&skuID); err != nil { t.Fatal(err) }
-
-	var validationID int64
-	if err := db.QueryRow(`
-INSERT INTO inventory_validations (type,warehouse_id,status,responsible_user_id,started_at,snapshot_at,completed_at,completed_by_user_id)
-VALUES ('TOTAL',$1,'COMPLETED',$2,now(),now(),now(),$2) RETURNING id`, warehouseID, userID).Scan(&validationID); err != nil { t.Fatal(err) }
-	if _, err := db.Exec(`
-INSERT INTO inventory_validation_lines
-(validation_id,sku_id,item_id,system_quantity_snapshot,physical_quantity,status,counted_by_user_id,counted_at)
-SELECT $1,s.id,s.item_id,10,8,'COUNTED',$2,now()
-FROM product_skus s WHERE s.id=$3`, validationID, userID, skuID); err != nil { t.Fatal(err) }
-
 	var before int
-	if err := db.QueryRow(`SELECT count(*) FROM movements`).Scan(&before); err != nil { t.Fatal(err) }
-	_, err := a.applyInventoryStockAdjustment(ctx, validationID, skuID, userID)
+	if err := e.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID)
 	if !errors.Is(err, errInventoryAdjustmentExecutionPending) {
 		t.Fatalf("apply error=%v, want %v", err, errInventoryAdjustmentExecutionPending)
 	}
 	var after int
-	if err := db.QueryRow(`SELECT count(*) FROM movements`).Scan(&after); err != nil { t.Fatal(err) }
+	if err := e.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
 	if after != before {
 		t.Fatalf("movements changed in gate 3: before=%d after=%d", before, after)
 	}
 	var adjustments int
-	if err := db.QueryRow(`SELECT count(*) FROM inventory_stock_adjustments`).Scan(&adjustments); err != nil { t.Fatal(err) }
+	if err := e.db.QueryRow(`SELECT count(*) FROM inventory_stock_adjustments`).Scan(&adjustments); err != nil {
+		t.Fatal(err)
+	}
 	if adjustments != 0 {
 		t.Fatalf("adjustments=%d, want 0", adjustments)
 	}
 }
-
