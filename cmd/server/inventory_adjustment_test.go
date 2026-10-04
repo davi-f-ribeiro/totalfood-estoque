@@ -423,7 +423,6 @@ func TestInventoryAdjustmentPositiveBlocksWithoutValidCostBasis(t *testing.T) {
 
 func TestInventoryAdjustmentRouteAndOperationLookupRespectGranularPermissionAndOwner(t *testing.T) {
 	e, inv, sku := completedAdjustmentWithEngineStock(t, "permission-owner", "12.000")
-	ctx := context.Background()
 	if _, err := e.db.Exec(`
 INSERT INTO profile_permissions (profile_id,permission_id)
 SELECT p.id,perm.id
