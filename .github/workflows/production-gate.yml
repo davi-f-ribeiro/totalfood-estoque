@@ -25,9 +25,10 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U estoque -d estoque_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+          --tmpfs /var/lib/postgresql/data:rw,noatime,size=512m
     env:
       TEST_DATABASE_URL: postgres://estoque:estoque_test@127.0.0.1:5432/estoque_test?sslmode=disable
     steps:
