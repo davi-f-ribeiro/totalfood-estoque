@@ -572,44 +572,43 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	}
 }
 
-func TestLogoutClearsOnlyCurrentUserOfflinePending(t *testing.T) {
+func TestLogoutPreservesDurablePendingOperations(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
 	js := string(jsb)
 	for _, want := range []string{
-		"if(e.target.id!=='logout')return",
-		"await api('/api/logout',{method:'POST',body:'{}'})",
-		"await new OfflineStore().removeOwnerPending()",
+		"api('/api/logout',{method:'POST',body:'{}'})",
 		"location.href='/login'",
 	} {
-		if !strings.Contains(js, want) { t.Fatalf("logout offline cleanup contract missing %q", want) }
+		if !strings.Contains(js, want) { t.Fatalf("logout contract missing %q", want) }
 	}
-	if strings.Contains(js, "new OfflineStore().getAll()") {
-		t.Fatal("logout must delegate scoped cleanup to OfflineStore instead of deleting all pending records")
+	if strings.Contains(js, "removeOwnerPending") {
+		t.Fatal("logout must not delete durable pending operations")
 	}
 }
 
-func TestOfflineStoreNamespacesPendingOperationsByUserAndOperation(t *testing.T) {
+func TestOfflineStoreUsesOneAtomicSlotPerUserAndDomain(t *testing.T) {
 	baseb, err := os.ReadFile(filepath.Join("templates", "base.html"))
 	if err != nil { t.Fatal(err) }
-	base := string(baseb)
-	if !strings.Contains(base, `<meta name="current-user-id" content="{{.User.ID}}">`) {
+	if !strings.Contains(string(baseb), `<meta name="current-user-id" content="{{.User.ID}}">`) {
 		t.Fatal("base template must expose stable authenticated user id for offline namespace")
 	}
-
 	storeb, err := os.ReadFile(filepath.Join("static", "utils", "offline-store.js"))
 	if err != nil { t.Fatal(err) }
 	store := string(storeb)
 	for _, want := range []string{
-		"this.ownerId=String(ownerId??document.querySelector('meta[name=\"current-user-id\"]')?.content??'').trim()",
-		"return this.ownerId+':'+kind+':'+operationId",
-		"owner_id:this.ownerId",
-		"async listPending(kind)",
-		"String(r.owner_id||'')===this.ownerId&&r.kind===kind&&r.status==='pending'",
-		"async removePending(kind,operationId)",
-		"async removeOwnerPending()",
+		"pendingId(kind)",
+		"return this.ownerId+':'+kind",
+		"async getPending(kind)",
+		"async claimPending(kind,operationId,endpoint,payload)",
+		"current.operation_id===operationId",
+		"async clearPending(kind,operationId)",
+		"current.operation_id!==operationId",
 	} {
-		if !strings.Contains(store, want) { t.Fatalf("offline namespace contract missing %q", want) }
+		if !strings.Contains(store, want) { t.Fatalf("offline slot contract missing %q", want) }
+	}
+	for _, forbidden := range []string{"listPending(", "getAll(", "removeOwnerPending", "':'+kind+':'+operationId"} {
+		if strings.Contains(store, forbidden) { t.Fatalf("obsolete offline queue contract remains %q", forbidden) }
 	}
 }
 
@@ -617,42 +616,19 @@ func TestAssetPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
 	js := string(jsb)
-
 	for _, want := range []string{
-		"async function loadAssetPending()",
-		"await store.listPending('asset-mutation')",
-		"await store.savePending('asset-mutation',p.body.operation_id,p.url,p.body)",
-		"await saveAssetPending(pending)",
-		"await clearAssetPending()",
-		"await loadAssetPending();assetPendingMessage()",
+		"await store.getPending('asset-mutation')",
+		"await store.claimPending('asset-mutation',p.body.operation_id,p.url,p.body)",
+		"await new OfflineStore().clearPending('asset-mutation',operationId)",
+		"if(!await saveAssetPending(pending)){assetPendingMessage();return}",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable asset pending contract missing %q", want) }
 	}
-	if strings.Count(js, "await saveAssetPending(pending)") != 2 {
-		t.Fatal("asset move and status must persist pending operation before request")
+	if strings.Count(js, "if(!await saveAssetPending(pending)){assetPendingMessage();return}") != 2 {
+		t.Fatal("asset move and status must claim one durable slot before request")
 	}
-	for _, forbidden := range []string{
-		"addEventListener('online'",
-		"beforeunload",
-		"setInterval(",
-	} {
+	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
 		if strings.Contains(js, forbidden) { t.Fatalf("asset pending must not auto-replay operations: %q", forbidden) }
-	}
-}
-
-func TestAssetPendingIsScopedByUserAndOperation(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
-	js := string(jsb)
-	for _, want := range []string{
-		"await store.listPending('asset-mutation')",
-		"await store.savePending('asset-mutation',p.body.operation_id,p.url,p.body)",
-		"await new OfflineStore().removePending('asset-mutation',operationId)",
-	} {
-		if !strings.Contains(js, want) { t.Fatalf("scoped asset pending contract missing %q", want) }
-	}
-	if strings.Contains(js, "store.save({id:'asset-mutation'") {
-		t.Fatal("asset pending must not use a fixed IndexedDB id")
 	}
 }
 
@@ -660,44 +636,19 @@ func TestFiscalPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
 	js := string(jsb)
-
 	for _, want := range []string{
-		"async function loadFiscalPending()",
-		"await store.listPending('fiscal-confirm')",
-		"await store.savePending('fiscal-confirm',p.body.operation_id,p.url,p.body)",
-		"await saveFiscalPending(pending)",
-		"await clearFiscalPending()",
-		"await loadFiscalPending();showFiscalPending()",
+		"await store.getPending('fiscal-confirm')",
+		"await store.claimPending('fiscal-confirm',p.body.operation_id,p.url,p.body)",
+		"await new OfflineStore().clearPending('fiscal-confirm',operationId)",
+		"if(!await saveFiscalPending(pending)){showFiscalPending();return}",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable fiscal pending contract missing %q", want) }
 	}
-	savePos := strings.Index(js, "await saveFiscalPending(pending)")
+	savePos := strings.Index(js, "if(!await saveFiscalPending(pending))")
 	sendPos := strings.Index(js, "await api(pending.url,{method:'POST',body:JSON.stringify(pending.body)})")
-	if savePos < 0 || sendPos < 0 || savePos > sendPos {
-		t.Fatal("fiscal confirmation must persist pending operation before request")
-	}
-	for _, forbidden := range []string{
-		"addEventListener('online'",
-		"beforeunload",
-		"setInterval(",
-	} {
+	if savePos < 0 || sendPos < 0 || savePos > sendPos { t.Fatal("fiscal confirmation must claim durable slot before request") }
+	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
 		if strings.Contains(js, forbidden) { t.Fatalf("fiscal pending must not auto-replay operations: %q", forbidden) }
-	}
-}
-
-func TestFiscalPendingIsScopedByUserAndOperation(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
-	js := string(jsb)
-	for _, want := range []string{
-		"await store.listPending('fiscal-confirm')",
-		"await store.savePending('fiscal-confirm',p.body.operation_id,p.url,p.body)",
-		"await new OfflineStore().removePending('fiscal-confirm',operationId)",
-	} {
-		if !strings.Contains(js, want) { t.Fatalf("scoped fiscal pending contract missing %q", want) }
-	}
-	if strings.Contains(js, "store.save({id:'fiscal-confirm'") {
-		t.Fatal("fiscal pending must not use a fixed IndexedDB id")
 	}
 }
 
@@ -705,63 +656,18 @@ func TestInventoryCreationPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
 	js := string(jsb)
-
 	for _, want := range []string{
-		"async function loadInventoryCreatePending()",
-		"await store.listPending('inventory-create')",
-		"await store.savePending('inventory-create',p.operation_id",
-		"await loadInventoryCreatePending();",
-		"await saveInventoryCreatePending(pending)",
-		"await new OfflineStore().removePending('inventory-create',operationId)",
+		"await store.getPending('inventory-create')",
+		"await store.claimPending('inventory-create',p.operation_id",
+		"await new OfflineStore().clearPending('inventory-create',operationId)",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable inventory pending contract missing %q", want) }
 	}
-	if strings.Count(js, "await saveInventoryCreatePending(pending)") != 2 {
-		t.Fatal("total and blind inventory creation must persist pending operation before request")
+	if strings.Count(js, "if(!await saveInventoryCreatePending(pending))") != 2 {
+		t.Fatal("total and blind inventory creation must claim one durable slot before request")
 	}
-	for _, forbidden := range []string{
-		"addEventListener('online'",
-		"beforeunload",
-		"setInterval(",
-	} {
+	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
 		if strings.Contains(js, forbidden) { t.Fatalf("inventory pending must not auto-replay operations: %q", forbidden) }
-	}
-}
-
-func TestInventoryPendingIsScopedByUserAndOperation(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
-	js := string(jsb)
-	for _, want := range []string{
-		"await store.listPending('inventory-create')",
-		"await store.savePending('inventory-create',p.operation_id",
-		"await new OfflineStore().removePending('inventory-create',operationId)",
-	} {
-		if !strings.Contains(js, want) { t.Fatalf("scoped inventory pending contract missing %q", want) }
-	}
-	if strings.Contains(js, "store.save({id:'inventory-create'") {
-		t.Fatal("inventory pending must not use a fixed IndexedDB id")
-	}
-}
-
-func TestMovementPendingIsScopedByUserAndOperation(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
-	js := string(jsb)
-
-	for _, want := range []string{
-		"await store.listPending('movement')",
-		"await store.savePending('movement',p.body.operation_id,p.url,p.body)",
-		"await new OfflineStore().removePending('movement',operationId)",
-		"sort((a,b)=>Number(b.timestamp||0)-Number(a.timestamp||0))",
-	} {
-		if !strings.Contains(js, want) { t.Fatalf("scoped movement pending contract missing %q", want) }
-	}
-	if strings.Contains(js, "store.save({id:'movement'") {
-		t.Fatal("movement pending must not use a fixed IndexedDB id")
-	}
-	if strings.Contains(js, "new OfflineStore().remove('movement')") {
-		t.Fatal("movement clear must remove only the active operation")
 	}
 }
 
@@ -769,27 +675,19 @@ func TestMovementPendingUsesDurableStoreWithoutAutomaticReplay(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil { t.Fatal(err) }
 	js := string(jsb)
-
 	for _, want := range []string{
-		"async function loadPending()",
-		"await store.listPending('movement')",
-		"await store.savePending('movement',p.body.operation_id,p.url,p.body)",
-		"await loadPending();",
-		"await savePending(payload)",
-		"await new OfflineStore().removePending('movement',operationId)",
+		"await store.getPending('movement')",
+		"await store.claimPending('movement',p.body.operation_id,p.url,p.body)",
+		"await new OfflineStore().clearPending('movement',operationId)",
+		"if(!await savePending(payload))",
+		"await api('/api/operations/'+encodeURIComponent(p.body.operation_id))",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable movement pending contract missing %q", want) }
 	}
-	savePos := strings.Index(js, "await savePending(payload)")
+	savePos := strings.Index(js, "if(!await savePending(payload))")
 	sendPos := strings.Index(js, "await api(payload.url,{method:'POST'")
-	if savePos < 0 || sendPos < 0 || savePos > sendPos {
-		t.Fatal("movement must durably persist operation before mutation request")
-	}
-	for _, forbidden := range []string{
-		"addEventListener('online'",
-		"beforeunload",
-		"setInterval(",
-	} {
+	if savePos < 0 || sendPos < 0 || savePos > sendPos { t.Fatal("movement must claim durable slot before mutation request") }
+	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
 		if strings.Contains(js, forbidden) { t.Fatalf("movement must not auto-replay pending operations: %q", forbidden) }
 	}
 }
