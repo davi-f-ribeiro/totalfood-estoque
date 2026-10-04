@@ -603,8 +603,8 @@ func TestAssetPendingUsesDurableStore(t *testing.T) {
 
 	for _, want := range []string{
 		"async function loadAssetPending()",
-		"await store.get('asset-mutation')",
-		"id:'asset-mutation',operation_id:p.body.operation_id",
+		"await store.listPending('asset-mutation')",
+		"await store.savePending('asset-mutation',p.body.operation_id,p.url,p.body)",
 		"await saveAssetPending(pending)",
 		"await clearAssetPending()",
 		"await loadAssetPending();assetPendingMessage()",
@@ -620,6 +620,22 @@ func TestAssetPendingUsesDurableStore(t *testing.T) {
 		"setInterval(",
 	} {
 		if strings.Contains(js, forbidden) { t.Fatalf("asset pending must not auto-replay operations: %q", forbidden) }
+	}
+}
+
+func TestAssetPendingIsScopedByUserAndOperation(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil { t.Fatal(err) }
+	js := string(jsb)
+	for _, want := range []string{
+		"await store.listPending('asset-mutation')",
+		"await store.savePending('asset-mutation',p.body.operation_id,p.url,p.body)",
+		"await new OfflineStore().removePending('asset-mutation',operationId)",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("scoped asset pending contract missing %q", want) }
+	}
+	if strings.Contains(js, "store.save({id:'asset-mutation'") {
+		t.Fatal("asset pending must not use a fixed IndexedDB id")
 	}
 }
 
