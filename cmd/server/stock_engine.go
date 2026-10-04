@@ -253,24 +253,32 @@ func (a *app) writeMovement(ctx context.Context, typ string, req movementRequest
 		return operationResult{}, err
 	}
 	defer tx.Rollback()
+	res, err := writeMovementTx(ctx, tx, typ, req, hash, fn)
+	if err != nil {
+		return operationResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return operationResult{}, err
+	}
+	return res, nil
+}
+
+func writeMovementTx(ctx context.Context, tx *sql.Tx, typ string, req movementRequest, hash string, fn func(context.Context, *sql.Tx) (int64, error)) (operationResult, error) {
 	var existingHash string
 	var existingID int64
 	var existingUser sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT id, request_hash, user_id FROM movements WHERE operation_id=$1`, req.OperationID).Scan(&existingID, &existingHash, &existingUser)
+	err := tx.QueryRowContext(ctx, `SELECT id, request_hash, user_id FROM movements WHERE operation_id=$1`, req.OperationID).Scan(&existingID, &existingHash, &existingUser)
 	if err == nil {
 		if existingHash != hash || (req.UserID > 0 && existingUser.Valid && existingUser.Int64 != req.UserID) {
 			return operationResult{}, errOperationConflict
 		}
-		return operationResult{OperationID: req.OperationID, MovementID: existingID, Status: "confirmed", Type: typ, UserID: existingUser.Int64}, tx.Commit()
+		return operationResult{OperationID: req.OperationID, MovementID: existingID, Status: "confirmed", Type: typ, UserID: existingUser.Int64}, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return operationResult{}, err
 	}
 	movementID, err := fn(ctx, tx)
 	if err != nil {
-		return operationResult{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return operationResult{}, err
 	}
 	return operationResult{OperationID: req.OperationID, MovementID: movementID, Status: "confirmed", Type: typ, UserID: req.UserID}, nil
