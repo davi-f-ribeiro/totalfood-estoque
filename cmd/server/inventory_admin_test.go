@@ -182,11 +182,14 @@ func TestInventoryGate07UIRoutesAndNoDuplication(t *testing.T){
 	for _,want:=range []string{"Auditoria de Estoque","inventoryCreateTotal","inventoryCreateBlind","inventoryListFilters","inventoryList","Depósito e itens serão escolhidos automaticamente","quantidades esperadas permanecerão ocultas","Continuar contagem","Revisar inventário","Ver histórico","CanInventoryWrite"}{if !strings.Contains(page+js,want){t.Fatalf("UI missing %q",want)}}
 	if strings.Count(js,"initScanner('scanInventory'")!=1{t.Fatal("inventory must reuse one scanner callback")}
 	start:=strings.Index(js,"function initInventory(){");end:=strings.Index(js[start:],"function initForcedPassword()");if start<0||end<0{t.Fatal("inventory JS boundary missing")};invJS:=js[start:start+end]
-	for _,bad:=range []string{"system_quantity_snapshot","createEntry","createExit","createTransfer","stock_locks","Ajustar estoque","/api/movements"}{if strings.Contains(invJS,bad){t.Fatalf("inventory JS contains %q",bad)}}
+	for _,bad:=range []string{"system_quantity_snapshot","createEntry","createExit","createTransfer","stock_locks","/api/movements"}{if strings.Contains(invJS,bad){t.Fatalf("inventory JS contains %q",bad)}}
 	if !strings.Contains(css,".inventory-create-grid,.inventory-list-filters{grid-template-columns:1fr}"){t.Fatal("mobile administrative layout missing")}
 	for _,name:=range []string{"inventory.go","inventory_counting.go","inventory_review.go","inventory_terminal.go","inventory_admin.go"}{
 		body,err:=os.ReadFile(name);if err!=nil{t.Fatal(err)}
 		for _,line:=range strings.Split(string(body),"\n"){if strings.Contains(line,"HandleFunc(")&&strings.Contains(line,"/api/inventory")&&!strings.Contains(line,"requireAuth("){t.Fatalf("unauth inventory endpoint %s: %s",name,line)}}
 	}
 	if !strings.Contains(js,"inventory_validation:'Auditoria de Estoque'"){t.Fatal("existing admin does not label inventory permissions")}
+	if !strings.Contains(js,"stock_adjustment:'Ajuste de estoque'"){t.Fatal("existing admin does not label stock adjustment permission")}
+	if strings.Count(invJS,"Ajustar estoque")!=1{t.Fatal("inventory history must expose one contextual stock adjustment action")}
+	if !strings.Contains(invJS,"canAdjust&&current.status==='COMPLETED'&&state==='DIVERGENT'"){t.Fatal("stock adjustment action must stay permissioned and limited to completed divergence")}
 }
