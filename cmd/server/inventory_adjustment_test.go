@@ -232,3 +232,20 @@ WHERE p.resource='stock_adjustment' AND p.action='write'`).Scan(&grants); err !=
 		t.Fatalf("unknown-field status=%d want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+func TestInventoryHistoryExposesAppliedAdjustment(t *testing.T) {
+	e, inv, sku := completedAdjustmentWithEngineStock(t, "history-adjustment", "12.000")
+	ctx := context.Background()
+	res, err := e.a.applyInventoryStockAdjustment(ctx, inv.ID, sku, e.userID, "history-adjustment")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := e.a.getInventoryHistory(ctx, inv.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := historyLineBySKU(t, history)[sku]
+	if line.AdjustmentMovementID == nil || *line.AdjustmentMovementID != res.MovementID {
+		t.Fatalf("adjustment movement=%v want %d", line.AdjustmentMovementID, res.MovementID)
+	}
+}
