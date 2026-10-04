@@ -52,6 +52,8 @@ func (a *app) handleInventoryStockAdjustment(w http.ResponseWriter, r *http.Requ
 		writeJSONError(w, http.StatusConflict, "Não há custo válido para registrar este ajuste.")
 	case errors.Is(err, errInsufficientStock):
 		writeJSONError(w, http.StatusConflict, "O saldo atual não permite aplicar esta redução de estoque.")
+	case errors.Is(err, errWarehouseInactive):
+		writeJSONError(w, http.StatusConflict, "Depósito inativo.")
 	case errors.Is(err, errOperationConflict):
 		writeJSONError(w, http.StatusConflict, "Esta identificação de operação já foi usada em outro ajuste.")
 	default:
