@@ -16,6 +16,24 @@ type brandRequest struct {
 
 func (a *app) handleCatalogBrands(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if r.URL.Query().Get("paged") == "1" {
+		var cursor *catalogPageCursor
+		if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
+			decoded, err := decodeCatalogCursor(raw)
+			if err != nil {
+				writeJSONError(w, http.StatusBadRequest, "Cursor de catálogo inválido.")
+				return
+			}
+			cursor = &decoded
+		}
+		out, err := catalogBrandsPage(r, a.db, q, cursor)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "Erro interno.")
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	rows, err := a.db.QueryContext(r.Context(), `
 SELECT id,name,active,version
 FROM brands
@@ -39,6 +57,61 @@ LIMIT 100`, q, "%"+q+"%")
 		out=append(out,map[string]any{"id":id,"name":name,"active":active,"version":version})
 	}
 	writeJSON(w,http.StatusOK,out)
+}
+
+func catalogBrandsPage(r *http.Request, db *sql.DB, q string, cursor *catalogPageCursor) (catalogPageResponse, error) {
+	arg := "%" + q + "%"
+	hasCursor := cursor != nil
+	cursorRank, cursorName, cursorID := 0, "", int64(0)
+	if cursor != nil {
+		cursorRank, cursorName, cursorID = cursor.Rank, cursor.Name, cursor.ID
+	}
+	rows, err := db.QueryContext(r.Context(), `
+SELECT id,name,active,version,
+       CASE WHEN active THEN 0 ELSE 1 END AS active_rank,
+       lower(name) AS sort_name
+FROM brands
+WHERE id<>0
+  AND ($1='' OR lower(name) LIKE lower($2))
+  AND (
+      $3::boolean=false
+      OR (CASE WHEN active THEN 0 ELSE 1 END, lower(name), id)
+         > ($4::int, $5::text, $6::bigint)
+  )
+ORDER BY active_rank,sort_name,id
+LIMIT 31
+`, q, arg, hasCursor, cursorRank, cursorName, cursorID)
+	if err != nil {
+		return catalogPageResponse{}, err
+	}
+	defer rows.Close()
+	items := make([]map[string]any, 0, catalogPageSize+1)
+	cursors := make([]catalogPageCursor, 0, catalogPageSize+1)
+	for rows.Next() {
+		var id, version int64
+		var name, sortName string
+		var active bool
+		var rank int
+		if err := rows.Scan(&id,&name,&active,&version,&rank,&sortName); err != nil {
+			return catalogPageResponse{}, err
+		}
+		items = append(items, map[string]any{"id":id,"name":name,"active":active,"version":version})
+		cursors = append(cursors, catalogPageCursor{Rank:rank, Name:sortName, ID:id})
+	}
+	if err := rows.Err(); err != nil {
+		return catalogPageResponse{}, err
+	}
+	out := catalogPageResponse{Items:items, HasMore:len(items)>catalogPageSize}
+	if out.HasMore {
+		out.Items = out.Items[:catalogPageSize]
+		cursors = cursors[:catalogPageSize]
+		next, err := encodeCatalogCursor(cursors[len(cursors)-1])
+		if err != nil {
+			return catalogPageResponse{}, err
+		}
+		out.NextCursor = next
+	}
+	return out, nil
 }
 
 func (a *app) handleCreateCatalogBrand(w http.ResponseWriter, r *http.Request) {
