@@ -205,7 +205,7 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 		`/products?barcode=`,
 		`return_to=%2Fentry`,
 		`params.get('return_to')`,
-		`body={item_id:+parent.value,brand_id:+brand.value,content_quantity:`,
+		`body={item_id:+selectedParent.id,brand_id:+selectedBrand.id,content_quantity:`,
 		`sku_id:String(out.id)`,
 		`location.href='/entry?'`,
 		`id="productBarcode"`,
@@ -221,7 +221,7 @@ func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 	combined:=string(pb)+string(hb)
 	for _, want := range []string{
 		`id="productParent"`,`id="productBrand"`,`id="productName"`,`id="productContent"`,`id="productBarcode"`,
-		`parent.disabled=!!x.has_history`,`brand.disabled=!!x.has_history`,
+		`parentSelect.setDisabled(!!x.has_history)`,`brandSelect.setDisabled(!!x.has_history)`,
 		`Identificação específica do produto, por exemplo Original, Branco ou Oreo.`,
 		`name:name.value.trim()`,
 	} {
