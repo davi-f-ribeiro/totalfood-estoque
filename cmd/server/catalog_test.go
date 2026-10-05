@@ -463,3 +463,73 @@ func TestCatalogParentPaginationActiveBeforeInactive(t *testing.T) {
 		}
 	}
 }
+
+
+func TestCatalogBrandPaginationKeyset(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "director-brand-page", "secret", "Diretor", true)
+	director := doLogin(t, a, "director-brand-page", "secret")
+
+	const total = 101
+	const prefix = "Marca Paginacao "
+	for i := 1; i <= total; i++ {
+		name := fmt.Sprintf("%s%03d", prefix, i)
+		if _, err := a.db.Exec("INSERT INTO brands(name,active) VALUES($1,true)", name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cursor := ""
+	seen := map[int64]bool{}
+	pages := 0
+	for {
+		path := "/api/catalog/brands?paged=1&q=" + url.QueryEscape(prefix)
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		rr := authReq(a, http.MethodGet, path, nil, director, "")
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		var p map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &p); err != nil {
+			t.Fatal(err)
+		}
+		items, ok := p["items"].([]any)
+		if !ok || len(items) == 0 || len(items) > catalogPageSize {
+			t.Fatalf("page %d invalid items=%v", pages+1, p["items"])
+		}
+		pages++
+		for _, raw := range items {
+			item := raw.(map[string]any)
+			id := int64(item["id"].(float64))
+			if seen[id] {
+				t.Fatalf("duplicate brand id=%d", id)
+			}
+			seen[id] = true
+		}
+		hasMore, _ := p["has_more"].(bool)
+		next, _ := p["next_cursor"].(string)
+		if !hasMore {
+			if next != "" {
+				t.Fatalf("final page returned cursor=%q", next)
+			}
+			break
+		}
+		if next == "" {
+			t.Fatal("has_more without next_cursor")
+		}
+		cursor = next
+	}
+	if len(seen) != total {
+		t.Fatalf("brands=%d want=%d", len(seen), total)
+	}
+	if pages != 4 {
+		t.Fatalf("pages=%d want=4", pages)
+	}
+
+	bad := authReq(a, http.MethodGet, "/api/catalog/brands?paged=1&cursor=not-a-cursor", nil, director, "")
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("invalid cursor status=%d body=%s", bad.Code, bad.Body.String())
+	}
+}
