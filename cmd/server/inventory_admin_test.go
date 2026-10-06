@@ -56,7 +56,7 @@ func TestInventoryGate07ACLNavigationAndAdminPermissions(t *testing.T) {
 	noToken,_ := inventorySession(t,e.db,noUser)
 	noStock := g7serve(e.a,http.MethodGet,"/stock","",noToken,"")
 	if noStock.Code != http.StatusOK { t.Fatalf("no inventory stock=%d",noStock.Code) }
-	if strings.Contains(noStock.Body.String(),"Auditoria de Estoque") { t.Fatal("navigation leaked inventory module to no-read user") }
+	if strings.Contains(noStock.Body.String(),"Contagem de estoque") { t.Fatal("navigation leaked inventory module to no-read user") }
 	noPage := g7serve(e.a,http.MethodGet,"/inventory","",noToken,"")
 	if noPage.Code != http.StatusSeeOther || noPage.Header().Get("Location")!="/no-access" { t.Fatalf("no-read page=%d loc=%s",noPage.Code,noPage.Header().Get("Location")) }
 	if rr:=g7serve(e.a,http.MethodGet,"/api/inventory-validations","",noToken,""); rr.Code!=http.StatusForbidden { t.Fatalf("no-read list=%d",rr.Code) }
@@ -65,7 +65,7 @@ func TestInventoryGate07ACLNavigationAndAdminPermissions(t *testing.T) {
 	readUser := g7user(t,e,readProfile,"read")
 	readToken,readCSRF := inventorySession(t,e.db,readUser)
 	readStock := g7serve(e.a,http.MethodGet,"/stock","",readToken,"")
-	if readStock.Code!=http.StatusOK || !strings.Contains(readStock.Body.String(),"Auditoria de Estoque") { t.Fatalf("read navigation=%d body=%s",readStock.Code,readStock.Body.String()) }
+	if readStock.Code!=http.StatusOK || !strings.Contains(readStock.Body.String(),"Contagem de estoque") { t.Fatalf("read navigation=%d body=%s",readStock.Code,readStock.Body.String()) }
 	readPage := g7serve(e.a,http.MethodGet,"/inventory","",readToken,"")
 	if readPage.Code!=http.StatusOK { t.Fatalf("read page=%d body=%s",readPage.Code,readPage.Body.String()) }
 	if strings.Contains(readPage.Body.String(),"inventoryCreateTotal") || strings.Contains(readPage.Body.String(),"inventoryCreateBlind") { t.Fatal("read-only page exposes creation controls") }
@@ -179,7 +179,7 @@ func TestInventoryGate07UIRoutesAndNoDuplication(t *testing.T){
 	hb,err:=os.ReadFile(filepath.Join("templates","inventory.html"));if err!=nil{t.Fatal(err)}
 	cb,err:=os.ReadFile(filepath.Join("static","app.css"));if err!=nil{t.Fatal(err)}
 	js,page,css:=string(jsb),string(hb),string(cb)
-	for _,want:=range []string{"Auditoria de Estoque","inventoryCreateTotal","inventoryCreateBlind","inventoryListFilters","inventoryList","Depósito e itens serão escolhidos automaticamente","quantidades esperadas permanecerão ocultas","Continuar contagem","Revisar inventário","Ver histórico","CanInventoryWrite"}{if !strings.Contains(page+js,want){t.Fatalf("UI missing %q",want)}}
+	for _,want:=range []string{"Contagem de estoque","inventoryCreateTotal","inventoryCreateBlind","inventoryListFilters","inventoryList","Depósito e itens serão escolhidos automaticamente","quantidades esperadas permanecerão ocultas","Continuar contagem","Revisar inventário","Ver histórico","CanInventoryWrite"}{if !strings.Contains(page+js,want){t.Fatalf("UI missing %q",want)}}
 	if strings.Count(js,"initScanner('scanInventory'")!=1{t.Fatal("inventory must reuse one scanner callback")}
 	start:=strings.Index(js,"function initInventory(){");end:=strings.Index(js[start:],"function initForcedPassword()");if start<0||end<0{t.Fatal("inventory JS boundary missing")};invJS:=js[start:start+end]
 	for _,bad:=range []string{"system_quantity_snapshot","createEntry","createExit","createTransfer","stock_locks","/api/movements"}{if strings.Contains(invJS,bad){t.Fatalf("inventory JS contains %q",bad)}}
