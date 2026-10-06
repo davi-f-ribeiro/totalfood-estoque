@@ -96,7 +96,7 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`id="scanProduct"`,
 		`Ler código de barras`,
 		`Fechar`,
-		`Código de barras não cadastrado.`,
+		`Nenhum produto encontrado`,
 		`navigator.mediaDevices.getUserMedia`,
 		`function cameraSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)}`,
 		`id="scanner-video" autoplay muted playsinline webkit-playsinline`,
@@ -124,7 +124,7 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`Câmera não suportada neste navegador.`,
 		`Código identificado`,
 		`Selecione um produto`,
-		`Disponível:`,
+		`r.warehouse.replace(/^Totalfood\\s+/i,''),`
 		`aria-expanded`,
 		`openItem===row.item_id`,
 		`warehouse_id`,
@@ -201,8 +201,8 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 	htmlb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
 	combined:=string(appb)+string(pb)+string(htmlb)
 	for _, want := range []string{
-		`Cadastrar produto`,
-		`/products?barcode=`,
+		`Cadastrar este produto`,
+		`(barcode?'barcode=':'q='),`
 		`return_to=%2Fentry`,
 		`params.get('return_to')`,
 		`body={item_id:+selectedParent.id,brand_id:+selectedBrand.id,content_quantity:`,
@@ -895,7 +895,7 @@ func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
 		`data-period="custom"`,
 		"A semana começa no domingo. O mês começa no primeiro dia.",
 		`id="reportStartLabel"`,
-		"startLabel.hidden=balance",
+		"startLabel.hidden=!custom||type.value==='SALDO'",
 		"endLabelText.textContent=balance?'Data de corte':'Até'",
 		`let csv='\uFEFF'`,
 		`.join('\r\n')`,
