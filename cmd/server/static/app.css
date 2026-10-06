@@ -257,3 +257,8 @@
 .inventory-home>.section-heading{order:0}.inventory-home>#inventoryListMessage{order:1}.inventory-home>#inventoryList{order:2}.inventory-home>#inventoryListPaging{order:3}.inventory-home>#inventoryFiltersToggle{order:4}.inventory-home>#inventoryListFilters{order:5}.inventory-home>#inventoryCreateToggle{order:6}.inventory-home>.inventory-create-grid{order:7}.inventory-home>#inventoryCreateMessage{order:8}
 .inventory-secondary-toggle{justify-self:start;min-width:160px}
 @media(max-width:600px){.inventory-secondary-toggle{width:100%}}
+
+
+/* Cadastro: editor em contexto próprio, sem empurrar o formulário para o fim da lista. */
+.editor-dialog{width:min(680px,calc(100vw - 32px));max-height:min(86vh,760px);padding:0;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface);color:var(--text-primary);box-shadow:var(--shadow-card);overflow:auto}.editor-dialog::backdrop{background:rgba(16,24,40,.38)}.editor-dialog-head{position:sticky;top:0;z-index:2;padding:16px 16px 10px;background:var(--surface);border-bottom:1px solid var(--border)}.editor-dialog-head h2{margin:0}.editor-dialog form{padding:16px}.editor-dialog form>.actions{margin:16px -16px -16px;padding:12px 16px;background:var(--surface);border-top:1px solid var(--border)}
+@media(max-width:767px){.editor-dialog{width:100vw;max-width:none;height:100dvh;max-height:100dvh;border:0;border-radius:0}.editor-dialog form{padding:14px 14px 88px}.editor-dialog-head{padding:14px}.editor-dialog form>.actions{position:sticky;bottom:0;z-index:3;margin:16px -14px -88px;padding:12px 14px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -2px 12px rgba(16,24,40,.08)}.editor-dialog form>.actions button{flex:1 1 130px}}
