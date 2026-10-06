@@ -96,7 +96,7 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`id="scanProduct"`,
 		`Ler código de barras`,
 		`Fechar`,
-		`Código de barras não cadastrado.`,
+		`Nenhum produto encontrado`,
 		`navigator.mediaDevices.getUserMedia`,
 		`function cameraSupported(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)}`,
 		`id="scanner-video" autoplay muted playsinline webkit-playsinline`,
@@ -201,7 +201,7 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 	htmlb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
 	combined:=string(appb)+string(pb)+string(htmlb)
 	for _, want := range []string{
-		`Cadastrar produto`,
+		`Cadastrar este produto`,
 		`/products?barcode=`,
 		`return_to=%2Fentry`,
 		`params.get('return_to')`,
@@ -895,7 +895,7 @@ func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
 		`data-period="custom"`,
 		"A semana começa no domingo. O mês começa no primeiro dia.",
 		`id="reportStartLabel"`,
-		"startLabel.hidden=balance",
+		"startLabel.hidden=!custom||type.value==='SALDO'",
 		"endLabelText.textContent=balance?'Data de corte':'Até'",
 		`let csv='\uFEFF'`,
 		`.join('\r\n')`,
