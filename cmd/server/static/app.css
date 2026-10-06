@@ -218,3 +218,7 @@
 
 .stock-card{grid-template-columns:minmax(0,1fr) auto auto;align-items:center}.stock-card>span:first-child{min-width:0}.stock-card>span:first-child strong,.stock-card>span:first-child small{display:block}.stock-card>span:first-child small{margin-top:3px;color:var(--warning);font-weight:800}.stock-expand{font-size:1.1rem}.stock-card[aria-expanded="true"] .stock-expand{transform:rotate(180deg)}.stock-empty{margin:0;padding:18px 4px;color:var(--text-muted)}
 @media (prefers-reduced-motion: no-preference){.stock-expand{transition:transform .15s ease}}
+
+/* Operação: controles não podem exceder a grade em telas estreitas. */
+.movement .grid > *, .movement .grid label{min-width:0}
+.movement select{width:100%;min-width:0;max-width:100%}
