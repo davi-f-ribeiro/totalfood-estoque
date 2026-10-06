@@ -228,3 +228,9 @@
 .quantity-field{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
 .quantity-field #quantity{width:100%;min-width:0;font-size:1.15rem;font-weight:800}
 .quantity-field #unitHint{margin:0;color:var(--text-muted);font-weight:600}
+
+/* Operação: dados opcionais ficam recolhidos sem afastar a confirmação. */
+.movement-details{grid-column:1/-1;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px}
+.movement-details summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:pointer}
+.movement-details>div{padding-top:10px;border-top:1px solid var(--border)}
+#movementAnother{grid-column:1/-1}
