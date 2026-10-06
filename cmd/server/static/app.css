@@ -234,3 +234,16 @@
 .movement-details summary{min-height:44px;display:flex;align-items:center;font-weight:800;cursor:pointer}
 .movement-details>div{padding-top:10px;border-top:1px solid var(--border)}
 #movementAnother{grid-column:1/-1}
+
+/* Navegação: desktop continua no topo; mobile usa cinco ações fixas. */
+.nav-more{display:contents}.nav-more-toggle{display:none}.nav-more-menu{display:contents}
+@media(max-width:767px){
+ body{padding-bottom:72px}
+ .main{padding-bottom:24px}
+ .nav{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:40;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;overflow:visible;padding:0;border-top:1px solid var(--border);border-bottom:0;box-shadow:0 -2px 12px rgba(16,24,40,.08)}
+ .nav>a,.nav-more>.nav-more-toggle{min-width:0;min-height:56px;padding:4px 2px;border:0;border-top:3px solid transparent;border-radius:0;background:var(--surface);color:var(--text-secondary);font-size:.78rem;white-space:normal;text-align:center}
+ .nav>a{display:flex}.nav-more{display:block;position:relative;min-width:0}.nav-more>.nav-more-toggle{display:flex;width:100%;align-items:center;justify-content:center;font-weight:800}
+ .nav-more-menu{display:none;position:absolute;right:4px;bottom:calc(100% + 8px);width:min(280px,calc(100vw - 16px));padding:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-card)}
+ .nav-more.open .nav-more-menu{display:grid}.nav-more-menu a{min-height:44px;padding:10px 12px;border-radius:var(--radius-sm);display:flex;align-items:center;text-decoration:none;font-weight:700}
+ .nav-more-menu a:hover,.nav-more-menu a:focus{background:var(--brand-primary-soft)}
+}

@@ -272,3 +272,6 @@ csvBtn.disabled=true;printBtn.disabled=true;csvBtn.addEventListener('click',expo
 }
 
 initReports();
+
+function initMobileNav(){let wrap=document.querySelector('.nav-more'),toggle=wrap?.querySelector('.nav-more-toggle');if(!wrap||!toggle)return;function close(){wrap.classList.remove('open');toggle.setAttribute('aria-expanded','false')}toggle.addEventListener('click',()=>{let open=!wrap.classList.contains('open');wrap.classList.toggle('open',open);toggle.setAttribute('aria-expanded',open?'true':'false')});document.addEventListener('click',e=>{if(!wrap.contains(e.target))close()});document.addEventListener('keydown',e=>{if(e.key==='Escape'){close();toggle.focus()}})}
+initMobileNav();
