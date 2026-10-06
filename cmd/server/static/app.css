@@ -247,3 +247,7 @@
  .nav-more.open .nav-more-menu{display:grid}.nav-more-menu a{min-height:44px;padding:10px 12px;border-radius:var(--radius-sm);display:flex;align-items:center;text-decoration:none;font-weight:700}
  .nav-more-menu a:hover,.nav-more-menu a:focus{background:var(--brand-primary-soft)}
 }
+
+/* Estoque: filtros locais e atalhos operacionais. */
+.stock-filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}.stock-filters label{margin:0}.stock-minimum{min-height:46px}.stock-actions{justify-content:flex-end}.stock-actions .button{min-height:44px}
+@media(max-width:600px){.stock-filters{grid-template-columns:1fr}.stock-actions{justify-content:stretch}.stock-actions .button{flex:1 1 120px}}
