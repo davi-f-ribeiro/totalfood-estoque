@@ -1,9 +1,10 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><meta name="current-user-id" content="{{.User.ID}}"><title>{{.Title}} · Estoque</title><link rel="stylesheet" href="/static/app.css"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><meta name="current-user-id" content="{{.User.ID}}"><title>Contagem de estoque · Estoque</title><link rel="stylesheet" href="/static/app.css"></head><body>
 <header class="top"><div class="brand"><span class="brand-slot" aria-hidden="true"></span><span class="brand-copy"><strong>Gestão de Estoque</strong><small>Qualidade todo dia!</small></span></div><details class="account"><summary>{{.User.Login}}</summary><div><button id="changePasswordOpen" class="linkish" type="button">Alterar senha</button><button id="logout" class="linkish" type="button">Sair</button><p id="accountStatus" class="msg" aria-live="polite"></p></div></details></header>
 {{template "nav" .}}
 <main class="main inventory-shell" data-can-write="{{.CanInventoryWrite}}" data-can-adjust="{{.CanStockAdjustment}}">
 <section class="panel inventory-home">
-<div class="section-heading"><div><h1>Auditoria de Estoque</h1><p class="hint">Crie, localize e retome inventários sem alterar o saldo operacional.</p></div></div>
+<div class="section-heading"><div><h1>Contagem de estoque</h1><p class="hint">Crie, localize e retome inventários sem alterar o saldo operacional.</p></div></div>
+<button id="inventoryCreateToggle" class="secondary inventory-secondary-toggle" type="button" hidden>Nova contagem</button>
 {{if .CanInventoryWrite}}
 <div class="inventory-create-grid">
 <form id="inventoryCreateTotal" class="inventory-create-card">
@@ -20,6 +21,7 @@
 </div>
 <p id="inventoryCreateMessage" class="operation-feedback" role="status" aria-live="polite" hidden></p>
 {{end}}
+<button id="inventoryFiltersToggle" class="secondary inventory-secondary-toggle" type="button">Filtros</button>
 <form id="inventoryListFilters" class="inventory-list-filters">
 <label>Status<select id="inventoryListStatus"><option value="">Todos</option><option value="OPEN">Aberto</option><option value="COUNTING">Em contagem</option><option value="REVIEW">Em revisão</option><option value="COMPLETED">Concluído</option><option value="CANCELLED">Cancelado</option></select></label>
 <label>Tipo<select id="inventoryListType"><option value="">Todos</option><option value="TOTAL">Total</option><option value="BLIND">Cego</option></select></label>

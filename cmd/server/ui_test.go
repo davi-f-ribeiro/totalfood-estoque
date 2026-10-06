@@ -513,7 +513,7 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 		`{{if .CanReports}}<a href="/reports">Relatórios</a>{{end}}`,
 		`{{if .CanCatalog}}<a href="/catalog">Catálogo</a><a href="/products">Produto/Item</a>{{end}}`,
 		`{{if .CanAssets}}<a href="/assets">Patrimônio</a>{{end}}`,
-		`{{if .CanInventory}}<a href="/inventory">Auditoria de Estoque</a>{{end}}`,
+		`{{if .CanInventory}}<a href="/inventory">Contagem de estoque</a>{{end}}`,
 		`{{if .CanAdmin}}<a href="/admin">Administração</a>{{end}}`,
 	} {
 		if !strings.Contains(base, want) { t.Fatalf("canonical navigation missing %q", want) }

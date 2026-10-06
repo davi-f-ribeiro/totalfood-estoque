@@ -251,3 +251,8 @@
 /* Estoque: filtros locais e atalhos operacionais. */
 .stock-filters{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end}.stock-filters label{margin:0}.stock-minimum{min-height:46px}.stock-actions{justify-content:flex-end}.stock-actions .button{min-height:44px}
 @media(max-width:600px){.stock-filters{grid-template-columns:1fr}.stock-actions{justify-content:stretch}.stock-actions .button{flex:1 1 120px}}
+
+/* Contagem: a lista operacional vem antes das ações administrativas. */
+.inventory-home>.section-heading{order:0}.inventory-home>#inventoryListMessage{order:1}.inventory-home>#inventoryList{order:2}.inventory-home>#inventoryListPaging{order:3}.inventory-home>#inventoryFiltersToggle{order:4}.inventory-home>#inventoryListFilters{order:5}.inventory-home>#inventoryCreateToggle{order:6}.inventory-home>.inventory-create-grid{order:7}.inventory-home>#inventoryCreateMessage{order:8}
+.inventory-secondary-toggle{justify-self:start;min-width:160px}
+@media(max-width:600px){.inventory-secondary-toggle{width:100%}}
