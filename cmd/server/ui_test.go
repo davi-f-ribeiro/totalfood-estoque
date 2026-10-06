@@ -526,7 +526,7 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 	}
 	catalogb, err := os.ReadFile(filepath.Join("templates", "catalog.html")); if err != nil { t.Fatal(err) }
 	catalog := string(catalogb)
-	if !strings.Contains(catalog,"Cadastros mestres de item pai e marca.") || strings.Contains(catalog,"Produtos/SKUs vinculados") {
+	if !strings.Contains(catalog,"Item pai é o produto genérico; Produto/Item é a marca e embalagem com código de barras.") || strings.Contains(catalog,"Produtos/SKUs vinculados") {
 		t.Fatal("catalog must contain only item and brand masters")
 	}
 }
@@ -890,10 +890,10 @@ func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
 	for _, want := range []string{
 		"loadWarehouses(true,'/api/reports/warehouses')",
 		"a.setDate(a.getDate()-a.getDay())",
-		"Semana até hoje (WTD)",
-		"Mês até hoje (MTD)",
+		"Esta semana",
+		"Este mês",
 		`data-period="custom"`,
-		"WTD considera domingo como início da semana.",
+		"A semana começa no domingo. O mês começa no primeiro dia.",
 		`id="reportStartLabel"`,
 		"startLabel.hidden=balance",
 		"endLabelText.textContent=balance?'Data de corte':'Até'",
