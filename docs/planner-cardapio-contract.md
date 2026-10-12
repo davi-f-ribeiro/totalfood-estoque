@@ -26,13 +26,21 @@ Referência: cardápios reais da semana 12/10 a 17/10 (Data Center Pecém, Quent
 - **A produção é planejada por pessoas, não por pratos.** A folha do Data Center diz "900 pessoas" e converte em quilos (198 kg de arroz, 193,5 kg de feijão) e em porções. Opções alternativas têm adesão menor (ovo frito: 200 unidades para 900 pessoas).
 - Por isso cada posição do plano tem: **pessoas previstas**, **adesão** (percentual que consome aquela opção; 100% por padrão) e a ficha escolhida. Porções = pessoas × adesão.
 
+## Premissa de refeições e quantidade real
+
+- Todo plano parte de uma **premissa**: quantas refeições serão servidas por grupo, dia e refeição (ex.: 900 almoços do Data Center na segunda). É o campo **pessoas previstas**; todo o cálculo do plano (produção, custo, faturamento, compra) parte dele.
+- Depois da execução o operador informa a **quantidade real** de refeições servidas no mesmo grupo, dia e refeição (**pessoas reais**). Pode ser informada dia a dia, enquanto o período corre.
+- Alterar a premissa de um plano em rascunho recalcula tudo. Plano aprovado não muda a premissa; a quantidade real é um registro à parte, com `version` e autor, e não altera o retrato.
+- A adesão de cada opção (ex.: ovo frito 200 de 900) continua valendo sobre as pessoas: previstas no plano, reais no realizado.
+
 ## Projeção e previsto x realizado
 
 - O plano projeta **gasto** (custo dos ingredientes) e **faturamento** (pessoas × preço da refeição de cada grupo), com **margem e CMV** por refeição, dia, grupo e período.
 - O **retrato da aprovação** é o *previsto*: quantidades e custos por item, congelados. Sem ele a comparação não seria honesta, porque o custo médio muda depois.
 - O **realizado** vem do que de fato saiu do estoque no período: saídas em `movement_lines` por item, valorizadas pelo custo gravado em cada saída. Nada é copiado para outra tabela.
 - A comparação é **por item e por período** (previsto, realizado, diferença em quantidade e em valor), com o total de gasto e do CMV realizado. Saídas não carregam o grupo nem a refeição, então o detalhe por grupo exige que a saída informe o plano ou o grupo (decisão do Gate 9).
-- O faturamento realizado depende das **pessoas efetivamente atendidas**, que o sistema ainda não tem. Até existir esse dado (digitação diária ou importação de vendas), o faturamento realizado não é calculado e a tela diz isso, em vez de repetir o previsto.
+- O faturamento realizado = **pessoas reais × preço da refeição do grupo**. Dia ou refeição sem quantidade real aparecem como "sem lançamento", e a tela nunca repete o previsto no lugar do realizado.
+- O custo realizado por refeição dividido pelas pessoas reais dá o custo real por pessoa e o CMV realizado, para comparar com o previsto.
 - Este recurso entra depois do planner e da solicitação de compra (Gate 9), mas o retrato da aprovação já nasce com os campos necessários.
 
 ## Fonte de verdade
@@ -52,7 +60,8 @@ Referência: cardápios reais da semana 12/10 a 17/10 (Data Center Pecém, Quent
 - **Grupo de equivalência** de itens (ex.: feijão carioca, feijão preto, feijão de corda). O solver só troca ingredientes dentro do grupo.
 - **Regra do grupo**, no formato: *quando* a refeição tiver uma ficha com a etiqueta X, *exigir* (ou *proibir*) uma ficha da função Y com (ou sem) a etiqueta Z. Também: não repetir a mesma etiqueta em N dias seguidos.
 - **Plano**: nome, período, grupos incluídos, CMV alvo do período, status (rascunho, aprovado), `version`.
-- **Posição do plano**: grupo, dia, refeição, função, pessoas, adesão, ficha escolhida, travada ou não.
+- **Premissa do plano**: grupo, dia, refeição, pessoas previstas. **Quantidade real**: mesma chave, pessoas reais, `version`, autor e data do lançamento.
+- **Posição do plano**: grupo, dia, refeição, função, adesão, ficha escolhida, travada ou não.
 - **Solicitação de compra** e linhas: plano de origem, item, necessidade, saldo, quantidade a comprar, data em que o item acaba. Emissão idempotente por `operation_id`.
 
 ## Cálculo
