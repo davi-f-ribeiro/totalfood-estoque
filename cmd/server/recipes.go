@@ -29,19 +29,13 @@ type recipeLineRequest struct {
 	CorrectionFactor string `json:"correction_factor"`
 }
 
-type recipePriceRequest struct {
-	CustomerID int64  `json:"customer_id"`
-	SalePrice  string `json:"sale_price"`
-}
-
 type recipeRequest struct {
-	Name     string               `json:"name"`
-	Portions string               `json:"portions"`
-	Notes    string               `json:"notes"`
-	Active   *bool                `json:"active"`
-	Lines    []recipeLineRequest  `json:"lines"`
-	Prices   []recipePriceRequest `json:"prices"`
-	Version  int64                `json:"version,omitempty"`
+	Name     string              `json:"name"`
+	Portions string              `json:"portions"`
+	Notes    string              `json:"notes"`
+	Active   *bool               `json:"active"`
+	Lines    []recipeLineRequest `json:"lines"`
+	Version  int64               `json:"version,omitempty"`
 	// Atributos do planner de cardápio (opcionais na ficha).
 	MealFunction string   `json:"meal_function"`
 	PortionSize  string   `json:"portion_size"`
@@ -84,7 +78,7 @@ func (a *app) registerRecipeHandlers(mux *http.ServeMux) {
 // fórmula de getStockSnapshotAt e listBalanceReport (valor líquido dividido
 // pela quantidade líquida de movement_lines), somando depósitos e marcas.
 // Item sem estoque ou sem valor fica com avg_cost NULL ("sem custo"), e a
-// ficha vira incompleta: nem o custo da porção nem o CMV são calculados.
+// ficha vira incompleta: o custo da porção não é calculado.
 const recipeCostCTE = `
 WITH item_cost AS (
     SELECT ml.item_id,
@@ -133,9 +127,6 @@ func normalizeRecipeRequest(req *recipeRequest) {
 			req.Lines[i].CorrectionFactor = "1"
 		}
 	}
-	for i := range req.Prices {
-		req.Prices[i].SalePrice = normalizeDecimalInput(req.Prices[i].SalePrice)
-	}
 	req.MealFunction = normalizeLabel(req.MealFunction)
 	req.PortionSize = normalizeDecimalInput(req.PortionSize)
 	req.PortionUnit = normalizeLabel(req.PortionUnit)
@@ -170,19 +161,6 @@ func recipeRequestProblem(req recipeRequest) string {
 			return "Digite um fator de correção de 1 ou mais, com até 4 casas decimais."
 		}
 	}
-	seenCustomers := map[int64]bool{}
-	for _, p := range req.Prices {
-		if p.CustomerID <= 0 {
-			return "Escolha o cliente de cada preço."
-		}
-		if seenCustomers[p.CustomerID] {
-			return "Um cliente não pode ter dois preços para o mesmo prato."
-		}
-		seenCustomers[p.CustomerID] = true
-		if !pricePattern.MatchString(p.SalePrice) || !positiveDecimal(p.SalePrice) {
-			return "Digite um preço de venda maior que zero, com até 2 casas decimais."
-		}
-	}
 	if (req.PortionSize == "") != (req.PortionUnit == "") {
 		return "Digite o peso da porção pronta e escolha a unidade (g, ml ou un)."
 	}
@@ -214,8 +192,6 @@ func writeRecipeError(w http.ResponseWriter, err error, logPrefix string) {
 		writeJSONError(w, http.StatusConflict, "Já existe uma ficha técnica com este nome.")
 	case strings.Contains(msg, "recipe_lines_item_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Ingrediente inválido. Escolha um item do estoque.")
-	case strings.Contains(msg, "recipe_customer_prices_customer_id_fkey"):
-		writeJSONError(w, http.StatusBadRequest, "Cliente inválido. Escolha um cliente cadastrado.")
 	default:
 		writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar a ficha técnica.")
 	}
@@ -435,50 +411,10 @@ ORDER BY lower(i.name),i.id`, id)
 		return
 	}
 
-	priceRows, err := a.db.QueryContext(ctx, recipeCostCTE+`
-SELECT p.customer_id,c.name,p.sale_price::text,
-       CASE WHEN rc.cost_per_portion IS NULL THEN NULL
-            ELSE (rc.cost_per_portion / p.sale_price * 100)::numeric(8,2)::text
-       END,
-       CASE WHEN rc.cost_per_portion IS NULL THEN NULL
-            ELSE ((1 - rc.cost_per_portion / p.sale_price) * 100)::numeric(8,2)::text
-       END
-FROM recipe_customer_prices p
-JOIN customers c ON c.id=p.customer_id
-LEFT JOIN recipe_cost rc ON rc.recipe_id=p.recipe_id
-WHERE p.recipe_id=$1::bigint
-ORDER BY lower(c.name),c.id`, id)
-	if err != nil {
-		log.Printf("recipe prices failed id=%d error=%v", id, err)
-		writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar a ficha técnica.")
-		return
-	}
-	defer priceRows.Close()
-	prices := []map[string]any{}
-	for priceRows.Next() {
-		var customerID int64
-		var customer, salePrice string
-		var cmv, margin sql.NullString
-		if err := priceRows.Scan(&customerID, &customer, &salePrice, &cmv, &margin); err != nil {
-			log.Printf("recipe prices scan failed id=%d error=%v", id, err)
-			writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar a ficha técnica.")
-			return
-		}
-		prices = append(prices, map[string]any{
-			"customer_id": customerID, "customer": customer, "sale_price": salePrice,
-			"cmv_percent": nullText(cmv), "margin_percent": nullText(margin),
-		})
-	}
-	if err := priceRows.Err(); err != nil {
-		log.Printf("recipe prices rows failed id=%d error=%v", id, err)
-		writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar a ficha técnica.")
-		return
-	}
-
 	out := map[string]any{
 		"id": id, "name": name, "portions": portions, "notes": notes, "active": active, "version": version,
 		"incomplete": incomplete, "cost_per_portion": nullText(cost), "total_cost": nullText(totalCost),
-		"lines": lines, "prices": prices,
+		"lines": lines,
 	}
 	plan.addTo(out)
 	writeJSON(w, http.StatusOK, out)
@@ -493,13 +429,7 @@ func (a *app) handleRecipeOptions(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar as opções da ficha técnica.")
 		return
 	}
-	customers, err := simpleRows(r, a.db, `SELECT id,name FROM customers WHERE active=true ORDER BY lower(name),id`)
-	if err != nil {
-		log.Printf("recipe options customers failed error=%v", err)
-		writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar as opções da ficha técnica.")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "customers": customers})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func recipeOptionItems(ctx context.Context, db *sql.DB) ([]map[string]any, error) {
@@ -524,16 +454,8 @@ func replaceRecipeContent(ctx context.Context, tx *sql.Tx, id int64, req recipeR
 	if _, err := tx.ExecContext(ctx, `DELETE FROM recipe_lines WHERE recipe_id=$1`, id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM recipe_customer_prices WHERE recipe_id=$1`, id); err != nil {
-		return err
-	}
 	for _, l := range req.Lines {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO recipe_lines (recipe_id,item_id,quantity,correction_factor) VALUES ($1,$2,$3,$4)`, id, l.ItemID, l.Quantity, l.CorrectionFactor); err != nil {
-			return err
-		}
-	}
-	for _, p := range req.Prices {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO recipe_customer_prices (recipe_id,customer_id,sale_price) VALUES ($1,$2,$3)`, id, p.CustomerID, p.SalePrice); err != nil {
 			return err
 		}
 	}

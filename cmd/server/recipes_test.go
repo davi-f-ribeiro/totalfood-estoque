@@ -46,7 +46,7 @@ func recipeTestCustomer(t *testing.T, a *app, director loginData, name string) i
 	return jsonID(t, rr.Body.Bytes())
 }
 
-func TestRecipeCostUsesStockAverageCostAndCMVPerCustomer(t *testing.T) {
+func TestRecipeCostUsesStockAverageCost(t *testing.T) {
 	a, sku, wh1, wh2 := newStockTestApp(t)
 	userID := createTestUser(t, a, "recipe-cost-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "recipe-cost-director", "secret")
@@ -61,12 +61,10 @@ func TestRecipeCostUsesStockAverageCostAndCMVPerCustomer(t *testing.T) {
 		t.Fatalf("exit: %v", err)
 	}
 	arroz := lookupID(t, a, `SELECT id FROM inventory_items WHERE name='Arroz'`)
-	customer := recipeTestCustomer(t, a, director, "Cliente A")
 
 	create := authReq(a, http.MethodPost, "/api/recipes", map[string]any{
 		"name": "Arroz doce", "portions": "4",
-		"lines":  []map[string]any{{"item_id": arroz, "quantity": "0,5", "correction_factor": "1,25"}},
-		"prices": []map[string]any{{"customer_id": customer, "sale_price": "12,50"}},
+		"lines": []map[string]any{{"item_id": arroz, "quantity": "0,5", "correction_factor": "1,25"}},
 	}, director, "")
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create recipe status=%d body=%s", create.Code, create.Body.String())
@@ -86,14 +84,8 @@ func TestRecipeCostUsesStockAverageCostAndCMVPerCustomer(t *testing.T) {
 	if line["gross_quantity"] != "0.6250" || line["avg_cost"] != "30.0000" || line["line_cost"] != "18.7500" {
 		t.Fatalf("line gross=%v avg=%v cost=%v", line["gross_quantity"], line["avg_cost"], line["line_cost"])
 	}
-	// CMV = 4,6875 / 12,50 x 100 = 37,50.
-	price := body["prices"].([]any)[0].(map[string]any)
-	if price["sale_price"] != "12.50" || price["cmv_percent"] != "37.50" {
-		t.Fatalf("price=%v cmv=%v want 12.50/37.50", price["sale_price"], price["cmv_percent"])
-	}
-	// Margem = (1 - 4,6875 / 12,50) x 100 = 62,50; custo da receita = 18,75.
-	if price["margin_percent"] != "62.50" || body["total_cost"] != "18.7500" {
-		t.Fatalf("margin=%v total=%v want 62.50/18.7500", price["margin_percent"], body["total_cost"])
+	if body["total_cost"] != "18.7500" {
+		t.Fatalf("total=%v want 18.7500", body["total_cost"])
 	}
 
 	list := authReq(a, http.MethodGet, "/api/recipes", nil, director, "")
@@ -102,14 +94,13 @@ func TestRecipeCostUsesStockAverageCostAndCMVPerCustomer(t *testing.T) {
 	}
 }
 
-func TestRecipeWithIngredientWithoutStockIsIncompleteAndHidesCMV(t *testing.T) {
+func TestRecipeWithIngredientWithoutStockIsIncomplete(t *testing.T) {
 	a, sku, wh1, _ := newStockTestApp(t)
 	userID := createTestUser(t, a, "recipe-incomplete-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "recipe-incomplete-director", "secret")
 	recipeTestEntry(t, a, "recipe-incomplete-e1", sku, wh1, userID, "10", "20")
 	arroz := lookupID(t, a, `SELECT id FROM inventory_items WHERE name='Arroz'`)
 	sal := recipeTestItem(t, a, "Sal", "KG")
-	customer := recipeTestCustomer(t, a, director, "Cliente B")
 
 	create := authReq(a, http.MethodPost, "/api/recipes", map[string]any{
 		"name": "Arroz com sal", "portions": "2",
@@ -117,7 +108,6 @@ func TestRecipeWithIngredientWithoutStockIsIncompleteAndHidesCMV(t *testing.T) {
 			{"item_id": arroz, "quantity": "0.5"},
 			{"item_id": sal, "quantity": "0.01"},
 		},
-		"prices": []map[string]any{{"customer_id": customer, "sale_price": "9"}},
 	}, director, "")
 	if create.Code != http.StatusCreated {
 		t.Fatalf("create recipe status=%d body=%s", create.Code, create.Body.String())
@@ -125,9 +115,6 @@ func TestRecipeWithIngredientWithoutStockIsIncompleteAndHidesCMV(t *testing.T) {
 	body := recipeResponse(t, authReq(a, http.MethodGet, "/api/recipes/"+itoa(jsonID(t, create.Body.Bytes())), nil, director, ""))
 	if body["incomplete"] != true || body["cost_per_portion"] != nil {
 		t.Fatalf("incomplete=%v cost=%v want true/nil", body["incomplete"], body["cost_per_portion"])
-	}
-	if cmv := body["prices"].([]any)[0].(map[string]any)["cmv_percent"]; cmv != nil {
-		t.Fatalf("cmv must be hidden for incomplete recipe, got %v", cmv)
 	}
 	for _, raw := range body["lines"].([]any) {
 		line := raw.(map[string]any)
@@ -195,8 +182,7 @@ func TestRecipeWritesAreAtomicValidatedAndVersioned(t *testing.T) {
 	valid := func(name string) map[string]any {
 		return map[string]any{
 			"name": name, "portions": "1",
-			"lines":  []map[string]any{{"item_id": arroz, "quantity": "1"}},
-			"prices": []map[string]any{{"customer_id": customer, "sale_price": "10"}},
+			"lines": []map[string]any{{"item_id": arroz, "quantity": "1"}},
 		}
 	}
 
@@ -213,9 +199,6 @@ func TestRecipeWritesAreAtomicValidatedAndVersioned(t *testing.T) {
 			}, "não pode aparecer duas vezes"},
 			"no ingredient": {func(m map[string]any) { m["lines"] = []map[string]any{} }, "ao menos um ingrediente"},
 			"zero portions": {func(m map[string]any) { m["portions"] = "0" }, "rendimento"},
-			"price with three decimals": {func(m map[string]any) {
-				m["prices"] = []map[string]any{{"customer_id": customer, "sale_price": "10.123"}}
-			}, "preço de venda"},
 		}
 		for name, tc := range cases {
 			body := valid("Receita Inválida")
@@ -227,11 +210,11 @@ func TestRecipeWritesAreAtomicValidatedAndVersioned(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid customer leaves no recipe behind", func(t *testing.T) {
+	t.Run("invalid ingredient leaves no recipe behind", func(t *testing.T) {
 		body := valid("Receita Atômica")
-		body["prices"] = []map[string]any{{"customer_id": 999999, "sale_price": "10"}}
+		body["lines"] = []map[string]any{{"item_id": 999999, "quantity": "1"}}
 		rr := authReq(a, http.MethodPost, "/api/recipes", body, director, "")
-		if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Cliente inválido") {
+		if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Ingrediente inválido") {
 			t.Fatalf("status=%d body=%s", rr.Code, rr.Body.String())
 		}
 		var count int

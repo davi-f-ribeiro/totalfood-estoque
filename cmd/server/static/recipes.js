@@ -2,7 +2,7 @@
 const root=document.getElementById('recipesRoot');if(!root)return;
 const canWrite=root.dataset.canWrite==='1',$=id=>document.getElementById(id);
 const list=$('recipeList'),detail=$('recipeDetail'),search=$('recipeSearch'),status=$('recipeStatus'),customerList=$('customerList');
-const dlg=$('recipeDialog'),form=$('recipeForm'),fStatus=$('recipeFormStatus'),linesBox=$('recipeLines'),pricesBox=$('recipePrices');
+const dlg=$('recipeDialog'),form=$('recipeForm'),fStatus=$('recipeFormStatus'),linesBox=$('recipeLines');
 const cDlg=$('customerDialog'),cForm=$('customerForm'),cStatus=$('customerFormStatus');
 const nf=(min,max)=>new Intl.NumberFormat('pt-BR',{minimumFractionDigits:min,maximumFractionDigits:max});
 const money=(v,max=2)=>v==null?'—':'R$ '+nf(2,max).format(Number(v));
@@ -38,16 +38,9 @@ function renderDetail(d){
  let head=el('div','recipe-head'),t=el('div');t.append(el('h2',null,d.name),el('p','hint',nf(0,3).format(Number(d.portions))+' porção(ões) por receita'+(d.meal_function?' · '+d.meal_function:'')+(d.portion_size?' · porção pronta de '+nf(0,3).format(Number(d.portion_size))+' '+d.portion_unit:'')+((d.tags||[]).length?' · '+d.tags.join(', '):'')+(d.active?'':' · Ficha inativa')));
  head.append(t);if(canWrite){let e=el('button','secondary','Editar ficha');e.type='button';e.onclick=()=>openRecipe(d);head.append(e)}
  detail.append(head);
- if(d.incomplete){let w=el('p','impact-warning','Falta custo em: '+d.lines.filter(l=>l.avg_cost==null).map(l=>l.item).join(', ')+'. Registre uma entrada com preço no estoque para calcular o CMV.');detail.append(w)}
- let price=(d.prices||[]).find(p=>p.customer_id===selectedCustomer)||(d.prices||[])[0];
- if(price)selectedCustomer=price.customer_id;
- if((d.prices||[]).length){
-  let pick=el('label','recipe-customer-pick','Cliente'),sel=document.createElement('select');
-  d.prices.forEach(p=>{let o=document.createElement('option');o.value=p.customer_id;o.textContent=p.customer;sel.append(o)});
-  sel.value=String(selectedCustomer);sel.onchange=()=>{selectedCustomer=Number(sel.value);renderDetail(d)};pick.append(sel);detail.append(pick)}
- else detail.append(el('p','hint','Nenhum preço de venda cadastrado. Edite a ficha para adicionar um cliente.'));
+ if(d.incomplete){let w=el('p','impact-warning','Falta custo em: '+d.lines.filter(l=>l.avg_cost==null).map(l=>l.item).join(', ')+'. Registre uma entrada com preço no estoque para calcular o custo da porção.');detail.append(w)}
  let k=el('div','recipe-kpis');
- k.append(kpi('CMV',percent(price&&price.cmv_percent)),kpi('Custo da porção',money(d.cost_per_portion,4)),kpi('Preço de venda',money(price&&price.sale_price)),kpi('Margem',percent(price&&price.margin_percent)));
+ k.append(kpi('Custo da porção',money(d.cost_per_portion,4)));
  detail.append(k);
  let tbl=el('table','recipe-table'),th=el('thead'),hr=el('tr');
  ['Ingrediente','Quantidade','Custo unitário','Custo total'].forEach(h=>hr.append(el('th',null,h)));th.append(hr);
@@ -71,29 +64,24 @@ function addLine(l){
  q.inputMode=f.inputMode='decimal';q.required=f.required=true;q.autocomplete=f.autocomplete='off';q.value=l?inputDec(l.quantity):'';f.value=l?inputDec(l.correction_factor):'1';
  sel.dataset.role='item';q.dataset.role='qty';f.dataset.role='factor';
  row.append(labelled('Ingrediente',sel),labelled('Quantidade',q),labelled('Fator de correção',f),removeBtn(row));linesBox.append(row)}
-function addPrice(p){
- let row=el('div','recipe-row recipe-price-row'),sel=optionSelect(options.customers,p&&p.customer_id,'Escolha o cliente'),v=document.createElement('input');
- v.inputMode='decimal';v.required=true;v.autocomplete='off';v.value=p?inputDec(p.sale_price):'';sel.dataset.role='customer';v.dataset.role='price';
- row.append(labelled('Cliente',sel),labelled('Preço de venda (R$)',v),removeBtn(row));pricesBox.append(row)}
 async function openRecipe(d){
  try{await loadOptions()}catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível carregar os itens e clientes. Tente de novo.'));return}
- form.reset();linesBox.textContent='';pricesBox.textContent='';setFeedback(fStatus,'','');
+ form.reset();linesBox.textContent='';setFeedback(fStatus,'','');
  $('recipeId').value=d?d.id:'';$('recipeName').value=d?d.name:'';$('recipePortions').value=d?inputDec(d.portions):'1';$('recipeNotes').value=d?d.notes||'':'';$('recipeActive').checked=d?d.active:true;
  $('recipeFunction').value=d?d.meal_function||'':'';$('recipePortionSize').value=d&&d.portion_size?inputDec(d.portion_size):'';$('recipePortionUnit').value=d?d.portion_unit||'':'';$('recipeTags').value=d?(d.tags||[]).join(', '):'';fillPlanningLists();
- form.dataset.version=d?d.version:'';(d?d.lines:[null]).forEach(addLine);(d?d.prices:[]).forEach(addPrice);
+ form.dataset.version=d?d.version:'';(d?d.lines:[null]).forEach(addLine);
  setCrudMode(form,!!d,'Criar ficha','Atualizar ficha');$('recipeDialogTitle').textContent=d?'Editar ficha':'Nova ficha';
  form.hidden=false;dlg.showModal();$('recipeName').focus()}
 function closeRecipe(){form.hidden=true;if(dlg.open)dlg.close()}
 $('recipeCancel').onclick=closeRecipe;
-$('recipeAddLine').onclick=()=>addLine(null);$('recipeAddPrice').onclick=()=>addPrice(null);
+$('recipeAddLine').onclick=()=>addLine(null);
 form.addEventListener('submit',async e=>{e.preventDefault();
  let submit=form.querySelector('button[type="submit"]');
  await runLocked(submit,async()=>{
   if(!requireFields(form,fStatus))return;
   let lines=[...linesBox.children].map(r=>({item_id:Number(r.querySelector('[data-role=item]').value),quantity:requestDecimal(r.querySelector('[data-role=qty]').value),correction_factor:requestDecimal(r.querySelector('[data-role=factor]').value)}));
   if(!lines.length){setFeedback(fStatus,'error','Adicione ao menos um ingrediente.');return}
-  let prices=[...pricesBox.children].map(r=>({customer_id:Number(r.querySelector('[data-role=customer]').value),sale_price:requestDecimal(r.querySelector('[data-role=price]').value)}));
-  let id=$('recipeId').value,name=$('recipeName').value.trim(),body={name,portions:requestDecimal($('recipePortions').value),notes:$('recipeNotes').value.trim(),active:$('recipeActive').checked,lines,prices,meal_function:$('recipeFunction').value.trim(),portion_size:requestDecimal($('recipePortionSize').value),portion_unit:$('recipePortionUnit').value,tags:$('recipeTags').value.split(',').map(x=>x.trim()).filter(Boolean)};
+  let id=$('recipeId').value,name=$('recipeName').value.trim(),body={name,portions:requestDecimal($('recipePortions').value),notes:$('recipeNotes').value.trim(),active:$('recipeActive').checked,lines,meal_function:$('recipeFunction').value.trim(),portion_size:requestDecimal($('recipePortionSize').value),portion_unit:$('recipePortionUnit').value,tags:$('recipeTags').value.split(',').map(x=>x.trim()).filter(Boolean)};
   if(id)body.version=Number(form.dataset.version);
   setFeedback(fStatus,'loading','Salvando ficha…');
   try{let r=await api(id?'/api/recipes/'+id:'/api/recipes',{method:id?'PATCH':'POST',body:JSON.stringify(body)});

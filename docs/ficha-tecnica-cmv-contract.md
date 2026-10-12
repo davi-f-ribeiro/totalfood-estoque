@@ -4,7 +4,7 @@ Este documento fixa o contrato antes da implementação e complementa o `global-
 
 ## Decisões do produto
 
-- O CMV é calculado **por prato**: custo da porção dividido pelo preço de venda cadastrado para cada cliente.
+- A ficha guarda só o **custo** do prato. Não há preço de venda na ficha: o preço é **por refeição e por grupo de clientes** (`customer_group_meals`, no planner de cardápio). O CMV por refeição é calculado pelo planner: custo das porções ÷ faturamento da refeição.
 - O custo vem do **preço médio do estoque** de cada ingrediente. Não há custo digitado na ficha.
 - Ingrediente é o **item** do estoque (ex.: "Leite"), não a marca nem a embalagem.
 - A ficha tem **rendimento** (porções por receita) e **fator de correção** por ingrediente.
@@ -28,10 +28,9 @@ Por linha da ficha:
 Por ficha:
 
     custo da porção = soma dos custos das linhas ÷ porções
-    CMV (%)         = custo da porção ÷ preço de venda do cliente × 100
 
 - A quantidade é digitada na **unidade do item** (a mesma de `inventory_items.unit_code`). Não há conversão entre unidades nesta fase.
-- Se qualquer ingrediente estiver sem custo, a ficha é marcada como **custo incompleto**: o custo da porção e o CMV não são calculados (`null`). Mostrar valor parcial induziria a erro. O custo de cada linha continua visível, e a linha sem custo aparece como tal.
+- Se qualquer ingrediente estiver sem custo, a ficha é marcada como **custo incompleto**: o custo da porção não é calculado (`null`). Mostrar valor parcial induziria a erro. O custo de cada linha continua visível, e a linha sem custo aparece como tal.
 - Toda a aritmética é feita em SQL com `numeric`. O frontend não calcula custo nem CMV.
 
 ## Modelo de dados
@@ -41,7 +40,7 @@ Tabelas novas, todas necessárias porque não há equivalente no schema:
 - `customers`: cliente (nome único sem diferenciar maiúsculas, `version`).
 - `recipes`: ficha técnica (nome único, porções, observação, `version`).
 - `recipe_lines`: ingredientes da ficha (item, quantidade, fator de correção).
-- `recipe_customer_prices`: preço de venda do prato por cliente.
+- `recipe_customer_prices`: removida pela migração 033. Preço de venda não pertence à ficha.
 
 Nenhum índice novo além das unicidades de nome. Sem evidência de consulta lenta, o contrato global proíbe índice por hipótese.
 

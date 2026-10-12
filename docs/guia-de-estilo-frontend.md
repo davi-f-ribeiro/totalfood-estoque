@@ -105,8 +105,8 @@ O texto da interface é o cartão de visita do sistema, e quem lê está trabalh
 | Unidade patrimonial, plaqueta/tag | Patrimônio, plaqueta |
 | Receita, BOM, recipe | Ficha técnica (lista de itens do estoque de um prato) |
 | Yield, rendimento | Porções que a receita rende |
-| Food cost, margem de contribuição | CMV (custo da porção ÷ preço de venda do cliente); Margem (o que sobra do preço) |
-| Customer, comprador | Cliente (quem compra o prato; cada cliente tem seu preço de venda) |
+| Food cost, margem de contribuição | CMV por refeição (custo das porções ÷ faturamento da refeição do grupo) |
+| Customer, comprador | Cliente (quem compra o prato; o preço vem do grupo de clientes e da refeição) |
 | Custo médio, PMP | Custo unitário (preço médio do estoque) |
 | Menu planner, planejamento | Plano (de cardápio) |
 | Headcount, refeições estimadas | Refeições previstas (premissa do plano) |
