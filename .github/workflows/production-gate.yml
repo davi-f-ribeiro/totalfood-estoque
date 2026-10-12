@@ -38,6 +38,10 @@ jobs:
         with:
           go-version: '1.24.x'
           cache: true
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Toolchain versions
         run: |
           missing=0
