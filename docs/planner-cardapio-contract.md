@@ -26,6 +26,15 @@ Referência: cardápios reais da semana 12/10 a 17/10 (Data Center Pecém, Quent
 - **A produção é planejada por pessoas, não por pratos.** A folha do Data Center diz "900 pessoas" e converte em quilos (198 kg de arroz, 193,5 kg de feijão) e em porções. Opções alternativas têm adesão menor (ovo frito: 200 unidades para 900 pessoas).
 - Por isso cada posição do plano tem: **pessoas previstas**, **adesão** (percentual que consome aquela opção; 100% por padrão) e a ficha escolhida. Porções = pessoas × adesão.
 
+## Projeção e previsto x realizado
+
+- O plano projeta **gasto** (custo dos ingredientes) e **faturamento** (pessoas × preço da refeição de cada grupo), com **margem e CMV** por refeição, dia, grupo e período.
+- O **retrato da aprovação** é o *previsto*: quantidades e custos por item, congelados. Sem ele a comparação não seria honesta, porque o custo médio muda depois.
+- O **realizado** vem do que de fato saiu do estoque no período: saídas em `movement_lines` por item, valorizadas pelo custo gravado em cada saída. Nada é copiado para outra tabela.
+- A comparação é **por item e por período** (previsto, realizado, diferença em quantidade e em valor), com o total de gasto e do CMV realizado. Saídas não carregam o grupo nem a refeição, então o detalhe por grupo exige que a saída informe o plano ou o grupo (decisão do Gate 9).
+- O faturamento realizado depende das **pessoas efetivamente atendidas**, que o sistema ainda não tem. Até existir esse dado (digitação diária ou importação de vendas), o faturamento realizado não é calculado e a tela diz isso, em vez de repetir o previsto.
+- Este recurso entra depois do planner e da solicitação de compra (Gate 9), mas o retrato da aprovação já nasce com os campos necessários.
+
 ## Fonte de verdade
 
 - `movement_lines` continua sendo a única fonte de custo e de saldo. O plano **não grava custo**; recalcula a cada leitura.
@@ -91,3 +100,4 @@ Referência: cardápios reais da semana 12/10 a 17/10 (Data Center Pecém, Quent
 6. Solicitação de compra com data de ruptura e idempotência.
 7. Telas conforme `guia-de-estilo-frontend.md`.
 8. Auditoria, CI verde no SHA exato e promoção só com aprovação explícita.
+9. Previsto x realizado: comparação com as saídas do estoque no período e, quando houver o dado, com as pessoas atendidas.
