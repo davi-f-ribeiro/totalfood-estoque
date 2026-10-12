@@ -186,7 +186,7 @@ async function loadComparison(){
 // ---------- Novo plano ----------
 const planDialog=$('planDialog'),planForm=$('planForm'),planFormStatus=$('planFormStatus');
 function openPlan(){
- planForm.reset();setFeedback(planFormStatus,'','');let box=$('planPremise');box.textContent='';
+ planForm.hidden=false;planForm.reset();setFeedback(planFormStatus,'','');let box=$('planPremise');box.textContent='';
  let active=options.groups.filter(g=>g.active);
  if(!active.length)box.append(el('p','hint','Cadastre um grupo de clientes antes de criar o plano.'));
  active.forEach(g=>{let row=el('div','planner-premise');row.append(el('strong',null,g.name));
