@@ -34,6 +34,8 @@ type uiData struct {
 	CanAssets          bool
 	CanCosts           bool
 	CanCostsWrite      bool
+	CanPlanning        bool
+	CanPlanningWrite   bool
 	CanInventory       bool
 	CanInventoryWrite  bool
 	CanStockAdjustment bool
@@ -182,6 +184,8 @@ WHERE pp.profile_id=$1`, u.ProfileID)
 		CanAssets:          has("assets", "read"),
 		CanCosts:           has("costs", "read"),
 		CanCostsWrite:      has("costs", "write"),
+		CanPlanning:        has("planning", "read"),
+		CanPlanningWrite:   has("planning", "write"),
 		CanInventory:       has("inventory_validation", "read"),
 		CanInventoryWrite:  has("inventory_validation", "write"),
 		CanStockAdjustment: has("stock_adjustment", "write"),
@@ -242,6 +246,7 @@ func (a *app) redirectToAuthorizedHome(w http.ResponseWriter, r *http.Request) {
 		{data.CanCatalog, "/catalog"},
 		{data.CanAssets, "/assets"},
 		{data.CanCosts, "/recipes"},
+		{data.CanPlanning, "/planner"},
 		{data.CanInventory, "/inventory"},
 		{data.CanAdmin, "/admin"},
 	} {

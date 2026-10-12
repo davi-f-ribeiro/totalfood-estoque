@@ -14,6 +14,7 @@ import (
 var (
 	portionsPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$`)
 	pricePattern    = regexp.MustCompile(`^(0|[1-9][0-9]*)(\.[0-9]{1,2})?$`)
+	tagPattern      = regexp.MustCompile(`^[\p{Ll}\p{N}-]{1,40}$`)
 )
 
 type customerRequest struct {
@@ -41,6 +42,28 @@ type recipeRequest struct {
 	Lines    []recipeLineRequest  `json:"lines"`
 	Prices   []recipePriceRequest `json:"prices"`
 	Version  int64                `json:"version,omitempty"`
+	// Atributos do planner de cardápio (opcionais na ficha).
+	MealFunction string   `json:"meal_function"`
+	PortionSize  string   `json:"portion_size"`
+	PortionUnit  string   `json:"portion_unit"`
+	Tags         []string `json:"tags"`
+}
+
+// normalizeLabel deixa função e etiqueta no formato gravado: minúsculas, sem espaços nas pontas.
+func normalizeLabel(v string) string { return strings.ToLower(strings.TrimSpace(v)) }
+
+// normalizeTags devolve as etiquetas sem repetição, com espaços trocados por hífen.
+func normalizeTags(in []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, t := range in {
+		t = strings.Join(strings.Fields(normalizeLabel(t)), "-")
+		if t != "" && !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func (a *app) registerRecipeHandlers(mux *http.ServeMux) {
@@ -113,6 +136,10 @@ func normalizeRecipeRequest(req *recipeRequest) {
 	for i := range req.Prices {
 		req.Prices[i].SalePrice = normalizeDecimalInput(req.Prices[i].SalePrice)
 	}
+	req.MealFunction = normalizeLabel(req.MealFunction)
+	req.PortionSize = normalizeDecimalInput(req.PortionSize)
+	req.PortionUnit = normalizeLabel(req.PortionUnit)
+	req.Tags = normalizeTags(req.Tags)
 }
 
 // recipeRequestProblem devolve a mensagem de validação, ou vazio se o pedido é válido.
@@ -154,6 +181,26 @@ func recipeRequestProblem(req recipeRequest) string {
 		seenCustomers[p.CustomerID] = true
 		if !pricePattern.MatchString(p.SalePrice) || !positiveDecimal(p.SalePrice) {
 			return "Digite um preço de venda maior que zero, com até 2 casas decimais."
+		}
+	}
+	if (req.PortionSize == "") != (req.PortionUnit == "") {
+		return "Digite o peso da porção pronta e escolha a unidade (g, ml ou un)."
+	}
+	if req.PortionSize != "" && (!portionsPattern.MatchString(req.PortionSize) || !positiveDecimal(req.PortionSize)) {
+		return "Digite o peso da porção pronta maior que zero, com até 3 casas decimais."
+	}
+	if req.PortionUnit != "" && req.PortionUnit != "g" && req.PortionUnit != "ml" && req.PortionUnit != "un" {
+		return "Escolha a unidade da porção: g, ml ou un."
+	}
+	if len(req.MealFunction) > 60 {
+		return "Digite uma função com até 60 caracteres."
+	}
+	if len(req.Tags) > 20 {
+		return "Use no máximo 20 etiquetas por ficha."
+	}
+	for _, t := range req.Tags {
+		if !tagPattern.MatchString(t) {
+			return "Use etiquetas com letras, números e hífen, até 40 caracteres."
 		}
 	}
 	return ""
@@ -284,7 +331,8 @@ func (a *app) handleRecipes(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), recipeCostCTE+`
 SELECT r.id,r.name,r.portions::text,r.active,r.version,
        COALESCE(rc.line_count,0),COALESCE(rc.incomplete,false),
-       rc.cost_per_portion::numeric(14,4)::text
+       rc.cost_per_portion::numeric(14,4)::text,
+       COALESCE(r.meal_function,''),COALESCE(r.portion_size::text,''),COALESCE(r.portion_unit,''),array_to_string(r.tags,',')
 FROM recipes r
 LEFT JOIN recipe_cost rc ON rc.recipe_id=r.id
 ORDER BY r.active DESC,lower(r.name),r.id`, int64(0))
@@ -300,15 +348,18 @@ ORDER BY r.active DESC,lower(r.name),r.id`, int64(0))
 		var name, portions string
 		var active, incomplete bool
 		var cost sql.NullString
-		if err := rows.Scan(&id, &name, &portions, &active, &version, &lineCount, &incomplete, &cost); err != nil {
+		var plan recipePlanningFields
+		if err := rows.Scan(&id, &name, &portions, &active, &version, &lineCount, &incomplete, &cost, &plan.Function, &plan.Size, &plan.Unit, &plan.Tags); err != nil {
 			log.Printf("recipes scan failed error=%v", err)
 			writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar as fichas técnicas.")
 			return
 		}
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"id": id, "name": name, "portions": portions, "active": active, "version": version,
 			"line_count": lineCount, "incomplete": incomplete, "cost_per_portion": nullText(cost),
-		})
+		}
+		plan.addTo(row)
+		out = append(out, row)
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("recipes rows failed error=%v", err)
@@ -328,13 +379,15 @@ func (a *app) handleRecipe(w http.ResponseWriter, r *http.Request) {
 	var active, incomplete bool
 	var version int64
 	var cost, totalCost sql.NullString
+	var plan recipePlanningFields
 	err := a.db.QueryRowContext(ctx, recipeCostCTE+`
 SELECT r.name,r.portions::text,COALESCE(r.notes,''),r.active,r.version,
        COALESCE(rc.incomplete,false),rc.cost_per_portion::numeric(14,4)::text,
-       rc.total_cost::numeric(14,4)::text
+       rc.total_cost::numeric(14,4)::text,
+       COALESCE(r.meal_function,''),COALESCE(r.portion_size::text,''),COALESCE(r.portion_unit,''),array_to_string(r.tags,',')
 FROM recipes r
 LEFT JOIN recipe_cost rc ON rc.recipe_id=r.id
-WHERE r.id=$1::bigint`, id).Scan(&name, &portions, &notes, &active, &version, &incomplete, &cost, &totalCost)
+WHERE r.id=$1::bigint`, id).Scan(&name, &portions, &notes, &active, &version, &incomplete, &cost, &totalCost, &plan.Function, &plan.Size, &plan.Unit, &plan.Tags)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "Ficha técnica não encontrada.")
 		return
@@ -422,11 +475,13 @@ ORDER BY lower(c.name),c.id`, id)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"id": id, "name": name, "portions": portions, "notes": notes, "active": active, "version": version,
 		"incomplete": incomplete, "cost_per_portion": nullText(cost), "total_cost": nullText(totalCost),
 		"lines": lines, "prices": prices,
-	})
+	}
+	plan.addTo(out)
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleRecipeOptions entrega o que o formulário da ficha precisa escolher.
@@ -508,7 +563,9 @@ func (a *app) handleCreateRecipe(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var id int64
-	if err := tx.QueryRowContext(ctx, `INSERT INTO recipes (name,portions,notes,active) VALUES ($1,$2,NULLIF($3,''),$4) RETURNING id`, req.Name, req.Portions, req.Notes, active).Scan(&id); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO recipes (name,portions,notes,active,meal_function,portion_size,portion_unit,tags)
+VALUES ($1,$2,NULLIF($3,''),$4,NULLIF($5,''),NULLIF($6,'')::numeric,NULLIF($7,''),COALESCE(string_to_array(NULLIF($8,''),','),'{}'))
+RETURNING id`, req.Name, req.Portions, req.Notes, active, req.MealFunction, req.PortionSize, req.PortionUnit, strings.Join(req.Tags, ",")).Scan(&id); err != nil {
 		writeRecipeError(w, err, "recipe create failed")
 		return
 	}
@@ -556,9 +613,11 @@ func (a *app) handleUpdateRecipe(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback() }()
 	var newVersion int64
 	err = tx.QueryRowContext(ctx, `
-UPDATE recipes SET name=$1,portions=$2,notes=NULLIF($3,''),active=$4,version=version+1
+UPDATE recipes SET name=$1,portions=$2,notes=NULLIF($3,''),active=$4,
+       meal_function=NULLIF($7,''),portion_size=NULLIF($8,'')::numeric,portion_unit=NULLIF($9,''),
+       tags=COALESCE(string_to_array(NULLIF($10,''),','),'{}'),version=version+1
 WHERE id=$5 AND version=$6
-RETURNING version`, req.Name, req.Portions, req.Notes, active, id, req.Version).Scan(&newVersion)
+RETURNING version`, req.Name, req.Portions, req.Notes, active, id, req.Version, req.MealFunction, req.PortionSize, req.PortionUnit, strings.Join(req.Tags, ",")).Scan(&newVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists bool
 		if qerr := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM recipes WHERE id=$1)`, id).Scan(&exists); qerr != nil {
@@ -586,4 +645,18 @@ RETURNING version`, req.Name, req.Portions, req.Notes, active, id, req.Version).
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "version": newVersion})
+}
+
+// recipePlanningFields são os atributos da ficha usados pelo planner.
+type recipePlanningFields struct{ Function, Size, Unit, Tags string }
+
+func (f recipePlanningFields) addTo(row map[string]any) {
+	tags := []string{}
+	if f.Tags != "" {
+		tags = strings.Split(f.Tags, ",")
+	}
+	row["meal_function"] = f.Function
+	row["portion_size"] = f.Size
+	row["portion_unit"] = f.Unit
+	row["tags"] = tags
 }
