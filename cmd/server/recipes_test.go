@@ -91,6 +91,10 @@ func TestRecipeCostUsesStockAverageCostAndCMVPerCustomer(t *testing.T) {
 	if price["sale_price"] != "12.50" || price["cmv_percent"] != "37.50" {
 		t.Fatalf("price=%v cmv=%v want 12.50/37.50", price["sale_price"], price["cmv_percent"])
 	}
+	// Margem = (1 - 4,6875 / 12,50) x 100 = 62,50; custo da receita = 18,75.
+	if price["margin_percent"] != "62.50" || body["total_cost"] != "18.7500" {
+		t.Fatalf("margin=%v total=%v want 62.50/18.7500", price["margin_percent"], body["total_cost"])
+	}
 
 	list := authReq(a, http.MethodGet, "/api/recipes", nil, director, "")
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"cost_per_portion":"4.6875"`) {
@@ -291,4 +295,56 @@ func TestRecipeWritesAreAtomicValidatedAndVersioned(t *testing.T) {
 			t.Fatalf("stale customer edit status=%d body=%s", stale.Code, stale.Body.String())
 		}
 	})
+}
+
+func TestRecipePageAndOptionsFollowCostsPermission(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "recipe-ui-director", "secret", "Diretor", true)
+	createTestUser(t, a, "recipe-ui-manager", "secret", "Gerente", true)
+	createTestUser(t, a, "recipe-ui-stock", "secret", "Estoquista", true)
+	director := doLogin(t, a, "recipe-ui-director", "secret")
+	manager := doLogin(t, a, "recipe-ui-manager", "secret")
+	stock := doLogin(t, a, "recipe-ui-stock", "secret")
+
+	page := authReq(a, http.MethodGet, "/recipes", nil, director, "")
+	if page.Code != http.StatusOK {
+		t.Fatalf("director page status=%d", page.Code)
+	}
+	for _, want := range []string{"Fichas técnicas", `id="recipeNew"`, `href="/recipes"`, `data-can-write="1"`} {
+		if !strings.Contains(page.Body.String(), want) {
+			t.Fatalf("director page missing %q", want)
+		}
+	}
+	readOnly := authReq(a, http.MethodGet, "/recipes", nil, manager, "")
+	if readOnly.Code != http.StatusOK || strings.Contains(readOnly.Body.String(), `id="recipeNew"`) || !strings.Contains(readOnly.Body.String(), `data-can-write="0"`) {
+		t.Fatalf("manager page status=%d must be read-only", readOnly.Code)
+	}
+	denied := authReq(a, http.MethodGet, "/recipes", nil, stock, "")
+	if denied.Code != http.StatusSeeOther || denied.Header().Get("Location") != "/no-access" {
+		t.Fatalf("stock page status=%d location=%q want 303 /no-access", denied.Code, denied.Header().Get("Location"))
+	}
+
+	opts := authReq(a, http.MethodGet, "/api/recipes/options", nil, director, "")
+	if opts.Code != http.StatusOK || !strings.Contains(opts.Body.String(), `"Arroz"`) || !strings.Contains(opts.Body.String(), `"KG"`) {
+		t.Fatalf("options status=%d body=%s", opts.Code, opts.Body.String())
+	}
+	if rr := authReq(a, http.MethodGet, "/api/recipes/options", nil, stock, ""); rr.Code != http.StatusForbidden {
+		t.Fatalf("stock options status=%d want 403", rr.Code)
+	}
+}
+
+func TestRecipeTemplateFollowsFrontendContract(t *testing.T) {
+	html, err := uiFS.ReadFile("templates/recipes.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(html)
+	for _, bad := range []string{"style=", "onclick=", "<script>"} {
+		if strings.Contains(s, bad) {
+			t.Fatalf("recipes.html must not contain %q (CSP)", bad)
+		}
+	}
+	if !strings.Contains(s, `{{template "nav" .}}`) || !strings.Contains(s, `{{template "header" .}}`) {
+		t.Fatal("recipes.html must use shared header and nav")
+	}
 }

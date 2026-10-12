@@ -1,0 +1,29 @@
+.recipes-layout{align-items:start}
+.recipes-customers-head{margin-top:8px}
+.recipe-detail{display:grid;gap:14px;min-width:0}
+.recipe-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.recipe-head h2{margin-bottom:4px}
+.recipe-customer-pick{max-width:360px}
+.recipe-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.recipe-kpi{padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-secondary)}
+.recipe-kpi small{display:block;color:var(--text-secondary);font-weight:600}
+.recipe-kpi strong{display:block;margin-top:4px;font-size:1.375rem;color:var(--text-primary)}
+.recipe-table{width:100%;border-collapse:collapse}
+.recipe-table th,.recipe-table td{padding:10px 8px;border-bottom:1px solid var(--border);text-align:left}
+.recipe-table th:nth-child(n+2),.recipe-table td:nth-child(n+2){text-align:right}
+.recipe-table tfoot td{font-weight:700;border-bottom:0}
+.recipe-nocost{color:var(--warning);font-weight:700}
+.recipe-nocost::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--warning)}
+.recipe-group{margin:0 0 14px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md)}
+.recipe-group legend{padding:0 6px;font-weight:700}
+.recipe-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;margin-bottom:10px}
+.recipe-price-row{grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto}
+@media(max-width:899px){
+  .recipe-head{flex-direction:column}
+  .recipe-row,.recipe-price-row{grid-template-columns:1fr}
+  .recipe-table thead{display:none}
+  .recipe-table,.recipe-table tbody,.recipe-table tfoot,.recipe-table tr,.recipe-table td{display:block}
+  .recipe-table tr{margin-bottom:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+  .recipe-table td{display:flex;justify-content:space-between;gap:12px;border:0;padding:4px 0;text-align:right}
+  .recipe-table td::before{content:attr(data-label);color:var(--text-secondary);font-weight:600;text-align:left}
+}

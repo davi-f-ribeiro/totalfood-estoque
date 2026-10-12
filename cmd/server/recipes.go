@@ -44,6 +44,8 @@ type recipeRequest struct {
 }
 
 func (a *app) registerRecipeHandlers(mux *http.ServeMux) {
+	mux.HandleFunc("GET /recipes", a.uiPage("recipes", "Fichas técnicas", "costs", "read"))
+	mux.HandleFunc("GET /api/recipes/options", a.requireAuth("costs", "read", a.handleRecipeOptions))
 	mux.HandleFunc("GET /api/customers", a.requireAuth("costs", "read", a.handleCustomers))
 	mux.HandleFunc("POST /api/customers", a.requireAuth("costs", "write", a.handleCreateCustomer))
 	mux.HandleFunc("PATCH /api/customers/{id}", a.requireAuth("costs", "write", a.handleUpdateCustomer))
@@ -78,6 +80,9 @@ WITH item_cost AS (
     SELECT lc.recipe_id,
            count(*) AS line_count,
            bool_or(lc.avg_cost IS NULL) AS incomplete,
+           CASE WHEN bool_or(lc.avg_cost IS NULL) THEN NULL
+                ELSE sum(lc.quantity*lc.correction_factor*lc.avg_cost)
+           END AS total_cost,
            CASE WHEN bool_or(lc.avg_cost IS NULL) THEN NULL
                 ELSE sum(lc.quantity*lc.correction_factor*lc.avg_cost) / r.portions
            END AS cost_per_portion
@@ -322,13 +327,14 @@ func (a *app) handleRecipe(w http.ResponseWriter, r *http.Request) {
 	var name, portions, notes string
 	var active, incomplete bool
 	var version int64
-	var cost sql.NullString
+	var cost, totalCost sql.NullString
 	err := a.db.QueryRowContext(ctx, recipeCostCTE+`
 SELECT r.name,r.portions::text,COALESCE(r.notes,''),r.active,r.version,
-       COALESCE(rc.incomplete,false),rc.cost_per_portion::numeric(14,4)::text
+       COALESCE(rc.incomplete,false),rc.cost_per_portion::numeric(14,4)::text,
+       rc.total_cost::numeric(14,4)::text
 FROM recipes r
 LEFT JOIN recipe_cost rc ON rc.recipe_id=r.id
-WHERE r.id=$1::bigint`, id).Scan(&name, &portions, &notes, &active, &version, &incomplete, &cost)
+WHERE r.id=$1::bigint`, id).Scan(&name, &portions, &notes, &active, &version, &incomplete, &cost, &totalCost)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "Ficha técnica não encontrada.")
 		return
@@ -380,6 +386,9 @@ ORDER BY lower(i.name),i.id`, id)
 SELECT p.customer_id,c.name,p.sale_price::text,
        CASE WHEN rc.cost_per_portion IS NULL THEN NULL
             ELSE (rc.cost_per_portion / p.sale_price * 100)::numeric(8,2)::text
+       END,
+       CASE WHEN rc.cost_per_portion IS NULL THEN NULL
+            ELSE ((1 - rc.cost_per_portion / p.sale_price) * 100)::numeric(8,2)::text
        END
 FROM recipe_customer_prices p
 JOIN customers c ON c.id=p.customer_id
@@ -396,14 +405,15 @@ ORDER BY lower(c.name),c.id`, id)
 	for priceRows.Next() {
 		var customerID int64
 		var customer, salePrice string
-		var cmv sql.NullString
-		if err := priceRows.Scan(&customerID, &customer, &salePrice, &cmv); err != nil {
+		var cmv, margin sql.NullString
+		if err := priceRows.Scan(&customerID, &customer, &salePrice, &cmv, &margin); err != nil {
 			log.Printf("recipe prices scan failed id=%d error=%v", id, err)
 			writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar a ficha técnica.")
 			return
 		}
 		prices = append(prices, map[string]any{
-			"customer_id": customerID, "customer": customer, "sale_price": salePrice, "cmv_percent": nullText(cmv),
+			"customer_id": customerID, "customer": customer, "sale_price": salePrice,
+			"cmv_percent": nullText(cmv), "margin_percent": nullText(margin),
 		})
 	}
 	if err := priceRows.Err(); err != nil {
@@ -414,8 +424,45 @@ ORDER BY lower(c.name),c.id`, id)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": id, "name": name, "portions": portions, "notes": notes, "active": active, "version": version,
-		"incomplete": incomplete, "cost_per_portion": nullText(cost), "lines": lines, "prices": prices,
+		"incomplete": incomplete, "cost_per_portion": nullText(cost), "total_cost": nullText(totalCost),
+		"lines": lines, "prices": prices,
 	})
+}
+
+// handleRecipeOptions entrega o que o formulário da ficha precisa escolher.
+// Fica sob costs/read para quem edita fichas não depender da permissão do catálogo.
+func (a *app) handleRecipeOptions(w http.ResponseWriter, r *http.Request) {
+	items, err := recipeOptionItems(r.Context(), a.db)
+	if err != nil {
+		log.Printf("recipe options items failed error=%v", err)
+		writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar as opções da ficha técnica.")
+		return
+	}
+	customers, err := simpleRows(r, a.db, `SELECT id,name FROM customers WHERE active=true ORDER BY lower(name),id`)
+	if err != nil {
+		log.Printf("recipe options customers failed error=%v", err)
+		writeJSONError(w, http.StatusInternalServerError, "Não foi possível carregar as opções da ficha técnica.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "customers": customers})
+}
+
+func recipeOptionItems(ctx context.Context, db *sql.DB) ([]map[string]any, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id,name,unit_code FROM inventory_items WHERE active=true ORDER BY lower(name),id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id int64
+		var name, unit string
+		if err := rows.Scan(&id, &name, &unit); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{"id": id, "name": name, "unit": unit})
+	}
+	return out, rows.Err()
 }
 
 func replaceRecipeContent(ctx context.Context, tx *sql.Tx, id int64, req recipeRequest) error {

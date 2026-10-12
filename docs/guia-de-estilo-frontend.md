@@ -61,7 +61,7 @@ Ação destrutiva usa o secundário em vermelho e pede confirmação.
 
 ## 5. Navegação
 
-- **Computador (≥ 900 px):** menu lateral fixo, na esquerda, com grupos: *Dia a dia* (Início, Estoque, Entrada, Saída, Transferir), *Cadastros* (Catálogo, Produtos, Patrimônio) e *Controle* (Contagem de estoque, Relatórios, Administração). A conta (usuário, trocar senha, sair) fica no rodapé do menu.
+- **Computador (≥ 900 px):** menu lateral fixo, na esquerda, com grupos: *Dia a dia* (Início, Estoque, Entrada, Saída, Transferir), *Cadastros* (Catálogo, Produtos, Patrimônio, Fichas técnicas) e *Controle* (Contagem de estoque, Relatórios, Administração). A conta (usuário, trocar senha, sair) fica no rodapé do menu.
 - **Celular (< 900 px):** barra superior com marca e conta; barra inferior com as quatro ações do dia a dia e "Mais" para o resto.
 - O item da página atual aparece marcado (`aria-current="page"`).
 - Quem não tem permissão não vê o item. A permissão real continua no servidor.
@@ -103,6 +103,11 @@ O texto da interface é o cartão de visita do sistema, e quem lê está trabalh
 | Warehouse | Depósito |
 | Inventário cego / total (na tela) | Contagem às cegas / completa |
 | Unidade patrimonial, plaqueta/tag | Patrimônio, plaqueta |
+| Receita, BOM, recipe | Ficha técnica (lista de itens do estoque de um prato) |
+| Yield, rendimento | Porções que a receita rende |
+| Food cost, margem de contribuição | CMV (custo da porção ÷ preço de venda do cliente); Margem (o que sobra do preço) |
+| Customer, comprador | Cliente (quem compra o prato; cada cliente tem seu preço de venda) |
+| Custo médio, PMP | Custo unitário (preço médio do estoque) |
 | Inventário cego | Contagem às cegas |
 | Inventário total | Contagem completa |
 | Inventário (a atividade de contar) | Contagem |

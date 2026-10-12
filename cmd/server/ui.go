@@ -20,25 +20,27 @@ var uiFS embed.FS
 var uiTemplates = template.Must(template.ParseFS(uiFS, "templates/*.html"))
 
 type uiData struct {
-	Title             string
-	User              authUser
-	CSRF              string
-	Page              string
-	Error             string
-	CanStock          bool
-	CanEntry          bool
-	CanExit           bool
-	CanTransfer       bool
-	CanReports        bool
-	CanCatalog        bool
-	CanAssets         bool
-	CanInventory      bool
-	CanInventoryWrite bool
+	Title              string
+	User               authUser
+	CSRF               string
+	Page               string
+	Error              string
+	CanStock           bool
+	CanEntry           bool
+	CanExit            bool
+	CanTransfer        bool
+	CanReports         bool
+	CanCatalog         bool
+	CanAssets          bool
+	CanCosts           bool
+	CanCostsWrite      bool
+	CanInventory       bool
+	CanInventoryWrite  bool
 	CanStockAdjustment bool
-	CanAdmin          bool
-	CanUserAdmin      bool
-	CanProfileAdmin   bool
-	CanWarehouseAdmin bool
+	CanAdmin           bool
+	CanUserAdmin       bool
+	CanProfileAdmin    bool
+	CanWarehouseAdmin  bool
 }
 
 func (a *app) registerUIHandlers(mux *http.ServeMux) {
@@ -62,7 +64,6 @@ func (a *app) registerUIHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/stock/availability", a.requireAuth("stock", "read", a.handleStockAvailability))
 	mux.HandleFunc("GET /api/products/lookup", a.requireAuth("stock", "read", a.handleLookup))
 }
-
 
 func (a *app) showLogin(w http.ResponseWriter, r *http.Request) {
 	a.render(w, "login.html", uiData{Title: "Estoque"})
@@ -172,20 +173,22 @@ WHERE pp.profile_id=$1`, u.ProfileID)
 	canWarehouseAdmin := has("warehouses", "write")
 	return uiData{
 		Title: title, User: u, CSRF: csrf, Page: page,
-		CanStock: has("stock", "read"),
-		CanEntry: has("movement_entry", "write"),
-		CanExit: has("movement_exit", "write"),
-		CanTransfer: has("movement_transfer", "write"),
-		CanReports: has("operations", "read"),
-		CanCatalog: has("catalog", "read"),
-		CanAssets: has("assets", "read"),
-		CanInventory: has("inventory_validation", "read"),
-		CanInventoryWrite: has("inventory_validation", "write"),
+		CanStock:           has("stock", "read"),
+		CanEntry:           has("movement_entry", "write"),
+		CanExit:            has("movement_exit", "write"),
+		CanTransfer:        has("movement_transfer", "write"),
+		CanReports:         has("operations", "read"),
+		CanCatalog:         has("catalog", "read"),
+		CanAssets:          has("assets", "read"),
+		CanCosts:           has("costs", "read"),
+		CanCostsWrite:      has("costs", "write"),
+		CanInventory:       has("inventory_validation", "read"),
+		CanInventoryWrite:  has("inventory_validation", "write"),
 		CanStockAdjustment: has("stock_adjustment", "write"),
-		CanAdmin: canUserAdmin || canProfileAdmin || canWarehouseAdmin,
-		CanUserAdmin: canUserAdmin,
-		CanProfileAdmin: canProfileAdmin,
-		CanWarehouseAdmin: canWarehouseAdmin,
+		CanAdmin:           canUserAdmin || canProfileAdmin || canWarehouseAdmin,
+		CanUserAdmin:       canUserAdmin,
+		CanProfileAdmin:    canProfileAdmin,
+		CanWarehouseAdmin:  canWarehouseAdmin,
 	}, nil
 }
 
@@ -238,6 +241,7 @@ func (a *app) redirectToAuthorizedHome(w http.ResponseWriter, r *http.Request) {
 		{data.CanReports, "/reports"},
 		{data.CanCatalog, "/catalog"},
 		{data.CanAssets, "/assets"},
+		{data.CanCosts, "/recipes"},
 		{data.CanInventory, "/inventory"},
 		{data.CanAdmin, "/admin"},
 	} {
@@ -332,7 +336,7 @@ func (a *app) handleStock(w http.ResponseWriter, r *http.Request) {
 		var id int64
 		var name, unit, min, qty string
 		var below bool
-		if err := rows.Scan(&id,&name,&unit,&min,&qty,&below); err != nil {
+		if err := rows.Scan(&id, &name, &unit, &min, &qty, &below); err != nil {
 			writeJSONError(w, 500, "internal error")
 			return
 		}
@@ -353,4 +357,3 @@ func setSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
 }
-

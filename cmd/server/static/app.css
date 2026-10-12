@@ -276,6 +276,7 @@ label.check{display:flex;align-items:center;gap:8px;min-height:44px;margin-botto
 .nav a[href="/catalog"]{--ico:url("/static/icons/catalogo.svg")}
 .nav a[href="/products"]{--ico:url("/static/icons/produtos.svg")}
 .nav a[href="/assets"]{--ico:url("/static/icons/patrimonio.svg")}
+.nav a[href="/recipes"]{--ico:url("/static/icons/fichas.svg")}
 .nav a[href="/inventory"]{--ico:url("/static/icons/contagem.svg")}
 .nav a[href="/reports"]{--ico:url("/static/icons/relatorios.svg")}
 .nav a[href="/admin"]{--ico:url("/static/icons/administracao.svg")}
