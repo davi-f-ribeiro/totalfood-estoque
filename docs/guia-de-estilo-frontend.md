@@ -57,12 +57,16 @@ Ação destrutiva usa o secundário em vermelho e pede confirmação.
 
 **Avisos.** Um bloco (`.operation-feedback`) com quatro estados: neutro, carregando, sucesso, erro. Frase curta, dizendo o que aconteceu e o que fazer.
 
+**Lançamento em lote (desktop, a partir de 1000 px).** Entrada, Saída e Transferência usam a tela de lote do mockup "Operar em lote": seletor de tipo no alto, depósito(s), campo de leitura em destaque, tabela de produtos (estoque atual, quantidade, preço da embalagem na entrada, estoque após) e resumo fixo à direita com o botão principal. O servidor grava o lote inteiro ou nada (`/api/movements/{entry,exit,transfer}/batch`). No celular continua o assistente de 3 passos, um produto por vez.
+
 ## 5. Navegação
 
-- **Computador (≥ 900 px):** menu lateral fixo, na esquerda, com grupos: *Dia a dia* (Estoque, Entrada, Saída, Transferir), *Cadastros* (Catálogo, Produtos, Patrimônio) e *Controle* (Contagem de estoque, Relatórios, Administração). A conta (usuário, trocar senha, sair) fica no rodapé do menu.
+- **Computador (≥ 900 px):** menu lateral fixo, na esquerda, com grupos: *Dia a dia* (Início, Estoque, Entrada, Saída, Transferir), *Cadastros* (Catálogo, Produtos, Patrimônio) e *Controle* (Contagem de estoque, Relatórios, Administração). A conta (usuário, trocar senha, sair) fica no rodapé do menu.
 - **Celular (< 900 px):** barra superior com marca e conta; barra inferior com as quatro ações do dia a dia e "Mais" para o resto.
 - O item da página atual aparece marcado (`aria-current="page"`).
 - Quem não tem permissão não vê o item. A permissão real continua no servidor.
+
+**Início e Estoque.** Início (`/home`) é a página de entrada: atalhos de lançamento e tabela de itens abaixo do mínimo, vinda de `/api/stock`. No desktop, Estoque é uma tabela (Item, Estoque, Mínimo, Situação); no celular, lista de linhas.
 
 ## 6. Como escrever os textos da tela
 

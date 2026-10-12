@@ -506,7 +506,7 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 		t.Fatal("navigation must have one canonical template")
 	}
 	for _, want := range []string{
-		`{{if .CanStock}}<a href="/stock">Estoque</a>{{end}}`,
+		`{{if .CanStock}}<a href="/home">Início</a><a href="/stock">Estoque</a>{{end}}`,
 		`{{if .CanEntry}}<a href="/entry">Entrada</a>{{end}}`,
 		`{{if .CanExit}}<a href="/exit">Saída</a>{{end}}`,
 		`{{if .CanTransfer}}<a href="/transfer">Transferir</a>{{end}}`,
@@ -958,5 +958,27 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 	}
 	if strings.Contains(js, `if(createTotal)if(createTotal)`) {
 		t.Fatal("inventory creation must not retain duplicated guards")
+	}
+}
+
+func TestMovementBatchViewContract(t *testing.T) {
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.FromSlash(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	html := read("templates/movement.html")
+	for _, want := range []string{`id="batchView"`, `id="batchTable"`, `id="batchSubmit"`, `/static/batch.js`, `/static/batch.css`, `aria-label="Resumo do lote"`} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("movement.html missing %q", want)
+		}
+	}
+	js := read("static/batch.js")
+	for _, want := range []string{"/api/movements/'+kind+'/batch", "crypto.randomUUID()", "claimPending('movement'", "/api/operations/"} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("batch.js missing %q", want)
+		}
 	}
 }

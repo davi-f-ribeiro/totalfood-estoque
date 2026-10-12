@@ -49,6 +49,7 @@ func (a *app) registerUIHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /login", a.showLogin)
 	mux.HandleFunc("POST /login", a.handleLoginForm)
 	mux.HandleFunc("GET /change-password", a.showChangePassword)
+	mux.HandleFunc("GET /home", a.uiPage("home", "Início", "stock", "read"))
 	mux.HandleFunc("GET /stock", a.uiPage("stock", "Estoque", "stock", "read"))
 	mux.HandleFunc("GET /reports", a.uiPage("reports", "Relatórios", "operations", "read"))
 	mux.HandleFunc("GET /entry", a.uiPage("movement", "Entrada", "movement_entry", "write"))
@@ -230,7 +231,7 @@ func (a *app) redirectToAuthorizedHome(w http.ResponseWriter, r *http.Request) {
 		allowed bool
 		path    string
 	}{
-		{data.CanStock, "/stock"},
+		{data.CanStock, "/home"},
 		{data.CanEntry, "/entry"},
 		{data.CanExit, "/exit"},
 		{data.CanTransfer, "/transfer"},
