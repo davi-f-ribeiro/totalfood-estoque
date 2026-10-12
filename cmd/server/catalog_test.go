@@ -75,7 +75,7 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 	res, err := a.createEntry(context.Background(), movementRequest{OperationID: "catalog-hist", SKUID: firstSKU, WarehouseID: wh, Quantity: "1", UnitCost: "10"}, "catalog-hist")
 	mustMove2(t, res, err)
 	editBlocked := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(itemID), map[string]any{"name": "Feijão Carioca <b>", "category_id": catID, "unit_code": "UN", "minimum_stock": "3", "notes": "ok", "active": true, "version": crudVersion(t, a, "inventory_items", itemID)}, director, "")
-	if editBlocked.Code != http.StatusConflict || !strings.Contains(editBlocked.Body.String(), "Unidade não pode ser alterada") {
+	if editBlocked.Code != http.StatusConflict || !strings.Contains(editBlocked.Body.String(), "A unidade não pode mudar") {
 		t.Fatalf("unit edit with history status=%d body=%s", editBlocked.Code, editBlocked.Body.String())
 	}
 	editOK := authReq(a, http.MethodPatch, "/api/catalog/items/"+itoa(itemID), map[string]any{"name": "Feijão Carioca Corrigido", "category_id": catID, "unit_code": "KG", "minimum_stock": "4", "notes": "ok", "active": true, "version": crudVersion(t, a, "inventory_items", itemID)}, director, "")
@@ -176,7 +176,7 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 		"active": true,
 		"version": crudVersion(t, a, "inventory_items", parentAID),
 	}, director, "")
-	if historicalUnitEdit.Code != http.StatusConflict || !strings.Contains(historicalUnitEdit.Body.String(), "Unidade não pode ser alterada") {
+	if historicalUnitEdit.Code != http.StatusConflict || !strings.Contains(historicalUnitEdit.Body.String(), "A unidade não pode mudar") {
 		t.Fatalf("historical parent unit edit status=%d body=%s", historicalUnitEdit.Code, historicalUnitEdit.Body.String())
 	}
 
