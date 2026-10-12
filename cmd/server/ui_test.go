@@ -506,7 +506,7 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 		t.Fatal("navigation must have one canonical template")
 	}
 	for _, want := range []string{
-		`{{if .CanStock}}<a href="/stock">Estoque</a>{{end}}`,
+		`{{if .CanStock}}<a href="/home">Início</a><a href="/stock">Estoque</a>{{end}}`,
 		`{{if .CanEntry}}<a href="/entry">Entrada</a>{{end}}`,
 		`{{if .CanExit}}<a href="/exit">Saída</a>{{end}}`,
 		`{{if .CanTransfer}}<a href="/transfer">Transferir</a>{{end}}`,

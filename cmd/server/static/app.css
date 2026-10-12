@@ -268,6 +268,7 @@ label.check{display:flex;align-items:center;gap:8px;min-height:44px;margin-botto
 .nav-more{display:contents}
 .nav-more-menu{display:contents}
 .nav-more-toggle{display:none;border:0;background:transparent;font-weight:600}
+.nav a[href="/home"]{--ico:url("/static/icons/inicio.svg")}
 .nav a[href="/stock"]{--ico:url("/static/icons/estoque.svg")}
 .nav a[href="/entry"]{--ico:url("/static/icons/entrada.svg")}
 .nav a[href="/exit"]{--ico:url("/static/icons/saida.svg")}
@@ -413,3 +414,21 @@ button:disabled{background:var(--surface-secondary);color:var(--text-muted);bord
 #masterNewBrand:hover{background:var(--surface-secondary)}
 .catalog-search{margin-top:8px}
 .report-shortcuts legend{font-size:.8125rem;font-weight:600;color:var(--text-muted)}
+
+/* Estoque no desktop: tabela de Item, Estoque, Mínimo e Situação (mockup). */
+.stock-head{display:none}
+.stock-card .stock-min,.stock-card .stock-state{display:none}
+@media(min-width:900px){
+  .stock-shell #stockList{display:block;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden}
+  .stock-shell .stock-head,.stock-shell .stock-card{display:grid;grid-template-columns:minmax(0,1fr) 120px 120px 150px 24px;gap:16px;align-items:center;padding:0 16px}
+  .stock-shell .stock-head{display:grid;min-height:44px;border-bottom:1px solid var(--border);color:var(--text-muted);font-size:.8125rem;font-weight:600}
+  .stock-shell #stockList .stock-card{border:0;border-bottom:1px solid var(--border);border-radius:0;margin:0;min-height:60px;padding:0 16px}
+  .stock-shell #stockList .stock-card:last-of-type{border-bottom:0}
+  .stock-shell .stock-card>span:first-child small{display:none}
+  .stock-shell .stock-card .stock-min,.stock-shell .stock-card .stock-state{display:block;font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+  .stock-shell .stock-card>strong{text-align:right}
+  .stock-shell .stock-card .stock-state{text-align:left;font-size:.875rem;font-weight:600;color:var(--text-muted)}
+  .stock-shell .stock-card.low .stock-state{color:var(--warning)}
+  .stock-shell .stock-card.low .stock-state::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--warning)}
+  .stock-shell #stockDetail{margin:0;padding:16px;border:0;border-bottom:1px solid var(--border);background:var(--surface-secondary)}
+}

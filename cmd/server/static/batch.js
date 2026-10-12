@@ -280,5 +280,11 @@ loadWarehousesForBatch();
 loadPendingRecord().then(p=>{if(p){pending=p;showPending(false,false);note('error','Há um lançamento sem confirmação. Toque em “Conferir” antes de fazer outro.')}});
 const q=new URLSearchParams(location.search);
 if(q.get('sku_id')){addProduct({sku_id:+q.get('sku_id'),item:q.get('item')||'',brand:q.get('brand')||'',barcode:q.get('barcode')||'',unit:q.get('unit')||'',content_quantity:q.get('content_quantity')||'1'})}
+if(q.get('warehouse_id')&&!isTransfer){const t=setInterval(()=>{if(wh.options.length>1){wh.value=q.get('warehouse_id');clearInterval(t);refreshComputed()}},100);setTimeout(()=>clearInterval(t),3000)}
+if(q.get('item_id')){api('/api/stock/detail/'+encodeURIComponent(q.get('item_id'))).then(d=>{
+  const rows=(d.presentations||[]).map(x=>({sku_id:x.sku_id,item:d.name,brand:x.sku||x.brand||'',barcode:x.barcode||'',unit:d.unit,content_quantity:x.content_quantity||'1'}));
+  search.value=d.name;
+  if(rows.length===1){addProduct(rows[0])}else if(rows.length>1){showLookup(rows,lookup,addProduct);lookupNote('','Escolha a embalagem do produto.')}
+}).catch(err=>lookupNote('error',esc(uiErrorMessage(err,'Não foi possível carregar o produto.'))))}
 search.focus();
 })();
