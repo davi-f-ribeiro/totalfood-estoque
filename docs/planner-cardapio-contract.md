@@ -99,6 +99,15 @@ Referência: cardápios reais da semana 12/10 a 17/10 (Data Center Pecém, Quent
 5. **Per capita é de produto pronto.** O cru vem do fator de correção e do rendimento da ficha. A ficha precisa ter o **peso da porção pronta**; sem ele, não entra no planner.
 6. **Retrato na aprovação** (custos e quantidades gravados no plano aprovado), como descrito em "Fonte de verdade".
 
+## Decisões de implementação (menor caminho)
+
+- **Função e etiquetas** são texto na própria ficha técnica (minúsculas), sem cadastro à parte. A tela sugere os valores já usados.
+- **Troca "feijão caro por um mais em conta"** acontece entre fichas da mesma função (ficha de feijão carioca ↔ ficha de feijão preto). O solver não altera ingredientes dentro da ficha: a receita aprovada pela nutricionista não muda.
+- **Vínculo cliente → grupo** fica para quando houver uso; o planner trabalha por grupo.
+- **Solver**: preenche as posições vazias com a melhor ficha e depois aplica, uma a uma, a troca de maior ganho. Posição já preenchida só muda para resolver regra quebrada, excesso de CMV (dia ou período) ou repetição do dia anterior; custo menor sozinho não desfaz a escolha de quem planeja. O ganho de escala é um desconto, do tamanho da tolerância de escala, sobre o custo das preparações compartilhadas entre grupos no mesmo dia.
+- **Aprovação** exige plano calculável e sem regras quebradas.
+- **Realizado** = saídas (`SAIDA`) do estoque no período, no fuso de Fortaleza, de todos os depósitos. Ajustes de inventário e transferências não entram. Planos com períodos sobrepostos dividem as mesmas saídas.
+
 ## Gates
 
 1. Este contrato.

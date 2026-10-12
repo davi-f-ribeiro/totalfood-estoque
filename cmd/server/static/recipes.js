@@ -32,9 +32,10 @@ async function loadAll(){
  try{[recipes,customers]=await Promise.all([api('/api/recipes'),api('/api/customers')])}catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível carregar as fichas. Atualize a página.'));return false}
  setFeedback(status,'','');renderList();renderCustomers();return true}
 function kpi(label,value){let d=el('div','recipe-kpi');d.append(el('small',null,label),el('strong',null,value));return d}
+function fillPlanningLists(){[['recipeFunctions','meal_function'],['recipeTagList','tags']].forEach(([id,k])=>{let set=new Set();recipes.forEach(r=>[].concat(r[k]||[]).forEach(v=>v&&set.add(v)));let dl=$(id);dl.textContent='';[...set].sort().forEach(v=>{let o=document.createElement('option');o.value=v;dl.append(o)})})}
 function renderDetail(d){
  detail.textContent='';current=d;
- let head=el('div','recipe-head'),t=el('div');t.append(el('h2',null,d.name),el('p','hint',nf(0,3).format(Number(d.portions))+' porção(ões) por receita'+(d.active?'':' · Ficha inativa')));
+ let head=el('div','recipe-head'),t=el('div');t.append(el('h2',null,d.name),el('p','hint',nf(0,3).format(Number(d.portions))+' porção(ões) por receita'+(d.meal_function?' · '+d.meal_function:'')+(d.portion_size?' · porção pronta de '+nf(0,3).format(Number(d.portion_size))+' '+d.portion_unit:'')+((d.tags||[]).length?' · '+d.tags.join(', '):'')+(d.active?'':' · Ficha inativa')));
  head.append(t);if(canWrite){let e=el('button','secondary','Editar ficha');e.type='button';e.onclick=()=>openRecipe(d);head.append(e)}
  detail.append(head);
  if(d.incomplete){let w=el('p','impact-warning','Falta custo em: '+d.lines.filter(l=>l.avg_cost==null).map(l=>l.item).join(', ')+'. Registre uma entrada com preço no estoque para calcular o CMV.');detail.append(w)}
@@ -78,6 +79,7 @@ async function openRecipe(d){
  try{await loadOptions()}catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível carregar os itens e clientes. Tente de novo.'));return}
  form.reset();linesBox.textContent='';pricesBox.textContent='';setFeedback(fStatus,'','');
  $('recipeId').value=d?d.id:'';$('recipeName').value=d?d.name:'';$('recipePortions').value=d?inputDec(d.portions):'1';$('recipeNotes').value=d?d.notes||'':'';$('recipeActive').checked=d?d.active:true;
+ $('recipeFunction').value=d?d.meal_function||'':'';$('recipePortionSize').value=d&&d.portion_size?inputDec(d.portion_size):'';$('recipePortionUnit').value=d?d.portion_unit||'':'';$('recipeTags').value=d?(d.tags||[]).join(', '):'';fillPlanningLists();
  form.dataset.version=d?d.version:'';(d?d.lines:[null]).forEach(addLine);(d?d.prices:[]).forEach(addPrice);
  setCrudMode(form,!!d,'Criar ficha','Atualizar ficha');$('recipeDialogTitle').textContent=d?'Editar ficha':'Nova ficha';
  form.hidden=false;dlg.showModal();$('recipeName').focus()}
@@ -91,7 +93,7 @@ form.addEventListener('submit',async e=>{e.preventDefault();
   let lines=[...linesBox.children].map(r=>({item_id:Number(r.querySelector('[data-role=item]').value),quantity:requestDecimal(r.querySelector('[data-role=qty]').value),correction_factor:requestDecimal(r.querySelector('[data-role=factor]').value)}));
   if(!lines.length){setFeedback(fStatus,'error','Adicione ao menos um ingrediente.');return}
   let prices=[...pricesBox.children].map(r=>({customer_id:Number(r.querySelector('[data-role=customer]').value),sale_price:requestDecimal(r.querySelector('[data-role=price]').value)}));
-  let id=$('recipeId').value,name=$('recipeName').value.trim(),body={name,portions:requestDecimal($('recipePortions').value),notes:$('recipeNotes').value.trim(),active:$('recipeActive').checked,lines,prices};
+  let id=$('recipeId').value,name=$('recipeName').value.trim(),body={name,portions:requestDecimal($('recipePortions').value),notes:$('recipeNotes').value.trim(),active:$('recipeActive').checked,lines,prices,meal_function:$('recipeFunction').value.trim(),portion_size:requestDecimal($('recipePortionSize').value),portion_unit:$('recipePortionUnit').value,tags:$('recipeTags').value.split(',').map(x=>x.trim()).filter(Boolean)};
   if(id)body.version=Number(form.dataset.version);
   setFeedback(fStatus,'loading','Salvando ficha…');
   try{let r=await api(id?'/api/recipes/'+id:'/api/recipes',{method:id?'PATCH':'POST',body:JSON.stringify(body)});

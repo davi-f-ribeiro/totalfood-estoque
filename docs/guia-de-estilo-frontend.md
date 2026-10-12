@@ -61,7 +61,7 @@ Ação destrutiva usa o secundário em vermelho e pede confirmação.
 
 ## 5. Navegação
 
-- **Computador (≥ 900 px):** menu lateral fixo, na esquerda, com grupos: *Dia a dia* (Início, Estoque, Entrada, Saída, Transferir), *Cadastros* (Catálogo, Produtos, Patrimônio, Fichas técnicas) e *Controle* (Contagem de estoque, Relatórios, Administração). A conta (usuário, trocar senha, sair) fica no rodapé do menu.
+- **Computador (≥ 900 px):** menu lateral fixo, na esquerda, com grupos: *Dia a dia* (Início, Estoque, Entrada, Saída, Transferir), *Cadastros* (Catálogo, Produtos, Patrimônio, Fichas técnicas) e *Controle* (Cardápio, Contagem de estoque, Relatórios, Administração). A conta (usuário, trocar senha, sair) fica no rodapé do menu.
 - **Celular (< 900 px):** barra superior com marca e conta; barra inferior com as quatro ações do dia a dia e "Mais" para o resto.
 - O item da página atual aparece marcado (`aria-current="page"`).
 - Quem não tem permissão não vê o item. A permissão real continua no servidor.
@@ -108,6 +108,16 @@ O texto da interface é o cartão de visita do sistema, e quem lê está trabalh
 | Food cost, margem de contribuição | CMV (custo da porção ÷ preço de venda do cliente); Margem (o que sobra do preço) |
 | Customer, comprador | Cliente (quem compra o prato; cada cliente tem seu preço de venda) |
 | Custo médio, PMP | Custo unitário (preço médio do estoque) |
+| Menu planner, planejamento | Plano (de cardápio) |
+| Headcount, refeições estimadas | Refeições previstas (premissa do plano) |
+| Refeições servidas, realizado | Quantidade real |
+| Per capita cru | Per capita pronto (do contrato do grupo) |
+| Cluster, carteira | Grupo de clientes |
+| Slot, componente | Função no prato (proteína, base, feijão…) |
+| Lock, fixar | Travar |
+| Sugestão automática, otimização | Sugestão do solver |
+| Pedido de compra, requisição | Solicitação de compra |
+| Budget x actual | Previsto x realizado |
 | Inventário cego | Contagem às cegas |
 | Inventário total | Contagem completa |
 | Inventário (a atividade de contar) | Contagem |
