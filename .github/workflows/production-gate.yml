@@ -40,10 +40,17 @@ jobs:
           cache: true
       - name: Toolchain versions
         run: |
-          go version
-          node --version
-          psql --version
-          docker --version
+          missing=0
+          for tool in go node psql docker; do
+            if path=$(command -v "$tool"); then
+              echo "$tool: $path"
+              "$tool" --version 2>&1 | head -1 || true
+            else
+              echo "::error::$tool não encontrado no executor (PATH=$PATH)"
+              missing=1
+            fi
+          done
+          exit $missing
       - name: JavaScript syntax
         run: node --check cmd/server/static/app.js
       - name: Go vet
