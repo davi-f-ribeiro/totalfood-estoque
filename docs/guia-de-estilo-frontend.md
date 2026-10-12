@@ -13,7 +13,7 @@ Quem mexer na interface deve seguir estas regras. Se uma regra atrapalhar, mude 
 
 ## 2. Cores (função, não decoração)
 
-Use sempre as variáveis de `app.css`. Não crie cor nova sem registrar aqui.
+O bloco final de `app.css` ("Sistema visual do mockup aprovado") implementa este guia em todas as telas; novas telas herdam dele e não devem recriar estilos. Use sempre as variáveis de `app.css`. Não crie cor nova sem registrar aqui.
 
 | Função | Variável | Quando usar |
 |---|---|---|
@@ -37,7 +37,7 @@ Regras:
 
 - **Escala de espaço:** 4, 8, 16, 24, 32 px. Entre campos do mesmo grupo, 8 ou 12; entre grupos, 16 ou 24.
 - **Proximidade (Gestalt):** o que é do mesmo assunto fica junto e dentro do mesmo cartão. A distância entre grupos é sempre maior que a distância dentro do grupo.
-- **Cantos:** dois raios apenas. `--radius-md` (10 px) em cartões e painéis; `--radius-sm` (6 px) em campos, botões e avisos.
+- **Cantos:** dois raios apenas. `--radius-md` (10 px) em cartões e painéis, planos, sem sombra; `--radius-sm` (6 px) em campos, botões e avisos.
 - **Sombra:** só `--shadow-sm`, em cartões. Sombra grande apenas na barra fixa do celular.
 - **Tipografia:** fonte do sistema. Título de tela 1.4rem; título de bloco 1rem em negrito; corpo 16px; legenda 13px. Quantidades que o operador digita usam tamanho maior (1.25rem a 1.5rem).
 - **Alvo de toque:** 44 px de altura no mínimo; 52 px nos botões da barra fixa do celular.

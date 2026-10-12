@@ -321,3 +321,95 @@ label.check{display:flex;align-items:center;gap:8px;min-height:44px;margin-botto
   .stock-filters{margin-bottom:16px}
 }
 .login form button[type="submit"]{width:100%}
+
+/* ======================================================================
+   Sistema visual do mockup aprovado (docs/guia-de-estilo-frontend.md)
+   Vale para todas as telas: cabeçalho, painéis, títulos, rótulos, listas,
+   botões e avisos. Blocos antigos acima ficam como base; este bloco manda.
+   ====================================================================== */
+:root{--brand-logo-image:url("/static/logo-totalfood.png");--surface-flat:var(--surface)}
+body{font-size:16px;line-height:1.45}
+
+/* Cabeçalho: logo, divisor e nome do sistema; conta como botão de ícone */
+.top{height:64px;padding:0 16px;box-shadow:none;border-bottom:1px solid var(--border)}
+.brand{gap:12px}
+.brand-logo:not(.large){width:56px;height:40px;background-size:contain}
+.brand-copy{padding-left:12px;border-left:1px solid var(--border);gap:0}
+.brand-copy strong{font-size:1rem;font-weight:700;line-height:1.2}
+.brand-copy small{font-size:.8125rem;font-weight:500;line-height:1.2}
+.account summary{list-style:none;min-width:44px;min-height:44px;justify-content:center;border:1px solid var(--border);border-radius:var(--radius-md);padding:0 10px;font-weight:600}
+.account summary::-webkit-details-marker{display:none}
+.account-icon{width:22px;height:22px;background:currentColor;-webkit-mask:url("/static/icons/conta.svg") center/contain no-repeat;mask:url("/static/icons/conta.svg") center/contain no-repeat}
+.account-name{display:none}
+.account[open] summary,.account summary:hover{background:var(--surface-secondary)}
+@media(min-width:900px){.account-name{display:inline}.account summary{gap:8px}}
+@media(max-width:390px){.brand-copy small{display:none}}
+@media(min-width:900px){body:has(>.nav)>.nav{top:64px;height:calc(100vh - 64px)}}
+
+/* Painéis: planos, raio de 10 px, sem sombra */
+.panel{border-radius:var(--radius-md);box-shadow:none;padding:16px}
+.login{border-radius:var(--radius-md);box-shadow:none}
+@media(min-width:900px){.panel{padding:24px}}
+
+/* Títulos e rótulos */
+h1{font-size:1.25rem;font-weight:700;line-height:1.25;margin:0 0 4px}
+h1+.hint,h1+p.hint{margin-top:0}
+h2{font-size:.9375rem;font-weight:700;line-height:1.3;margin:0 0 12px}
+h3{font-size:.9375rem;font-weight:700}
+label{font-size:.8125rem;font-weight:600;color:var(--text-muted);gap:6px;margin:0 0 16px}
+label input,label select,label textarea{font-size:1rem;font-weight:400;color:var(--text-primary)}
+label.check{font-size:1rem;color:var(--text-primary);font-weight:500}
+.hint{font-size:.8125rem;color:var(--text-muted);margin-top:0}
+input,select,textarea{border-radius:var(--radius-sm);min-height:48px;padding:10px 12px}
+
+/* Botões: principal (verde), secundário (contorno), texto */
+button,.button{background:var(--brand-primary);border-color:var(--brand-primary);font-weight:700;min-height:48px;border-radius:var(--radius-sm);padding:10px 16px}
+button:hover,.button:hover{background:var(--brand-primary-hover);border-color:var(--brand-primary-hover)}
+button:active,.button:active{background:var(--brand-primary-active)}
+button.secondary,.secondary,.linkish{background:var(--surface);color:var(--text-primary);border-color:var(--border)}
+button.secondary:hover,.secondary:hover,.linkish:hover{background:var(--surface-secondary);border-color:var(--border)}
+button.danger,.danger{background:var(--surface);color:var(--danger);border-color:var(--danger-border)}
+button.danger:hover{background:var(--danger-soft)}
+.catalog-title button,.section-heading button,.catalog-manager button:not(.secondary):not(.catalog-parent-card):not(.list-action){min-height:44px}
+.account .linkish{border:0;background:transparent;min-height:44px;padding:0 10px;font-weight:600}
+.account .linkish:hover{background:var(--surface-secondary)}
+button:disabled{background:var(--surface-secondary);color:var(--text-muted);border-color:var(--border);opacity:1}
+
+/* Linhas de lista: título, detalhe cinza, valor/ação à direita, 56 px no mínimo */
+.list{border-top:0}
+.row,.stock-card,.list-action,.catalog-parent-card,.inventory-admin-card,.sku-row{min-height:56px;align-items:center}
+.row{padding:12px 0}
+.stock-card,.list-action{padding:10px 4px;font-size:1rem}
+.stock-card strong,.list-action strong{font-weight:600}
+.stock-card>span:first-child strong{font-size:1rem}
+.stock-card>span:first-child small{font-size:.8125rem;font-weight:600}
+.stock-card>span:nth-child(2){font-weight:700;font-variant-numeric:tabular-nums}
+.low{border-left:0;padding-left:4px}
+.low>span:first-child small::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--warning)}
+.catalog-parent-card,.sku-row,.inventory-admin-card,.inventory-line,.inventory-create-card,.permission-group{border-radius:var(--radius-md);box-shadow:none}
+.catalog-parent-card.selected,.catalog-parent-card:hover{background:var(--brand-primary-soft);border-color:var(--brand-primary)}
+.list-action.selected{background:var(--brand-primary-soft)}
+
+/* Ação de texto verde dentro de linhas e cabeçalhos de seção */
+.text-action,.row .linkish,.section-heading .linkish{width:auto;border:0;background:transparent;color:var(--brand-primary-active);font-weight:700;min-height:44px;padding:0 8px}
+
+/* Avisos: faixa com texto curto; aviso de atenção em âmbar */
+.operation-feedback,.product-feedback,.context-note,.impact-warning{border-radius:var(--radius-sm);font-size:.9375rem}
+.impact-warning,.summary.warning{background:#fffaf0;border-color:#e3c58d;color:var(--warning)}
+.error{font-weight:600}
+
+/* Barra de abas e filtros: espaçamento da escala 4/8/16/24/32 */
+.panel>*+.panel,.assets,.admin,.stock-shell,.fiscal-shell,.catalog-manager,.inventory-shell{gap:16px}
+.stock-filters{margin-bottom:8px}
+@media(min-width:900px){.stock-shell #stockList .stock-card{border:1px solid var(--border);border-radius:var(--radius-md);margin-bottom:8px;padding:10px 16px}}
+@media(max-width:767px){.main{padding:16px}}
+
+/* Entrada e login */
+.login-shell{background:var(--background)}
+.login h1{text-align:center}
+.brand-logo.large{width:120px;height:51px;margin:0 auto 12px}
+/* Um botão principal por tela: "Nova marca" é apoio ao lado de "Novo item". */
+#masterNewBrand{background:var(--surface);color:var(--text-primary);border-color:var(--border)}
+#masterNewBrand:hover{background:var(--surface-secondary)}
+.catalog-search{margin-top:8px}
+.report-shortcuts legend{font-size:.8125rem;font-weight:600;color:var(--text-muted)}
