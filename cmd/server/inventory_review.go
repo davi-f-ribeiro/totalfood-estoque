@@ -66,9 +66,9 @@ func (a *app) handleGetInventoryReview(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeJSON(w, http.StatusOK, view)
 	case errors.Is(err, errInventoryValidationNotFound):
-		writeJSONError(w, http.StatusNotFound, "Inventário não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Contagem não encontrada.")
 	case errors.Is(err, errInventoryNotInReview):
-		writeJSONError(w, http.StatusConflict, "Inventário ainda não está em revisão.")
+		writeJSONError(w, http.StatusConflict, "A contagem ainda não está em revisão.")
 	default:
 		log.Printf("inventory review lookup failed validation_id=%d error=%v", id, err)
 		writeJSONError(w, http.StatusInternalServerError, "Erro interno.")
@@ -82,7 +82,7 @@ func (a *app) handleSaveInventoryRecount(w http.ResponseWriter, r *http.Request)
 	}
 	skuID, err := strconv.ParseInt(strings.TrimSpace(r.PathValue("sku_id")), 10, 64)
 	if err != nil || skuID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "SKU inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Produto inválido.")
 		return
 	}
 	var req inventoryRecountRequest
@@ -91,7 +91,7 @@ func (a *app) handleSaveInventoryRecount(w http.ResponseWriter, r *http.Request)
 	}
 	req.PhysicalQuantity = normalizeDecimalInput(req.PhysicalQuantity)
 	if !validPhysicalQuantity(req.PhysicalQuantity) || req.ExpectedVersion < 0 {
-		writeJSONError(w, http.StatusBadRequest, "Quantidade física inválida.")
+		writeJSONError(w, http.StatusBadRequest, "Quantidade contada inválida.")
 		return
 	}
 	line, err := a.saveInventoryRecount(r.Context(), validationID, skuID, req.PhysicalQuantity, req.ExpectedVersion, userFromContext(r.Context()).ID)
@@ -99,15 +99,15 @@ func (a *app) handleSaveInventoryRecount(w http.ResponseWriter, r *http.Request)
 	case err == nil:
 		writeJSON(w, http.StatusOK, map[string]any{"line": line})
 	case errors.Is(err, errInventoryValidationNotFound), errors.Is(err, errInventoryLineNotFound):
-		writeJSONError(w, http.StatusNotFound, "Linha de inventário não encontrada.")
+		writeJSONError(w, http.StatusNotFound, "Item da contagem não encontrado.")
 	case errors.Is(err, errInventoryNotInReview):
-		writeJSONError(w, http.StatusConflict, "Inventário ainda não está em revisão.")
+		writeJSONError(w, http.StatusConflict, "A contagem ainda não está em revisão.")
 	case errors.Is(err, errInventoryNotDivergent):
-		writeJSONError(w, http.StatusConflict, "Somente linhas divergentes podem ser recontadas.")
+		writeJSONError(w, http.StatusConflict, "Só itens com divergência podem ser recontados.")
 	case errors.Is(err, errInventoryRecountExists):
-		writeJSONError(w, http.StatusConflict, "Esta linha já possui a recontagem formal permitida.")
+		writeJSONError(w, http.StatusConflict, "Este item já foi recontado.")
 	case errors.Is(err, errInventoryCountConflict):
-		writeJSONError(w, http.StatusConflict, "Esta linha foi alterada por outro operador. Recarregue antes de salvar novamente.")
+		writeJSONError(w, http.StatusConflict, "Outra pessoa alterou este item. Atualize a página antes de salvar.")
 	default:
 		log.Printf("inventory recount save failed validation_id=%d sku_id=%d error=%v", validationID, skuID, err)
 		writeJSONError(w, http.StatusInternalServerError, "Erro interno.")

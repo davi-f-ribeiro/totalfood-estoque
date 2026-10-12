@@ -53,7 +53,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "JSON inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return false
 	}
 	return true
@@ -135,7 +135,7 @@ func (a *app) handleCatalogItems(w http.ResponseWriter, r *http.Request) {
 		if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
 			decoded, err := decodeCatalogCursor(raw)
 			if err != nil {
-				writeJSONError(w, http.StatusBadRequest, "Cursor de catálogo inválido.")
+				writeJSONError(w, http.StatusBadRequest, "Não foi possível carregar a lista. Atualize a página e tente de novo.")
 				return
 			}
 			cursor = &decoded
@@ -316,7 +316,7 @@ func (a *app) handleCreateCatalogItem(w http.ResponseWriter, r *http.Request) {
 	}
 	normalizeCatalogItemRequest(&req)
 	if !validItemReq(req) {
-		writeJSONError(w, http.StatusBadRequest, "Preencha nome, categoria, unidade e estoque mínimo válido.")
+		writeJSONError(w, http.StatusBadRequest, "Preencha o nome, a categoria, a unidade e o estoque mínimo.")
 		return
 	}
 	var duplicateID int64
@@ -353,7 +353,7 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 	}
 	normalizeCatalogItemRequest(&req)
 	if !validItemReq(req) || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Preencha nome, categoria, unidade, estoque mínimo e versão válidos.")
+		writeJSONError(w, http.StatusBadRequest, "Preencha o nome, a categoria, a unidade e o estoque mínimo.")
 		return
 	}
 	var currentUnit string
@@ -385,7 +385,7 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if used {
-			writeJSONError(w, http.StatusConflict, "Unidade não pode ser alterada porque já existe movimentação para este item.")
+			writeJSONError(w, http.StatusConflict, "A unidade não pode mudar porque este item já tem movimentações.")
 			return
 		}
 	}
@@ -417,7 +417,7 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 	}
 	normalizeCatalogSKURequest(&req)
 	if req.ItemID<=0 || req.BrandID<=0 || req.Barcode=="" || !positiveDecimal(req.ContentQuantity) {
-		writeJSONError(w, http.StatusBadRequest, "Preencha item, marca, quanto vem em cada embalagem e código de barras.")
+		writeJSONError(w, http.StatusBadRequest, "Preencha o item, a marca, quanto vem em cada embalagem e o código de barras.")
 		return
 	}
 	active := true
@@ -456,7 +456,7 @@ func (a *app) handleUpdateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 	}
 	normalizeCatalogSKURequest(&req)
 	if req.Barcode=="" || req.Version<=0 {
-		writeJSONError(w,http.StatusBadRequest,"Preencha código de barras e versão válidos.")
+		writeJSONError(w,http.StatusBadRequest,"Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	var currentItem,currentBrand,currentVersion int64
@@ -488,7 +488,7 @@ WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,
 	}
 	nameProvided := req.Name!=""
 	if !positiveDecimal(req.ContentQuantity) {
-		writeJSONError(w, http.StatusBadRequest, "Informe um quanto vem em cada embalagem maior que zero.")
+		writeJSONError(w, http.StatusBadRequest, "Digite quanto vem em cada embalagem, maior que zero.")
 		return
 	}
 	var targetItemName,targetBrandName string
@@ -511,7 +511,7 @@ WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&targetItemName,&targetB
 		}
 	}
 	if hasHistory && (currentItem!=req.ItemID || currentBrand!=req.BrandID) {
-		writeJSONError(w,http.StatusConflict,"Item e marca não podem ser alterados porque este Produto possui histórico.")
+		writeJSONError(w,http.StatusConflict,"Item e marca não podem mudar porque este produto já tem histórico.")
 		return
 	}
 	active := true
@@ -588,7 +588,7 @@ func cleanBarcode(v string) string {
 func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(strings.TrimSpace(r.PathValue("id")), 10, 64)
 	if err != nil || id <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "ID inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Identificador inválido.")
 		return 0, false
 	}
 	return id, true

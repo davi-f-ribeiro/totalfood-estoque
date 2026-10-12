@@ -18,7 +18,7 @@ type stockAvailability struct {
 func (a *app) handleStockAvailability(w http.ResponseWriter, r *http.Request) {
 	skuID, err := strconv.ParseInt(r.URL.Query().Get("sku_id"), 10, 64)
 	if err != nil || skuID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid sku")
+		writeJSONError(w, http.StatusBadRequest, "Produto inválido.")
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
@@ -57,7 +57,7 @@ ORDER BY w.name`, skuID)
 func (a *app) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 	itemID, err := strconv.ParseInt(r.PathValue("item_id"), 10, 64)
 	if err != nil || itemID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid item")
+		writeJSONError(w, http.StatusBadRequest, "Item inválido.")
 		return
 	}
 	rawBrand := strings.TrimSpace(r.URL.Query().Get("brand_id"))
@@ -98,7 +98,7 @@ ORDER BY b.name`, itemID, warehouseID)
 	}
 	brandID, brandErr := strconv.ParseInt(rawBrand, 10, 64)
 	if brandErr != nil || brandID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "invalid stock identity")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	var head struct {
@@ -111,7 +111,7 @@ FROM inventory_items i
 JOIN brands b ON b.id=$2
 WHERE i.id=$1`, itemID,brandID).Scan(&head.ID,&head.BrandID,&head.Name,&head.Brand,&head.Unit,&head.Minimum)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "item not found")
+		writeJSONError(w, http.StatusNotFound, "Item não encontrado.")
 		return
 	}
 	if err != nil {

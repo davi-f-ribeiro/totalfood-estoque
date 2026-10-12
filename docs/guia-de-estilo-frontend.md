@@ -66,16 +66,24 @@ Ação destrutiva usa o secundário em vermelho e pede confirmação.
 
 ## 6. Como escrever os textos da tela
 
-O texto da interface é lido por quem trabalha no estoque, com pressa. Escreva como se explicasse a um colega.
+O texto da interface é o cartão de visita do sistema, e quem lê está trabalhando, com pressa. Escreva como um profissional atento explicaria a um colega: claro, direto e sem enfeite. Texto descuidado passa a mesma impressão que layout descuidado.
+
+**Voz.** O sistema fala de forma impessoal e se dirige ao usuário no imperativo. Não usa "nós" nem "a gente", não pede desculpa e não faz gracinha.
+
+**Regras**
 
 1. **Frases curtas, voz ativa, português do dia a dia.** "Escolha um produto para continuar." e não "É necessária a seleção de um produto para prosseguir."
-2. **Botão é verbo no infinitivo ou imperativo curto:** "Salvar", "Confirmar entrada", "Criar produto". Nunca "Efetuar registro".
-3. **Mensagem de erro diz o que houve e o que fazer.** "Não foi possível salvar. Confira a conexão e tente de novo."
-4. **Sem termos técnicos.** O operador não precisa saber o que é SKU, idempotência, slot ou payload.
-5. **Um nome para cada coisa, em toda a interface** (ver glossário).
-6. **Sem pontos de exclamação**, sem maiúsculas corridas, sem "por favor" repetido.
-7. **Números e datas no padrão brasileiro:** `1.250,50`; `11/10/2026`.
-8. **Título de tela: substantivo curto** ("Estoque", "Entrada"). Subtítulo: uma frase que diz para que serve a tela.
+2. **Não diga duas vezes a mesma coisa.** Nada de "mesmo" junto de "de novo", nem a mesma palavra em duas frases seguidas se uma só resolve. Título de aba: "Estoque atual · Gestão de Estoque", e não "Estoque atual · Estoque".
+3. **Campos:** "Digite" para o que se escreve, "Escolha" para o que está numa lista. Não alterne com "Informe" ou "Selecione".
+4. **Botão é verbo curto e diz o resultado:** "Salvar", "Confirmar entrada", "Criar produto", "Conferir". Nunca "Efetuar registro".
+5. **Erro diz o que houve e o que fazer, nessa ordem.** "Não foi possível salvar. Confira a conexão e tente de novo." Quando só o usuário pode resolver, diga como; quando é falha do sistema, diga só "Tente de novo".
+6. **"Não foi possível", nunca "Não deu para".** Tom formal sem ser burocrático. Evite "realizar", "efetuar", "possui", "permanece", "informado", "o mesmo" (como em "a mesma operação").
+7. **Sem termos técnicos ou em inglês.** O usuário não vê SKU, warehouse, JSON, operation_id, offset nem "erro interno" solto.
+8. **Quando não se sabe se algo foi gravado, diga isso com clareza.** Use "sem confirmação" e ofereça "Conferir" e "Enviar de novo". Nunca "pendente" nem "pendência local".
+9. **Sem ponto de exclamação**, sem maiúsculas corridas. Títulos e rótulos sem ponto final; frases com ponto final.
+10. **Números e datas no padrão brasileiro:** `1.250,50`; `11/10/2026`.
+11. **Título de tela: substantivo curto** ("Estoque", "Entrada"). Subtítulo: uma frase que diz para que serve a tela.
+12. **Mensagens do servidor valem o mesmo que as do front.** Tudo que o servidor devolve e pode aparecer na tela segue este guia. Se mudar um texto no servidor, confira se o JavaScript e os testes dependem dele.
 
 ### Glossário
 
@@ -84,10 +92,12 @@ O texto da interface é lido por quem trabalha no estoque, com pressa. Escreva c
 | SKU, apresentação | produto; “embalagem” quando falar da caixa, pacote ou fardo |
 | Item pai | Item (o nome geral, ex.: “Leite”) |
 | Produto/Item | Produto (item + marca + embalagem + código de barras) |
-| Pendência local, operação pendente | Lançamento aguardando envio |
+| Pendência local, operação pendente, aguardando envio | Lançamento sem confirmação |
 | Conflito de identificação da operação | Este lançamento já foi enviado com outros dados |
 | Reenviar operação | Enviar de novo |
-| Verificar resultado | Ver se foi registrado |
+| Verificar resultado | Conferir |
+| Warehouse | Depósito |
+| Inventário cego / total (na tela) | Contagem às cegas / completa |
 | Unidade patrimonial, plaqueta/tag | Patrimônio, plaqueta |
 | Inventário cego | Contagem às cegas |
 | Inventário total | Contagem completa |

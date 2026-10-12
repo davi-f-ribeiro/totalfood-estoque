@@ -108,7 +108,7 @@ func (a *app) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	login := strings.TrimSpace(req.Login)
 	if login == "" || req.Password == "" || req.ProfileID <= 0 {
-		writeJSONError(w, 400, "Dados informados são inválidos.")
+		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	active := true
@@ -116,7 +116,7 @@ func (a *app) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		active = *req.Active
 	}
 	if !a.profileExists(r, req.ProfileID) {
-		writeJSONError(w, 400, "Perfil informado é inválido.")
+		writeJSONError(w, 400, "Perfil inválido.")
 		return
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
@@ -128,7 +128,7 @@ func (a *app) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	err = a.db.QueryRowContext(r.Context(), `INSERT INTO users (login,password_hash,profile_id,active) VALUES ($1,$2,$3,$4) RETURNING id`, login, string(h), req.ProfileID, active).Scan(&id)
 	if err != nil {
 		log.Printf("admin user create failed: %v", err)
-		writeJSONError(w, 409, "Usuário não pôde ser criado com os dados informados.")
+		writeJSONError(w, 409, "Não foi possível criar o usuário. Confira se o nome de usuário já existe.")
 		return
 	}
 	writeJSON(w, 201, map[string]any{"id": id, "login": login, "profile_id": req.ProfileID, "active": active, "version": int64(1)})
@@ -145,7 +145,7 @@ func (a *app) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	login := strings.TrimSpace(req.Login)
 	if login == "" || req.ProfileID <= 0 || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	active := true
@@ -181,7 +181,7 @@ func (a *app) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	var currentProfileID, currentVersion int64
 	var currentActive bool
 	if err = tx.QueryRowContext(r.Context(), `SELECT profile_id,active,version FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentProfileID, &currentActive, &currentVersion); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "user not found")
+		writeJSONError(w, http.StatusNotFound, "Usuário não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -201,17 +201,17 @@ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=$1),
 		return
 	}
 	if !profileExists {
-		writeJSONError(w, http.StatusBadRequest, "Perfil informado é inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Perfil inválido.")
 		return
 	}
 
 	u := userFromContext(r.Context())
 	if id == u.ID && !active {
-		writeJSONError(w, http.StatusConflict, "não é permitido desativar o próprio administrador")
+		writeJSONError(w, http.StatusConflict, "Você não pode desativar o seu próprio usuário.")
 		return
 	}
 	if id == u.ID && !newAdmin {
-		writeJSONError(w, http.StatusConflict, "não é permitido remover o próprio acesso administrativo")
+		writeJSONError(w, http.StatusConflict, "Você não pode tirar o seu próprio acesso de administrador.")
 		return
 	}
 
@@ -227,7 +227,7 @@ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=$1),
 	}
 	if err != nil {
 		log.Printf("admin user update failed user_id=%d error=%v", id, err)
-		writeJSONError(w, http.StatusConflict, "Usuário não pôde ser atualizado com os dados informados.")
+		writeJSONError(w, http.StatusConflict, "Não foi possível atualizar o usuário. Confira se o nome de usuário já existe.")
 		return
 	}
 
@@ -242,7 +242,7 @@ WHERE u.active=true
 		return
 	}
 	if activeAdmins == 0 {
-		writeJSONError(w, http.StatusConflict, "não é permitido remover o último administrador ativo")
+		writeJSONError(w, http.StatusConflict, "Não é possível: este é o último administrador ativo.")
 		return
 	}
 
@@ -267,7 +267,7 @@ func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Password == "" || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
@@ -283,7 +283,7 @@ func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	var currentVersion int64
 	if err = tx.QueryRowContext(r.Context(), `SELECT version FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&currentVersion); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "user not found")
+		writeJSONError(w, http.StatusNotFound, "Usuário não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -356,12 +356,12 @@ func (a *app) handleAdminCreateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		writeJSONError(w, 400, "Dados informados são inválidos.")
+		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	var id int64
 	if err := a.db.QueryRowContext(r.Context(), `INSERT INTO profiles (name) VALUES ($1) RETURNING id`, name).Scan(&id); err != nil {
-		writeJSONError(w, 409, "Perfil não pôde ser criado com os dados informados.")
+		writeJSONError(w, 409, "Não foi possível criar o perfil. Confira se o nome já existe.")
 		return
 	}
 	writeJSON(w, 201, map[string]any{"id": id, "name": name, "version": int64(1)})
@@ -378,13 +378,13 @@ func (a *app) handleAdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	var old string
 	var currentVersion int64
 	if err := a.db.QueryRowContext(r.Context(), `SELECT name,version FROM profiles WHERE id=$1`, id).Scan(&old, &currentVersion); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "profile not found")
+		writeJSONError(w, http.StatusNotFound, "Perfil não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -395,7 +395,7 @@ func (a *app) handleAdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if old == "Diretor" {
-		writeJSONError(w, http.StatusConflict, "perfil Diretor não pode ser renomeado")
+		writeJSONError(w, http.StatusConflict, "O perfil Diretor não pode ser renomeado.")
 		return
 	}
 	var newVersion int64
@@ -405,7 +405,7 @@ func (a *app) handleAdminUpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeJSONError(w, http.StatusConflict, "Perfil não pôde ser atualizado com os dados informados.")
+		writeJSONError(w, http.StatusConflict, "Não foi possível atualizar o perfil. Confira se o nome já existe.")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "version": newVersion})
@@ -438,7 +438,7 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 
@@ -461,7 +461,7 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	var name string
 	var currentVersion int64
 	if err = tx.QueryRowContext(r.Context(), `SELECT name,version FROM profiles WHERE id=$1 FOR UPDATE`, id).Scan(&name, &currentVersion); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "profile not found")
+		writeJSONError(w, http.StatusNotFound, "Perfil não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -472,7 +472,7 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if name == "Diretor" {
-		writeJSONError(w, http.StatusConflict, "permissões do Diretor são completas")
+		writeJSONError(w, http.StatusConflict, "O perfil Diretor sempre tem todos os acessos.")
 		return
 	}
 
@@ -480,13 +480,13 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	newUsersWrite, newProfilesWrite := false, false
 	for _, pid := range req.PermissionIDs {
 		if pid <= 0 || seen[pid] {
-			writeJSONError(w, http.StatusBadRequest, "Permissão informada é inválida.")
+			writeJSONError(w, http.StatusBadRequest, "Acesso inválido.")
 			return
 		}
 		seen[pid] = true
 		var resource, action string
 		if err = tx.QueryRowContext(r.Context(), `SELECT resource,action FROM permissions WHERE id=$1`, pid).Scan(&resource, &action); errors.Is(err, sql.ErrNoRows) {
-			writeJSONError(w, http.StatusBadRequest, "Permissão informada é inválida.")
+			writeJSONError(w, http.StatusBadRequest, "Acesso inválido.")
 			return
 		} else if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -502,7 +502,7 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 
 	u := userFromContext(r.Context())
 	if id == u.ProfileID && !(newUsersWrite && newProfilesWrite) {
-		writeJSONError(w, http.StatusConflict, "não é permitido remover o próprio acesso administrativo")
+		writeJSONError(w, http.StatusConflict, "Você não pode tirar o seu próprio acesso de administrador.")
 		return
 	}
 
@@ -513,11 +513,11 @@ func (a *app) handleAdminProfilePermissions(w http.ResponseWriter, r *http.Reque
 	for _, pid := range req.PermissionIDs {
 		res, execErr := tx.ExecContext(r.Context(), `INSERT INTO profile_permissions (profile_id,permission_id) VALUES ($1,$2)`, id, pid)
 		if execErr != nil {
-			writeJSONError(w, http.StatusBadRequest, "Permissão informada é inválida.")
+			writeJSONError(w, http.StatusBadRequest, "Acesso inválido.")
 			return
 		}
 		if n, _ := res.RowsAffected(); n != 1 {
-			writeJSONError(w, http.StatusBadRequest, "Permissão informada é inválida.")
+			writeJSONError(w, http.StatusBadRequest, "Acesso inválido.")
 			return
 		}
 	}
@@ -533,7 +533,7 @@ WHERE u.active=true
 		return
 	}
 	if activeAdmins == 0 {
-		writeJSONError(w, http.StatusConflict, "não é permitido remover o último administrador ativo")
+		writeJSONError(w, http.StatusConflict, "Não é possível: este é o último administrador ativo.")
 		return
 	}
 
@@ -563,7 +563,7 @@ func decodeAdminJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		writeJSONError(w, 400, "Dados informados são inválidos.")
+		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return false
 	}
 	return true

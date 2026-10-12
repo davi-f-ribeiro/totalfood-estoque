@@ -75,7 +75,7 @@ func (a *app) handleCreateTotalInventory(w http.ResponseWriter, r *http.Request)
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
 	if req.OperationID == "" || req.WarehouseID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "operation_id ou warehouse_id inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar este envio. Atualize a página e tente de novo.")
 		return
 	}
 	res, err := a.createTotalInventory(r.Context(), userFromContext(r.Context()).ID, req.WarehouseID, req.OperationID)
@@ -89,7 +89,7 @@ func (a *app) handleCreateBlindInventory(w http.ResponseWriter, r *http.Request)
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
 	if req.OperationID == "" {
-		writeJSONError(w, http.StatusBadRequest, "operation_id inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar este envio. Atualize a página e tente de novo.")
 		return
 	}
 	res, err := a.createBlindInventory(r.Context(), userFromContext(r.Context()).ID, req.OperationID)
@@ -104,7 +104,7 @@ func (a *app) handleGetInventoryValidation(w http.ResponseWriter, r *http.Reques
 	res, err := a.getInventoryValidation(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, errInventoryValidationNotFound) {
-			writeJSONError(w, http.StatusNotFound, "Inventário não encontrado.")
+			writeJSONError(w, http.StatusNotFound, "Contagem não encontrada.")
 			return
 		}
 		log.Printf("inventory lookup failed validation_id=%d error=%v", id, err)
@@ -123,12 +123,12 @@ func decodeInventoryJSON(w http.ResponseWriter, r *http.Request, dst any, allowE
 		if allowEmpty && errors.Is(err, io.EOF) {
 			return true
 		}
-		writeJSONError(w, http.StatusBadRequest, "JSON inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return false
 	}
 	var extra any
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		writeJSONError(w, http.StatusBadRequest, "JSON inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return false
 	}
 	return true
@@ -141,13 +141,13 @@ func writeInventoryResponse(w http.ResponseWriter, res inventorySelection, err e
 	}
 	switch {
 	case errors.Is(err, errInventoryWarehouseNotFound):
-		writeJSONError(w, http.StatusNotFound, "Warehouse não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Depósito não encontrado.")
 	case errors.Is(err, errInventoryWarehouseInactive):
-		writeJSONError(w, http.StatusConflict, "Warehouse inativo.")
+		writeJSONError(w, http.StatusConflict, "Depósito desativado.")
 	case errors.Is(err, errInventoryNoEligibleSKUs):
-		writeJSONError(w, http.StatusConflict, "Warehouse sem SKUs elegíveis para inventário.")
+		writeJSONError(w, http.StatusConflict, "Este depósito não tem produtos para contar.")
 	case errors.Is(err, errInventoryNoBlindWarehouse):
-		writeJSONError(w, http.StatusConflict, "Nenhum warehouse elegível para inventário BLIND.")
+		writeJSONError(w, http.StatusConflict, "Nenhum depósito tem produtos para uma contagem às cegas.")
 	case errors.Is(err, errOperationConflict):
 		writeJSONError(w, http.StatusConflict, "operation_id conflict")
 	default:

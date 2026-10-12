@@ -107,11 +107,11 @@ func (a *app) handleCompleteInventory(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeJSON(w, http.StatusOK, out)
 	case errors.Is(err, errInventoryValidationNotFound):
-		writeJSONError(w, http.StatusNotFound, "Inventário não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Contagem não encontrada.")
 	case errors.Is(err, errInventoryNoteRequired):
-		writeJSONError(w, http.StatusBadRequest, "Inventário divergente exige observação de conclusão válida.")
+		writeJSONError(w, http.StatusBadRequest, "Para concluir com divergência, escreva uma observação.")
 	case errors.Is(err, errInventoryCannotComplete), errors.Is(err, errInventoryTerminal):
-		writeJSONError(w, http.StatusConflict, "Inventário não pode ser concluído neste estado.")
+		writeJSONError(w, http.StatusConflict, "Esta contagem não pode mais ser concluída.")
 	default:
 		log.Printf("inventory complete failed validation_id=%d error=%v", id, err)
 		writeJSONError(w, http.StatusInternalServerError, "Erro interno.")
@@ -129,7 +129,7 @@ func (a *app) handleCancelInventory(w http.ResponseWriter, r *http.Request) {
 	}
 	req.CancellationReason = normalizeAuditText(req.CancellationReason)
 	if !validCancellationReason(req.CancellationReason) {
-		writeJSONError(w, http.StatusBadRequest, "Motivo de cancelamento inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Escreva o motivo do cancelamento.")
 		return
 	}
 	out, err := a.cancelInventory(r.Context(), id, userFromContext(r.Context()).ID, req.CancellationReason)
@@ -137,9 +137,9 @@ func (a *app) handleCancelInventory(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeJSON(w, http.StatusOK, out)
 	case errors.Is(err, errInventoryValidationNotFound):
-		writeJSONError(w, http.StatusNotFound, "Inventário não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Contagem não encontrada.")
 	case errors.Is(err, errInventoryCannotCancel), errors.Is(err, errInventoryTerminal):
-		writeJSONError(w, http.StatusConflict, "Inventário não pode ser cancelado neste estado.")
+		writeJSONError(w, http.StatusConflict, "Esta contagem não pode mais ser cancelada.")
 	default:
 		log.Printf("inventory cancel failed validation_id=%d error=%v", id, err)
 		writeJSONError(w, http.StatusInternalServerError, "Erro interno.")
@@ -156,9 +156,9 @@ func (a *app) handleGetInventoryHistory(w http.ResponseWriter, r *http.Request) 
 	case err == nil:
 		writeJSON(w, http.StatusOK, out)
 	case errors.Is(err, errInventoryValidationNotFound):
-		writeJSONError(w, http.StatusNotFound, "Inventário não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Contagem não encontrada.")
 	case errors.Is(err, errInventoryTerminal):
-		writeJSONError(w, http.StatusConflict, "Inventário ainda não está encerrado.")
+		writeJSONError(w, http.StatusConflict, "A contagem ainda não foi encerrada.")
 	default:
 		log.Printf("inventory history failed validation_id=%d error=%v", id, err)
 		writeJSONError(w, http.StatusInternalServerError, "Erro interno.")

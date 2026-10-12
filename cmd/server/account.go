@@ -29,21 +29,21 @@ func (a *app) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.NewPassword != req.ConfirmPassword {
-		writeJSONError(w, http.StatusBadRequest, "confirmação divergente")
+		writeJSONError(w, http.StatusBadRequest, "A confirmação não é igual à nova senha.")
 		return
 	}
 	if len(req.NewPassword) < 8 {
-		writeJSONError(w, http.StatusBadRequest, "senha deve ter ao menos 8 caracteres")
+		writeJSONError(w, http.StatusBadRequest, "A senha precisa ter ao menos 8 caracteres.")
 		return
 	}
 	u := userFromContext(r.Context())
 	var hash string
 	if err := a.db.QueryRowContext(r.Context(), `SELECT password_hash FROM users WHERE id=$1 AND active=true`, u.ID).Scan(&hash); err != nil {
-		writeJSONError(w, http.StatusUnauthorized, "authentication required")
+		writeJSONError(w, http.StatusUnauthorized, "Entre para continuar.")
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.CurrentPassword)) != nil {
-		writeJSONError(w, http.StatusUnauthorized, "senha atual incorreta")
+		writeJSONError(w, http.StatusUnauthorized, "Senha atual incorreta.")
 		return
 	}
 	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcryptCost)

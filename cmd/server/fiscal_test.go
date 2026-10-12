@@ -23,16 +23,16 @@ func TestFiscalQRInfrastructureSecurity(t *testing.T) {
 	if rr := fiscalReq(a, "not a url", director, ""); rr.Code != http.StatusBadRequest {
 		t.Fatalf("invalid qr status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if rr := fiscalReq(a, "https://nao-permitido.example/nf", director, ""); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "domínio fiscal não permitido") {
+	if rr := fiscalReq(a, "https://nao-permitido.example/nf", director, ""); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Este endereço de nota fiscal não é aceito.") {
 		t.Fatalf("domain status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if rr := fiscalReq(a, "https://localhost/nf", director, ""); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "destino fiscal não permitido") {
+	if rr := fiscalReq(a, "https://localhost/nf", director, ""); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Este endereço de nota fiscal não é aceito.") {
 		t.Fatalf("localhost status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if rr := fiscalReq(a, "https://127.0.0.1/nf", director, ""); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "destino fiscal não permitido") {
+	if rr := fiscalReq(a, "https://127.0.0.1/nf", director, ""); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Este endereço de nota fiscal não é aceito.") {
 		t.Fatalf("loopback status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if rr := fiscalReq(a, "https://10.0.0.1/nf", director, ""); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "destino fiscal não permitido") {
+	if rr := fiscalReq(a, "https://10.0.0.1/nf", director, ""); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Este endereço de nota fiscal não é aceito.") {
 		t.Fatalf("private status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	if rr := fiscalReq(a, "https://fiscal.test/nf", sales, ""); rr.Code != http.StatusForbidden {
@@ -70,7 +70,7 @@ func TestFiscalQRFetchLimitsAndParserBlocker(t *testing.T) {
 	big := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(make([]byte, fiscalMaxBody+1)) }))
 	defer big.Close()
 	fiscalHTTPClient = fiscalTestClient(t, big.URL, fiscalTimeout)
-	if rr := fiscalReq(a, strings.Replace(big.URL, "127.0.0.1", "fiscal.test", 1), director, ""); rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "resposta fiscal excedeu o limite") {
+	if rr := fiscalReq(a, strings.Replace(big.URL, "127.0.0.1", "fiscal.test", 1), director, ""); rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "A consulta da nota não respondeu como esperado. Tente de novo.") {
 		t.Fatalf("body limit status=%d body=%s", rr.Code, rr.Body.String())
 	}
 
@@ -79,7 +79,7 @@ func TestFiscalQRFetchLimitsAndParserBlocker(t *testing.T) {
 	}))
 	defer redir.Close()
 	fiscalHTTPClient = fiscalTestClient(t, redir.URL, fiscalTimeout)
-	if rr := fiscalReq(a, strings.Replace(redir.URL, "127.0.0.1", "fiscal.test", 1), director, ""); rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "redirect fiscal rejeitado") {
+	if rr := fiscalReq(a, strings.Replace(redir.URL, "127.0.0.1", "fiscal.test", 1), director, ""); rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "Não foi possível consultar esta nota. Confira o endereço.") {
 		t.Fatalf("redirect status=%d body=%s", rr.Code, rr.Body.String())
 	}
 
@@ -89,7 +89,7 @@ func TestFiscalQRFetchLimitsAndParserBlocker(t *testing.T) {
 	}))
 	defer slow.Close()
 	fiscalHTTPClient = fiscalTestClient(t, slow.URL, 20*time.Millisecond)
-	if rr := fiscalReq(a, strings.Replace(slow.URL, "127.0.0.1", "fiscal.test", 1), director, ""); rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "consulta fiscal expirou") {
+	if rr := fiscalReq(a, strings.Replace(slow.URL, "127.0.0.1", "fiscal.test", 1), director, ""); rr.Code != http.StatusBadGateway || !strings.Contains(rr.Body.String(), "A consulta da nota demorou demais. Tente de novo.") {
 		t.Fatalf("timeout status=%d body=%s", rr.Code, rr.Body.String())
 	}
 }

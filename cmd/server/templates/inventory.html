@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><meta name="current-user-id" content="{{.User.ID}}"><title>Contagem de estoque · Estoque</title><link rel="stylesheet" href="/static/app.css"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><meta name="current-user-id" content="{{.User.ID}}"><title>Contagem de estoque · Gestão de Estoque</title><link rel="stylesheet" href="/static/app.css"></head><body>
 {{template "header" .}}
 {{template "nav" .}}
 <main class="main inventory-shell" data-can-write="{{.CanInventoryWrite}}" data-can-adjust="{{.CanStockAdjustment}}">
@@ -24,9 +24,9 @@
 <button id="inventoryFiltersToggle" class="secondary inventory-secondary-toggle" type="button">Filtros</button>
 <form id="inventoryListFilters" class="inventory-list-filters">
 <label>Status<select id="inventoryListStatus"><option value="">Todos</option><option value="OPEN">Aberto</option><option value="COUNTING">Em contagem</option><option value="REVIEW">Em revisão</option><option value="COMPLETED">Concluído</option><option value="CANCELLED">Cancelado</option></select></label>
-<label>Tipo<select id="inventoryListType"><option value="">Todos</option><option value="TOTAL">Total</option><option value="BLIND">Cego</option></select></label>
+<label>Tipo<select id="inventoryListType"><option value="">Todos</option><option value="TOTAL">Completa</option><option value="BLIND">Às cegas</option></select></label>
 <label>Depósito<select id="inventoryListWarehouse"><option value="">Todos</option></select></label>
-<label>Responsável<input id="inventoryListResponsible" autocomplete="off" placeholder="Login"></label>
+<label>Responsável<input id="inventoryListResponsible" autocomplete="off" placeholder="Nome de usuário"></label>
 <label>De<input id="inventoryListFrom" type="date"></label>
 <label>Até<input id="inventoryListTo" type="date"></label>
 <div class="actions"><button type="submit">Filtrar</button><button id="inventoryListClear" class="secondary" type="button">Limpar</button></div>
@@ -37,7 +37,7 @@
 </section>
 
 <section class="panel inventory-panel">
-<div class="section-heading"><div><h2>Contagem, revisão ou histórico</h2><p class="hint">Abra uma contagem pela lista acima ou digite o número dela.</p></div><span id="inventoryMode" class="badge" hidden></span></div>
+<div class="section-heading"><div><h2>Abrir uma contagem</h2><p class="hint">Escolha na lista acima ou digite o número da contagem.</p></div><span id="inventoryMode" class="badge" hidden></span></div>
 <form id="inventoryOpenForm" class="inventory-open"><label>Número da contagem<input id="inventoryId" inputmode="numeric" pattern="[0-9]*" required></label><button type="submit">Abrir contagem</button></form>
 <div id="inventoryWorkspace" hidden>
 <div class="inventory-progress"><strong id="inventoryProgress">0 de 0 itens contados</strong><progress id="inventoryProgressBar" max="100" value="0"></progress><small id="inventoryStatusText"></small></div>

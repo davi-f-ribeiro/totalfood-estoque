@@ -20,7 +20,7 @@ func (a *app) registerInventoryAdjustmentHandlers(mux *http.ServeMux) {
 func (a *app) handleInventoryStockAdjustment(w http.ResponseWriter, r *http.Request) {
 	validationID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || validationID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Inventário inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Contagem inválida.")
 		return
 	}
 	skuID, err := strconv.ParseInt(r.PathValue("sku_id"), 10, 64)
@@ -34,7 +34,7 @@ func (a *app) handleInventoryStockAdjustment(w http.ResponseWriter, r *http.Requ
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
 	if req.OperationID == "" {
-		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar este ajuste. Recarregue a página antes de tentar novamente.")
+		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar este envio. Atualize a página e tente de novo.")
 		return
 	}
 
@@ -43,19 +43,19 @@ func (a *app) handleInventoryStockAdjustment(w http.ResponseWriter, r *http.Requ
 	case err == nil:
 		writeJSON(w, http.StatusOK, res)
 	case errors.Is(err, errInventoryValidationNotFound), errors.Is(err, errInventoryLineNotFound):
-		writeJSONError(w, http.StatusNotFound, "Item da auditoria não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Item da contagem não encontrado.")
 	case errors.Is(err, errInventoryAdjustmentNotEligible):
-		writeJSONError(w, http.StatusConflict, "Este item não possui divergência concluída disponível para ajuste.")
+		writeJSONError(w, http.StatusConflict, "Este item não tem divergência para ajustar.")
 	case errors.Is(err, errInventoryAdjustmentAlreadyApplied):
 		writeJSONError(w, http.StatusConflict, "Esta divergência já foi ajustada.")
 	case errors.Is(err, errInventoryAdjustmentCostUnavailable):
-		writeJSONError(w, http.StatusConflict, "Não há custo válido para registrar este ajuste.")
+		writeJSONError(w, http.StatusConflict, "Não há custo válido para registrar o ajuste.")
 	case errors.Is(err, errInsufficientStock):
-		writeJSONError(w, http.StatusConflict, "O saldo atual não permite aplicar esta redução de estoque.")
+		writeJSONError(w, http.StatusConflict, "O estoque atual é menor que a redução do ajuste.")
 	case errors.Is(err, errWarehouseInactive):
-		writeJSONError(w, http.StatusConflict, "Depósito inativo.")
+		writeJSONError(w, http.StatusConflict, "Depósito desativado.")
 	case errors.Is(err, errOperationConflict):
-		writeJSONError(w, http.StatusConflict, "Esta identificação de operação já foi usada em outro ajuste.")
+		writeJSONError(w, http.StatusConflict, "Este envio já foi usado em outro ajuste. Atualize a página e tente de novo.")
 	default:
 		log.Printf("inventory adjustment failed validation_id=%d sku_id=%d operation_id=%s error=%v", validationID, skuID, req.OperationID, err)
 		writeJSONError(w, http.StatusInternalServerError, "Erro interno.")

@@ -22,7 +22,7 @@ type fiscalAccessKey struct {
 }
 
 var (
-	errFiscalKeyInvalid       = errors.New("chave fiscal inválida")
+	errFiscalKeyInvalid       = errors.New("Chave da nota inválida.")
 	errFiscalUFUnsupported    = errors.New("UF fiscal ainda não suportada")
 	errFiscalModelUnsupported = errors.New("modelo fiscal não suportado")
 )

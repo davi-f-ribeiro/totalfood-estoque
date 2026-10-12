@@ -21,7 +21,7 @@ func (a *app) handleCatalogBrands(w http.ResponseWriter, r *http.Request) {
 		if raw := strings.TrimSpace(r.URL.Query().Get("cursor")); raw != "" {
 			decoded, err := decodeCatalogCursor(raw)
 			if err != nil {
-				writeJSONError(w, http.StatusBadRequest, "Cursor de catálogo inválido.")
+				writeJSONError(w, http.StatusBadRequest, "Não foi possível carregar a lista. Atualize a página e tente de novo.")
 				return
 			}
 			cursor = &decoded
@@ -119,7 +119,7 @@ func (a *app) handleCreateCatalogBrand(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w,r,&req) { return }
 	req.Name=strings.TrimSpace(req.Name)
 	if req.Name=="" {
-		writeJSONError(w,http.StatusBadRequest,"Informe o nome da marca.")
+		writeJSONError(w,http.StatusBadRequest,"Digite o nome da marca.")
 		return
 	}
 	active:=true
@@ -130,7 +130,7 @@ INSERT INTO brands(name,active) VALUES ($1,$2)
 RETURNING id`,req.Name,active).Scan(&id)
 	if err!=nil {
 		if strings.Contains(err.Error(),"idx_brands_normalized_name_unique") {
-			writeJSONError(w,http.StatusConflict,req.Name+" já existe no banco de dados.")
+			writeJSONError(w,http.StatusConflict,req.Name+" já existe.")
 			return
 		}
 		writeJSONError(w,http.StatusBadRequest,"Não foi possível salvar a marca.")
@@ -146,7 +146,7 @@ func (a *app) handleUpdateCatalogBrand(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w,r,&req) { return }
 	req.Name=strings.TrimSpace(req.Name)
 	if req.Name=="" || req.Version<=0 {
-		writeJSONError(w,http.StatusBadRequest,"Informe marca e versão válidas.")
+		writeJSONError(w,http.StatusBadRequest,"Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	active:=true
@@ -163,7 +163,7 @@ RETURNING version`,req.Name,active,id,req.Version).Scan(&version)
 	}
 	if err!=nil {
 		if strings.Contains(err.Error(),"idx_brands_normalized_name_unique") {
-			writeJSONError(w,http.StatusConflict,req.Name+" já existe no banco de dados.")
+			writeJSONError(w,http.StatusConflict,req.Name+" já existe.")
 			return
 		}
 		writeJSONError(w,http.StatusBadRequest,"Não foi possível atualizar a marca.")
