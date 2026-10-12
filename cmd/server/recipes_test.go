@@ -50,9 +50,11 @@ func TestRecipeCostUsesStockAverageCostAndCMVPerCustomer(t *testing.T) {
 	a, sku, wh1, wh2 := newStockTestApp(t)
 	userID := createTestUser(t, a, "recipe-cost-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "recipe-cost-director", "secret")
-	// 10 KG a 20 e 10 KG a 30, depois 5 KG saem ao médio: preço médio do item = 25.
+	// Entram 10 KG a 20 no depósito 1 e 5 KG a 40 no depósito 2. A saída de 5 KG
+	// do depósito 1 grava o custo médio daquele depósito (20). Sobram 10 KG com
+	// valor 200 + 200 - 100 = 300, então o preço médio do item é 30.
 	recipeTestEntry(t, a, "recipe-cost-e1", sku, wh1, userID, "10", "20")
-	recipeTestEntry(t, a, "recipe-cost-e2", sku, wh2, userID, "10", "30")
+	recipeTestEntry(t, a, "recipe-cost-e2", sku, wh2, userID, "5", "40")
 	if _, err := a.createExit(context.Background(), movementRequest{
 		OperationID: "recipe-cost-s1", SKUID: sku, WarehouseID: wh1, Quantity: "5", UserID: userID,
 	}, "recipe-cost-s1-hash"); err != nil {
@@ -76,20 +78,22 @@ func TestRecipeCostUsesStockAverageCostAndCMVPerCustomer(t *testing.T) {
 		t.Fatalf("detail status=%d body=%s", detail.Code, detail.Body.String())
 	}
 	body := recipeResponse(t, detail)
-	if body["incomplete"] != false || body["cost_per_portion"] != "3.9063" {
-		t.Fatalf("cost per portion=%v incomplete=%v want 3.9063/false", body["cost_per_portion"], body["incomplete"])
+	// 0,5 KG x 1,25 = 0,625 KG brutos x 30 = 18,75 por receita; / 4 porções = 4,6875.
+	if body["incomplete"] != false || body["cost_per_portion"] != "4.6875" {
+		t.Fatalf("cost per portion=%v incomplete=%v want 4.6875/false", body["cost_per_portion"], body["incomplete"])
 	}
 	line := body["lines"].([]any)[0].(map[string]any)
-	if line["gross_quantity"] != "0.6250" || line["avg_cost"] != "25.0000" || line["line_cost"] != "15.6250" {
+	if line["gross_quantity"] != "0.6250" || line["avg_cost"] != "30.0000" || line["line_cost"] != "18.7500" {
 		t.Fatalf("line gross=%v avg=%v cost=%v", line["gross_quantity"], line["avg_cost"], line["line_cost"])
 	}
+	// CMV = 4,6875 / 12,50 x 100 = 37,50.
 	price := body["prices"].([]any)[0].(map[string]any)
-	if price["sale_price"] != "12.50" || price["cmv_percent"] != "31.25" {
-		t.Fatalf("price=%v cmv=%v want 12.50/31.25", price["sale_price"], price["cmv_percent"])
+	if price["sale_price"] != "12.50" || price["cmv_percent"] != "37.50" {
+		t.Fatalf("price=%v cmv=%v want 12.50/37.50", price["sale_price"], price["cmv_percent"])
 	}
 
 	list := authReq(a, http.MethodGet, "/api/recipes", nil, director, "")
-	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"cost_per_portion":"3.9063"`) {
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), `"cost_per_portion":"4.6875"`) {
 		t.Fatalf("list status=%d body=%s", list.Code, list.Body.String())
 	}
 }
