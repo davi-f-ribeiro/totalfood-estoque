@@ -53,7 +53,7 @@ func TestFiscalManualFallbackConfirmMultiLine(t *testing.T) {
 	beforeDupLots := tableCount(t, a, "stock_lots")
 	dupPayload := map[string]any{"operation_id": "fiscal-manual-dup", "access_key": key, "warehouse_id": wh, "lines": []map[string]any{{"sku_id": sku1, "quantity": "1", "unit_cost": "1"}}}
 	dup := authReq(a, http.MethodPost, "/api/fiscal/confirm", dupPayload, director, "")
-	if dup.Code != http.StatusConflict || !strings.Contains(dup.Body.String(), "Nota já confirmada") {
+	if dup.Code != http.StatusConflict || !strings.Contains(dup.Body.String(), "Esta nota já foi confirmada") {
 		t.Fatalf("duplicate status=%d body=%s", dup.Code, dup.Body.String())
 	}
 	if got := tableCount(t, a, "movements"); got != beforeDupMovements {
@@ -122,7 +122,7 @@ func TestFiscalManualRejectsDuplicateSKUWithinSameNote(t *testing.T) {
 		},
 	}
 	rr := authReq(a, http.MethodPost, "/api/fiscal/confirm", payload, director, "")
-	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "mesmo SKU") {
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Um produto não pode aparecer duas vezes") {
 		t.Fatalf("duplicate SKU status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	if got := tableCount(t, a, "movements"); got != beforeMovements { t.Fatalf("duplicate SKU created movement: %d -> %d", beforeMovements, got) }
