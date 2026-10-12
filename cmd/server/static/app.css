@@ -268,17 +268,17 @@ label.check{display:flex;align-items:center;gap:8px;min-height:44px;margin-botto
 .nav-more{display:contents}
 .nav-more-menu{display:contents}
 .nav-more-toggle{display:none;border:0;background:transparent;font-weight:600}
-.nav a[href="/stock"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 8l-9-5-9 5v8l9 5 9-5z'/%3E%3Cpath d='M3 8l9 5 9-5M12 13v8'/%3E%3C/svg%3E")}
-.nav a[href="/entry"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12m0 0l-4-4m4 4l4-4'/%3E%3Cpath d='M4 17v3h16v-3'/%3E%3C/svg%3E")}
-.nav a[href="/exit"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 15V3m0 0L8 7m4-4l4 4'/%3E%3Cpath d='M4 17v3h16v-3'/%3E%3C/svg%3E")}
-.nav a[href="/transfer"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8h14m0 0l-4-4m4 4l-4 4M20 16H6m0 0l4-4m-4 4l4 4'/%3E%3C/svg%3E")}
-.nav a[href="/catalog"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='1'/%3E%3Crect x='14' y='3' width='7' height='7' rx='1'/%3E%3Crect x='3' y='14' width='7' height='7' rx='1'/%3E%3Crect x='14' y='14' width='7' height='7' rx='1'/%3E%3C/svg%3E")}
-.nav a[href="/products"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12V4h8l10 10-8 8z'/%3E%3Ccircle cx='7.5' cy='8.5' r='1'/%3E%3C/svg%3E")}
-.nav a[href="/assets"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='12' rx='2'/%3E%3Cpath d='M8 20h8M12 16v4'/%3E%3C/svg%3E")}
-.nav a[href="/inventory"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='4' width='14' height='17' rx='2'/%3E%3Cpath d='M9 4V3h6v1M9 13l2 2 4-4'/%3E%3C/svg%3E")}
-.nav a[href="/reports"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20V10M10 20V4M16 20v-8M22 20H2'/%3E%3C/svg%3E")}
-.nav a[href="/admin"]{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21c0-4 4-6 8-6s8 2 8 6'/%3E%3C/svg%3E")}
-.nav-more-toggle{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='5' cy='12' r='1.5'/%3E%3Ccircle cx='12' cy='12' r='1.5'/%3E%3Ccircle cx='19' cy='12' r='1.5'/%3E%3C/svg%3E")}
+.nav a[href="/stock"]{--ico:url("/static/icons/estoque.svg")}
+.nav a[href="/entry"]{--ico:url("/static/icons/entrada.svg")}
+.nav a[href="/exit"]{--ico:url("/static/icons/saida.svg")}
+.nav a[href="/transfer"]{--ico:url("/static/icons/transferir.svg")}
+.nav a[href="/catalog"]{--ico:url("/static/icons/catalogo.svg")}
+.nav a[href="/products"]{--ico:url("/static/icons/produtos.svg")}
+.nav a[href="/assets"]{--ico:url("/static/icons/patrimonio.svg")}
+.nav a[href="/inventory"]{--ico:url("/static/icons/contagem.svg")}
+.nav a[href="/reports"]{--ico:url("/static/icons/relatorios.svg")}
+.nav a[href="/admin"]{--ico:url("/static/icons/administracao.svg")}
+.nav-more-toggle{--ico:url("/static/icons/mais.svg")}
 
 /* Celular e tablet: barra inferior com o dia a dia e "Mais" */
 @media(max-width:899px){
