@@ -514,7 +514,7 @@ WHERE id=$5 AND version=$6
 RETURNING version`, req.Name, req.Portions, req.Notes, active, id, req.Version).Scan(&newVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		var exists bool
-		if qerr := a.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM recipes WHERE id=$1)`, id).Scan(&exists); qerr != nil {
+		if qerr := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM recipes WHERE id=$1)`, id).Scan(&exists); qerr != nil {
 			writeJSONError(w, http.StatusInternalServerError, "Não foi possível salvar a ficha técnica.")
 			return
 		}
