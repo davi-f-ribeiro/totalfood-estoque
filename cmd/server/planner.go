@@ -567,7 +567,7 @@ ORDER BY day,group_id,array_position(ARRAY['cafe','almoco','lanche','jantar']::t
 		return nil, err
 	}
 
-	rows, err = q.QueryContext(ctx, `SELECT group_id,meal,meal_function,per_capita::float8,per_capita_unit FROM customer_group_menu
+	rows, err = q.QueryContext(ctx, `SELECT group_id,meal,meal_function,options,per_capita::float8,per_capita_unit FROM customer_group_menu
 WHERE group_id IN (SELECT group_id FROM menu_plan_meals WHERE plan_id=$1)`, id)
 	if err != nil {
 		return nil, err
@@ -575,7 +575,7 @@ WHERE group_id IN (SELECT group_id FROM menu_plan_meals WHERE plan_id=$1)`, id)
 	for rows.Next() {
 		var k planMenuKey
 		var m planMenu
-		if err := rows.Scan(&k.Group, &k.Meal, &k.Function, &m.PerCapita, &m.Unit); err != nil {
+		if err := rows.Scan(&k.Group, &k.Meal, &k.Function, &m.Options, &m.PerCapita, &m.Unit); err != nil {
 			rows.Close()
 			return nil, err
 		}

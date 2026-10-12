@@ -66,8 +66,8 @@ func TestPlannerEngineScalesByPeopleAndContractPerCapita(t *testing.T) {
 	// Arroz: porção de 200 g pronta usa 0,08 kg cru. Bife: porção de 120 g usa 0,15 kg cru.
 	f.recipe(10, "Arroz branco", "base", 200, "g", 1, 0.08)
 	f.recipe(20, "Bife à parmegiana", "proteína", 120, "g", 2, 0.15)
-	f.group(1, "Data Center", "almoco", 20, map[string]planMenu{"base": {200, "g"}, "proteína": {120, "g"}})
-	f.group(2, "Base Aérea", "almoco", 30, map[string]planMenu{"base": {200, "g"}, "proteína": {200, "g"}})
+	f.group(1, "Data Center", "almoco", 20, map[string]planMenu{"base": {PerCapita: 200, Unit: "g"}, "proteína": {PerCapita: 120, Unit: "g"}})
+	f.group(2, "Base Aérea", "almoco", 30, map[string]planMenu{"base": {PerCapita: 200, Unit: "g"}, "proteína": {PerCapita: 200, Unit: "g"}})
 	f.meal(1, "2026-10-12", "almoco", 900, 20)
 	f.meal(2, "2026-10-12", "almoco", 300, 30)
 	for _, g := range []int64{1, 2} {
@@ -111,7 +111,7 @@ func TestPlannerEngineBlocksWithoutCostAndNeverReturnsPartialNumbers(t *testing.
 	f.item(2, "Açafrão", -1) // sem custo e sem compra
 	f.recipe(10, "Arroz", "base", 200, "g", 1, 0.08)
 	f.recipe(11, "Arroz amarelo", "base", 200, "g", 2, 0.01)
-	f.group(1, "DC", "almoco", 20, map[string]planMenu{"base": {200, "g"}})
+	f.group(1, "DC", "almoco", 20, map[string]planMenu{"base": {PerCapita: 200, Unit: "g"}})
 	f.meal(1, "2026-10-12", "almoco", 100, 20)
 	f.position(1, "2026-10-12", "almoco", "base", 1, 11, false)
 	ev := evaluatePlan(f.in)
@@ -134,7 +134,7 @@ func TestPlannerSolverRespectsLockAndFindsCheaperProteinForTarget(t *testing.T) 
 	f.recipe(10, "Picanha", "proteína", 100, "g", 1, 0.1)
 	f.recipe(20, "Frango assado", "proteína", 100, "g", 2, 0.1)
 	f.recipe(30, "Bife", "proteína", 100, "g", 3, 0.1)
-	f.group(1, "DC", "almoco", 20, map[string]planMenu{"proteína": {100, "g"}})
+	f.group(1, "DC", "almoco", 20, map[string]planMenu{"proteína": {PerCapita: 100, Unit: "g"}})
 	f.in.Target = 30
 	f.in.DailyTol = 30 // segunda pode estourar; a semana compensa
 	for _, d := range days {
@@ -169,7 +169,7 @@ func TestPlannerSolverReportsUnreachableTarget(t *testing.T) {
 	f := newEngFixture("2026-10-12")
 	f.item(1, "Picanha", 100)
 	f.recipe(10, "Picanha", "proteína", 100, "g", 1, 0.1)
-	f.group(1, "DC", "almoco", 20, map[string]planMenu{"proteína": {100, "g"}})
+	f.group(1, "DC", "almoco", 20, map[string]planMenu{"proteína": {PerCapita: 100, Unit: "g"}})
 	f.meal(1, "2026-10-12", "almoco", 100, 20)
 	f.position(1, "2026-10-12", "almoco", "proteína", 1, 10, true)
 	res := solvePlan(f.in)
@@ -188,7 +188,7 @@ func TestPlannerRuleFeijoadaRequiresBeanThatIsNotBlack(t *testing.T) {
 	f.recipe(11, "Feijão carioca", "feijão", 150, "g", 2, 0.06)
 	f.recipe(20, "Feijoada", "proteína", 150, "g", 3, 0.1, "feijoada")
 	f.recipe(21, "Carne assada", "proteína", 150, "g", 3, 0.1)
-	f.group(1, "Data Center", "almoco", 25, map[string]planMenu{"proteína": {150, "g"}, "feijão": {150, "g"}})
+	f.group(1, "Data Center", "almoco", 25, map[string]planMenu{"proteína": {PerCapita: 150, Unit: "g"}, "feijão": {PerCapita: 150, Unit: "g"}})
 	f.in.Rules = []planRule{{Group: 1, Kind: "exists_without", WhenTag: "feijoada", Function: "feijão", Tag: "feijao-preto"}}
 	for _, d := range days {
 		f.meal(1, d, "almoco", 100, 25)
@@ -215,7 +215,7 @@ func TestPlannerRuleNoRepeat(t *testing.T) {
 	f.item(2, "Porco", 16)
 	f.recipe(10, "Frango assado", "proteína", 100, "g", 1, 0.1, "frango")
 	f.recipe(20, "Suíno guisado", "proteína", 100, "g", 2, 0.1, "suino")
-	f.group(1, "Quentinhas", "almoco", 20, map[string]planMenu{"proteína": {100, "g"}})
+	f.group(1, "Quentinhas", "almoco", 20, map[string]planMenu{"proteína": {PerCapita: 100, Unit: "g"}})
 	f.in.Rules = []planRule{{Group: 1, Kind: "no_repeat", Function: "proteína", Tag: "frango", Days: 1}}
 	for _, d := range days {
 		f.meal(1, d, "almoco", 100, 20)
@@ -238,7 +238,7 @@ func TestPlannerSolverPrefersSharedPreparationWithinScaleTolerance(t *testing.T)
 		f.recipe(10, "Frango assado", "proteína", 100, "g", 1, 0.1)
 		f.recipe(20, "Peixe", "proteína", 100, "g", 2, 0.1)
 		for _, g := range []int64{1, 2} {
-			f.group(g, "G", "almoco", 20, map[string]planMenu{"proteína": {100, "g"}})
+			f.group(g, "G", "almoco", 20, map[string]planMenu{"proteína": {PerCapita: 100, Unit: "g"}})
 			f.meal(g, "2026-10-12", "almoco", 100, 20)
 		}
 		f.position(1, "2026-10-12", "almoco", "proteína", 1, 10, true) // grupo 1 já faz frango
@@ -253,4 +253,25 @@ func TestPlannerSolverPrefersSharedPreparationWithinScaleTolerance(t *testing.T)
 	if res := build(18); res.Positions[1].Recipe != 20 {
 		t.Fatalf("fora da tolerância escolheu %d", res.Positions[1].Recipe)
 	}
+}
+
+// A adesão da função é repartida entre as opções: 900 pessoas × 200 g a 100%
+// em 2 opções dão 90 kg por prato, e não 180 kg em cada um.
+func TestPlannerEngineSplitsFunctionAdhesionAcrossOptions(t *testing.T) {
+	f := newEngFixture("2026-10-12")
+	f.item(1, "Arroz", 6)
+	f.recipe(10, "Arroz branco", "base", 200, "g", 1, 0.08)
+	f.recipe(11, "Arroz integral", "base", 200, "g", 1, 0.08)
+	f.group(1, "Data Center", "almoco", 20, map[string]planMenu{"base": {Options: 2, PerCapita: 200, Unit: "g"}})
+	f.meal(1, "2026-10-12", "almoco", 900, 20)
+	f.position(1, "2026-10-12", "almoco", "base", 1, 10, false)
+	f.position(1, "2026-10-12", "almoco", "base", 2, 11, false)
+	ev := evaluatePlan(f.in)
+	if len(ev.Blocked) > 0 {
+		t.Fatalf("blocked: %v", ev.Blocked)
+	}
+	near(t, "pronto opção 1", ev.Positions[0].Produced, 90000)
+	near(t, "pronto opção 2", ev.Positions[1].Produced, 90000)
+	near(t, "porções opção 1", ev.Positions[0].Portions, 450)
+	near(t, "custo do grupo", ev.Groups[0].Cost, 900*0.08*6)
 }

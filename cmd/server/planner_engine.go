@@ -62,7 +62,10 @@ type planMenuKey struct {
 	Function string
 }
 
+// planMenu é a função do contrato. A adesão da função é repartida entre as
+// Options opções (pratos) da função; sem opção informada, conta uma.
 type planMenu struct {
+	Options   int
 	PerCapita float64
 	Unit      string
 }
@@ -289,7 +292,7 @@ func (e *planEngine) reset() {
 }
 
 // portions devolve as porções da ficha necessárias na posição:
-// pessoas × adesão × per capita do contrato ÷ peso da porção da ficha.
+// pessoas × adesão da função ÷ opções × per capita do contrato ÷ peso da porção da ficha.
 func (e *planEngine) portions(i int, recipeID int64) (float64, float64, string, bool) {
 	p := e.pos[i]
 	r := e.in.Recipes[recipeID]
@@ -298,7 +301,11 @@ func (e *planEngine) portions(i int, recipeID int64) (float64, float64, string, 
 		return 0, 0, "", false
 	}
 	people := e.in.Meals[e.posMeal[i]].People
-	produced := people * p.Adhesion / 100 * menu.PerCapita
+	options := menu.Options
+	if options < 1 {
+		options = 1
+	}
+	produced := people * p.Adhesion / 100 * menu.PerCapita / float64(options)
 	return produced / r.PortionSize, produced, menu.Unit, true
 }
 
