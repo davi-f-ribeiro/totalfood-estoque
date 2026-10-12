@@ -111,7 +111,7 @@ func (a *app) handleTransfer(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleGetOperation(w http.ResponseWriter, r *http.Request) {
 	operationID := strings.TrimSpace(r.PathValue("operation_id"))
 	if operationID == "" {
-		writeJSONError(w, http.StatusBadRequest, "invalid operation_id")
+		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar este envio. Atualize a página e tente de novo.")
 		return
 	}
 	res, err := a.getOperation(r.Context(), operationID)
@@ -142,7 +142,7 @@ func (a *app) handleGetOperation(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if !allowed {
-			writeJSONError(w, http.StatusForbidden, "forbidden")
+			writeJSONError(w, http.StatusForbidden, "Você não tem permissão para fazer isso.")
 			return
 		}
 	}
@@ -156,7 +156,7 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 	dec.DisallowUnknownFields()
 	var req movementRequest
 	if err := dec.Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "Os dados da movimentação enviados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return req, "", false
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
@@ -164,25 +164,25 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 	req.QuantitySemantics = strings.TrimSpace(req.QuantitySemantics)
 	req.UnitCost = normalizeDecimalInput(req.UnitCost)
 	if req.QuantitySemantics != "" && req.QuantitySemantics != presentationQuantitySemantics {
-		writeJSONError(w, http.StatusBadRequest, "Semântica de quantidade inválida.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return req, "", false
 	}
 	body, _ := json.Marshal(req)
 	h := sha256.Sum256(body)
 	if req.OperationID == "" {
-		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar esta operação. Recarregue a página antes de tentar novamente.")
+		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar este envio. Atualize a página e tente de novo.")
 		return req, "", false
 	}
 	if req.SKUID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Selecione um produto antes de registrar a movimentação.")
+		writeJSONError(w, http.StatusBadRequest, "Escolha um produto antes de registrar o lançamento.")
 		return req, "", false
 	}
 	if !positiveDecimal(req.Quantity) {
-		writeJSONError(w, http.StatusBadRequest, "Informe uma quantidade maior que zero, com até 4 casas decimais.")
+		writeJSONError(w, http.StatusBadRequest, "Digite uma quantidade maior que zero, com até 4 casas decimais.")
 		return req, "", false
 	}
 	if requireCost && !nonNegativeDecimal(req.UnitCost) {
-		writeJSONError(w, http.StatusBadRequest, "Informe um custo unitário válido, igual ou maior que zero, com até 4 casas decimais.")
+		writeJSONError(w, http.StatusBadRequest, "Digite um custo válido, de zero ou mais, com até 4 casas decimais.")
 		return req, "", false
 	}
 	return req, hex.EncodeToString(h[:]), true

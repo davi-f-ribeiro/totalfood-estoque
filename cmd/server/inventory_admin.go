@@ -66,7 +66,7 @@ func (a *app) handleListInventoryValidations(w http.ResponseWriter, r *http.Requ
 	typ := strings.TrimSpace(strings.ToUpper(r.URL.Query().Get("type")))
 	warehouseID, err := parseOptionalPositiveInt64(r.URL.Query().Get("warehouse_id"))
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "Warehouse inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Depósito inválido.")
 		return
 	}
 	responsible := strings.TrimSpace(r.URL.Query().Get("responsible"))
@@ -81,18 +81,18 @@ func (a *app) handleListInventoryValidations(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if status != "" && !inventoryListStatus(status) {
-		writeJSONError(w, http.StatusBadRequest, "Status inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Filtro de status inválido.")
 		return
 	}
 	if typ != "" && typ != "TOTAL" && typ != "BLIND" {
-		writeJSONError(w, http.StatusBadRequest, "Tipo inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Filtro de tipo inválido.")
 		return
 	}
 	limit := 30
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 || n > 100 {
-			writeJSONError(w, http.StatusBadRequest, "Limite inválido.")
+			writeJSONError(w, http.StatusBadRequest, "Paginação inválida.")
 			return
 		}
 		limit = n
@@ -101,7 +101,7 @@ func (a *app) handleListInventoryValidations(w http.ResponseWriter, r *http.Requ
 	if raw := strings.TrimSpace(r.URL.Query().Get("offset")); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 0 {
-			writeJSONError(w, http.StatusBadRequest, "Offset inválido.")
+			writeJSONError(w, http.StatusBadRequest, "Paginação inválida.")
 			return
 		}
 		offset = n

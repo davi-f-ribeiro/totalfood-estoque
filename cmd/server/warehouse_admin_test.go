@@ -239,7 +239,7 @@ func TestInactiveWarehouseRejectedByAssetAssignment(t *testing.T) {
 		t.Fatal(err)
 	}
 	move := authReq(a, http.MethodPost, "/api/assets/WH-MOVE-INACTIVE/move", map[string]any{"operation_id": "asset-move-inactive", "warehouse_id": whID}, director, "")
-	if move.Code != http.StatusConflict || !strings.Contains(move.Body.String(), "depósito inativo") {
+	if move.Code != http.StatusConflict || !strings.Contains(move.Body.String(), "Depósito desativado.") {
 		t.Fatalf("inactive asset move status=%d body=%s", move.Code, move.Body.String())
 	}
 }
@@ -259,7 +259,7 @@ func TestWarehouseWithCurrentAssetCannotBeDeactivatedAndDirectAssignmentIsReject
 	createTestUser(t, a, "warehouse-asset-director", "secret", "Diretor", true)
 	director := doLogin(t, a, "warehouse-asset-director", "secret")
 	rr := authReq(a, http.MethodPost, "/api/admin/warehouses/"+itoa(wh1)+"/deactivate", nil, director, "")
-	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "Não é possível desativar este depósito porque ainda existe estoque ou patrimônio vinculado.") {
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "Não é possível desativar: o depósito ainda tem estoque ou patrimônio.") {
 		t.Fatalf("warehouse with asset deactivate status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	list := authReq(a, http.MethodGet, "/api/admin/warehouses", nil, director, "")

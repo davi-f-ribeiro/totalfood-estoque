@@ -82,18 +82,18 @@ func (a *app) showChangePassword(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		a.render(w, "login.html", uiData{Title: "Estoque", Error: "Credenciais inválidas"})
+		a.render(w, "login.html", uiData{Title: "Estoque", Error: "Usuário ou senha incorretos."})
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	req := loginRequest{Login: r.FormValue("login"), Password: r.FormValue("password")}
 	if strings.TrimSpace(req.Login) == "" || req.Password == "" {
-		a.render(w, "login.html", uiData{Title: "Estoque", Error: "Credenciais inválidas"})
+		a.render(w, "login.html", uiData{Title: "Estoque", Error: "Usuário ou senha incorretos."})
 		return
 	}
 	id, ok := a.verifyPassword(r.Context(), req.Login, req.Password)
 	if !ok {
-		a.render(w, "login.html", uiData{Title: "Estoque", Error: "Credenciais inválidas"})
+		a.render(w, "login.html", uiData{Title: "Estoque", Error: "Usuário ou senha incorretos."})
 		return
 	}
 	tok, _ := newToken()
@@ -101,7 +101,7 @@ func (a *app) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	exp := now().Add(sessionDuration)
 	_, err := a.db.ExecContext(r.Context(), `INSERT INTO sessions (user_id,token_hash,csrf_token_hash,expires_at) VALUES ($1,$2,$3,$4)`, id, hashToken(tok), hashToken(csrf), exp)
 	if err != nil {
-		a.render(w, "login.html", uiData{Title: "Estoque", Error: "Erro interno"})
+		a.render(w, "login.html", uiData{Title: "Estoque", Error: "Não foi possível entrar agora. Tente de novo."})
 		return
 	}
 	setSessionCookie(w, tok, exp)

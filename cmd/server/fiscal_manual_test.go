@@ -53,7 +53,7 @@ func TestFiscalManualFallbackConfirmMultiLine(t *testing.T) {
 	beforeDupLots := tableCount(t, a, "stock_lots")
 	dupPayload := map[string]any{"operation_id": "fiscal-manual-dup", "access_key": key, "warehouse_id": wh, "lines": []map[string]any{{"sku_id": sku1, "quantity": "1", "unit_cost": "1"}}}
 	dup := authReq(a, http.MethodPost, "/api/fiscal/confirm", dupPayload, director, "")
-	if dup.Code != http.StatusConflict || !strings.Contains(dup.Body.String(), "Nota fiscal já confirmada") {
+	if dup.Code != http.StatusConflict || !strings.Contains(dup.Body.String(), "Nota já confirmada") {
 		t.Fatalf("duplicate status=%d body=%s", dup.Code, dup.Body.String())
 	}
 	if got := tableCount(t, a, "movements"); got != beforeDupMovements {

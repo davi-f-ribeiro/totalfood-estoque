@@ -74,7 +74,7 @@ func (a *app) handleGetInventoryCounting(w http.ResponseWriter, r *http.Request)
 	view, err := a.getInventoryCountingView(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, errInventoryValidationNotFound) {
-			writeJSONError(w, http.StatusNotFound, "Inventário não encontrado.")
+			writeJSONError(w, http.StatusNotFound, "Contagem não encontrada.")
 			return
 		}
 		log.Printf("inventory counting lookup failed validation_id=%d error=%v", id, err)
@@ -96,7 +96,7 @@ func (a *app) handleInventoryLookup(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := a.lookupInventoryBarcode(r.Context(), id, barcode)
 	if errors.Is(err, errInventoryValidationNotFound) {
-		writeJSONError(w, http.StatusNotFound, "Inventário não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Contagem não encontrada.")
 		return
 	}
 	if err != nil {
@@ -114,7 +114,7 @@ func (a *app) handleSaveInventoryCount(w http.ResponseWriter, r *http.Request) {
 	}
 	skuID, err := strconv.ParseInt(strings.TrimSpace(r.PathValue("sku_id")), 10, 64)
 	if err != nil || skuID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "SKU inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Produto inválido.")
 		return
 	}
 	var req inventoryCountRequest
@@ -123,7 +123,7 @@ func (a *app) handleSaveInventoryCount(w http.ResponseWriter, r *http.Request) {
 	}
 	req.PhysicalQuantity = normalizeDecimalInput(req.PhysicalQuantity)
 	if !validPhysicalQuantity(req.PhysicalQuantity) || req.ExpectedVersion < 0 {
-		writeJSONError(w, http.StatusBadRequest, "Quantidade física inválida.")
+		writeJSONError(w, http.StatusBadRequest, "Quantidade contada inválida.")
 		return
 	}
 	line, status, err := a.saveInventoryCount(r.Context(), validationID, skuID, req.PhysicalQuantity, req.ExpectedVersion, userFromContext(r.Context()).ID)
@@ -131,13 +131,13 @@ func (a *app) handleSaveInventoryCount(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeJSON(w, http.StatusOK, map[string]any{"line": line, "status": status})
 	case errors.Is(err, errInventoryValidationNotFound), errors.Is(err, errInventoryLineNotFound):
-		writeJSONError(w, http.StatusNotFound, "Linha de inventário não encontrada.")
+		writeJSONError(w, http.StatusNotFound, "Item da contagem não encontrado.")
 	case errors.Is(err, errInventoryCountConflict):
-		writeJSONError(w, http.StatusConflict, "Esta contagem foi alterada por outro operador. Recarregue antes de salvar novamente.")
+		writeJSONError(w, http.StatusConflict, "Outra pessoa alterou esta contagem. Atualize a página antes de salvar.")
 	case errors.Is(err, errInventoryReadOnly):
-		writeJSONError(w, http.StatusConflict, "Inventário não aceita alterações neste estado.")
+		writeJSONError(w, http.StatusConflict, "Esta contagem não aceita mais alterações.")
 	case errors.Is(err, errInventoryInvalidCount):
-		writeJSONError(w, http.StatusBadRequest, "Quantidade física inválida.")
+		writeJSONError(w, http.StatusBadRequest, "Quantidade contada inválida.")
 	default:
 		log.Printf("inventory count save failed validation_id=%d sku_id=%d error=%v", validationID, skuID, err)
 		writeJSONError(w, http.StatusInternalServerError, "Erro interno.")
@@ -150,12 +150,12 @@ func decodeCountJSON(w http.ResponseWriter, r *http.Request, dst *inventoryCount
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "JSON inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return false
 	}
 	var extra any
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		writeJSONError(w, http.StatusBadRequest, "JSON inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return false
 	}
 	return true

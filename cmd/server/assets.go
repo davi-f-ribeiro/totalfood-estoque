@@ -79,7 +79,7 @@ func (a *app) handleAssetTypes(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleCreateAssetType(w http.ResponseWriter, r *http.Request) {
 	var req assetTypeRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.Name) == "" {
-		writeJSONError(w, 400, "Dados informados são inválidos.")
+		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	active := true
@@ -89,7 +89,7 @@ func (a *app) handleCreateAssetType(w http.ResponseWriter, r *http.Request) {
 	var id int64
 	if err := a.db.QueryRowContext(r.Context(), `INSERT INTO asset_types (name,active) VALUES ($1,$2) RETURNING id`, strings.TrimSpace(req.Name), active).Scan(&id); err != nil {
 		log.Printf("asset type create failed error=%v", err)
-		writeJSONError(w, 409, "tipo patrimonial não salvo")
+		writeJSONError(w, 409, "Não foi possível salvar o tipo de patrimônio.")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
@@ -102,7 +102,7 @@ func (a *app) handleUpdateAssetType(w http.ResponseWriter, r *http.Request) {
 	}
 	var req assetTypeRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.Name) == "" {
-		writeJSONError(w, 400, "Dados informados são inválidos.")
+		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	active := true
@@ -112,11 +112,11 @@ func (a *app) handleUpdateAssetType(w http.ResponseWriter, r *http.Request) {
 	res, err := a.db.ExecContext(r.Context(), `UPDATE asset_types SET name=$1,active=$2 WHERE id=$3`, strings.TrimSpace(req.Name), active, id)
 	if err != nil {
 		log.Printf("asset type update failed id=%d error=%v", id, err)
-		writeJSONError(w, 409, "tipo patrimonial não salvo")
+		writeJSONError(w, 409, "Não foi possível salvar o tipo de patrimônio.")
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		writeJSONError(w, 404, "tipo patrimonial não encontrado")
+		writeJSONError(w, 404, "Tipo de patrimônio não encontrado.")
 		return
 	}
 	writeJSON(w, 200, map[string]any{"id": id})
@@ -155,7 +155,7 @@ func (a *app) handleAssetLookup(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	if !rows.Next() {
-		writeJSONError(w, 404, "patrimônio não encontrado")
+		writeJSONError(w, 404, "Patrimônio não encontrado.")
 		return
 	}
 	var id, whID, typeID, version int64
@@ -170,7 +170,7 @@ func (a *app) handleAssetLookup(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
 	var req assetRequest
 	if !decodeJSON(w, r, &req) || !validAssetReq(req) {
-		writeJSONError(w, 400, "Dados informados são inválidos.")
+		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	var wh any = req.WarehouseID
@@ -183,7 +183,7 @@ func (a *app) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !active {
-			writeJSONError(w, http.StatusConflict, "depósito inativo ou inexistente")
+			writeJSONError(w, http.StatusConflict, "Depósito desativado ou inexistente.")
 			return
 		}
 	}
@@ -202,12 +202,12 @@ func (a *app) handleUpdateAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	var req assetUpdateRequest
 	if !decodeJSON(w, r, &req) || req.AssetTypeID <= 0 || cleanBarcode(req.Tag) == "" || req.Version <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Dados informados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	var currentVersion int64
 	if err := a.db.QueryRowContext(r.Context(), `SELECT version FROM assets WHERE id=$1`, id).Scan(&currentVersion); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "patrimônio não encontrado")
+		writeJSONError(w, http.StatusNotFound, "Patrimônio não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -245,16 +245,16 @@ func writeAssetError(w http.ResponseWriter, err error, prefix string) {
 		return
 	}
 	if strings.Contains(err.Error(), "asset warehouse inactive or not found") {
-		writeJSONError(w, 409, "depósito inativo ou inexistente")
+		writeJSONError(w, 409, "Depósito desativado ou inexistente.")
 		return
 	}
-	writeJSONError(w, 400, "patrimônio não salvo")
+	writeJSONError(w, 400, "Não foi possível salvar o patrimônio.")
 }
 
 func (a *app) handleMoveAsset(w http.ResponseWriter, r *http.Request) {
 	var req assetMoveRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.OperationID) == "" || req.WarehouseID <= 0 {
-		writeJSONError(w, 400, "Dados informados são inválidos.")
+		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	if err := a.changeAssetLocation(r.Context(), cleanBarcode(r.PathValue("tag")), req, userFromContext(r.Context()).ID, requestHash(req)); err != nil {
@@ -267,7 +267,7 @@ func (a *app) handleMoveAsset(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleAssetStatus(w http.ResponseWriter, r *http.Request) {
 	var req assetStatusRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.OperationID) == "" || !validAssetStatus(req.Status) {
-		writeJSONError(w, 400, "Dados informados são inválidos.")
+		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	if err := a.changeAssetStatus(r.Context(), cleanBarcode(r.PathValue("tag")), req, userFromContext(r.Context()).ID, requestHash(req)); err != nil {
@@ -283,23 +283,23 @@ func writeAssetMutationError(w http.ResponseWriter, err error) {
 		return
 	}
 	if errors.Is(err, errAssetWarehouseNotFound) {
-		writeJSONError(w, 404, "depósito não encontrado")
+		writeJSONError(w, 404, "Depósito não encontrado.")
 		return
 	}
 	if errors.Is(err, errWarehouseInactive) {
-		writeJSONError(w, 409, "depósito inativo")
+		writeJSONError(w, 409, "Depósito desativado.")
 		return
 	}
 	if errors.Is(err, errNotFound) {
-		writeJSONError(w, 404, "patrimônio não encontrado")
+		writeJSONError(w, 404, "Patrimônio não encontrado.")
 		return
 	}
 	if errors.Is(err, errValidation) {
-		writeJSONError(w, 400, "operação inválida")
+		writeJSONError(w, 400, "Operação inválida.")
 		return
 	}
 	if strings.Contains(err.Error(), "asset warehouse inactive or not found") {
-		writeJSONError(w, 409, "depósito inativo ou inexistente")
+		writeJSONError(w, 409, "Depósito desativado ou inexistente.")
 		return
 	}
 	log.Printf("asset mutation failed error=%v", err)

@@ -147,7 +147,7 @@ func TestPublicInsufficientStockMessage(t *testing.T) {
 		t.Fatalf("status got %d want %d", rr.Code, http.StatusConflict)
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "Estoque insuficiente. Disponível: 2.000 KG.") {
+	if !strings.Contains(body, "Estoque insuficiente. Só há 2.000 KG.") {
 		t.Fatalf("public message not localized: %s", body)
 	}
 	if strings.Contains(body, "insufficient stock") {
@@ -472,12 +472,12 @@ func TestMovementValidationMessagesAreSpecific(t *testing.T) {
 		err  error
 		want string
 	}{
-		{"product", errMovementProductRequired, "Selecione um produto antes de registrar a movimentação."},
-		{"quantity", errMovementQuantityInvalid, "Informe uma quantidade maior que zero"},
-		{"cost", errMovementCostInvalid, "Informe um custo unitário válido"},
-		{"warehouse", errMovementWarehouseRequired, "Selecione um depósito antes de registrar a movimentação."},
-		{"transfer warehouses", errTransferWarehousesRequired, "Selecione os depósitos de origem e destino."},
-		{"same warehouse", errTransferSameWarehouse, "O depósito de destino deve ser diferente da origem."},
+		{"product", errMovementProductRequired, "Escolha um produto antes de registrar o lançamento."},
+		{"quantity", errMovementQuantityInvalid, "Digite uma quantidade maior que zero"},
+		{"cost", errMovementCostInvalid, "Digite um custo válido"},
+		{"warehouse", errMovementWarehouseRequired, "Escolha um depósito antes de registrar o lançamento."},
+		{"transfer warehouses", errTransferWarehousesRequired, "Escolha o depósito de origem e o de destino."},
+		{"same warehouse", errTransferSameWarehouse, "O destino precisa ser diferente da origem."},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -74,37 +74,37 @@ func (a *app) writeOperationResponse(w http.ResponseWriter, typ, operationID str
 	msg := "internal error"
 	switch {
 	case errors.Is(err, errMovementOperationIDMissing):
-		status, msg = http.StatusBadRequest, "Não foi possível identificar esta operação. Recarregue a página antes de tentar novamente."
+		status, msg = http.StatusBadRequest, "Não foi possível identificar este envio. Atualize a página e tente de novo."
 	case errors.Is(err, errMovementProductRequired):
-		status, msg = http.StatusBadRequest, "Selecione um produto antes de registrar a movimentação."
+		status, msg = http.StatusBadRequest, "Escolha um produto antes de registrar o lançamento."
 	case errors.Is(err, errMovementQuantityInvalid):
-		status, msg = http.StatusBadRequest, "Informe uma quantidade maior que zero, com até 4 casas decimais."
+		status, msg = http.StatusBadRequest, "Digite uma quantidade maior que zero, com até 4 casas decimais."
 	case errors.Is(err, errMovementCostInvalid):
-		status, msg = http.StatusBadRequest, "Informe um custo unitário válido, igual ou maior que zero, com até 4 casas decimais."
+		status, msg = http.StatusBadRequest, "Digite um custo válido, de zero ou mais, com até 4 casas decimais."
 	case errors.Is(err, errMovementWarehouseRequired):
-		status, msg = http.StatusBadRequest, "Selecione um depósito antes de registrar a movimentação."
+		status, msg = http.StatusBadRequest, "Escolha um depósito antes de registrar o lançamento."
 	case errors.Is(err, errTransferWarehousesRequired):
-		status, msg = http.StatusBadRequest, "Selecione os depósitos de origem e destino."
+		status, msg = http.StatusBadRequest, "Escolha o depósito de origem e o de destino."
 	case errors.Is(err, errTransferSameWarehouse):
-		status, msg = http.StatusBadRequest, "O depósito de destino deve ser diferente da origem."
+		status, msg = http.StatusBadRequest, "O destino precisa ser diferente da origem."
 	case errors.Is(err, errValidation):
-		status, msg = http.StatusBadRequest, "Os dados recebidos não correspondem à movimentação solicitada."
+		status, msg = http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo."
 	case errors.Is(err, errNotFound):
 		status, msg = http.StatusNotFound, "resource not found"
 	case errors.Is(err, errInsufficientStock):
 		status, msg = http.StatusConflict, "Estoque insuficiente."
 		var e insufficientStockError
 		if errors.As(err, &e) && e.Available != "" && e.Unit != "" {
-			msg = fmt.Sprintf("Estoque insuficiente. Disponível: %s %s.", e.Available, e.Unit)
+			msg = fmt.Sprintf("Estoque insuficiente. Só há %s %s.", e.Available, e.Unit)
 		}
 	case errors.Is(err, errOperationConflict):
 		status, msg = http.StatusConflict, "operation_id conflict"
 	case errors.Is(err, errWarehouseInactive):
-		status, msg = http.StatusConflict, "Depósito inativo."
+		status, msg = http.StatusConflict, "Depósito desativado."
 	case errors.Is(err, errDuplicateFiscalDocument):
-		status, msg = http.StatusConflict, "Nota fiscal já confirmada."
+		status, msg = http.StatusConflict, "Esta nota já foi confirmada."
 	case errors.Is(err, errDuplicateEntrySKU):
-		status, msg = http.StatusBadRequest, "Um mesmo SKU não pode aparecer duas vezes na nota."
+		status, msg = http.StatusBadRequest, "Um produto não pode aparecer duas vezes na nota."
 	}
 	if status == http.StatusInternalServerError {
 		log.Printf("operation_id=%s type=%s stage=write error=%v", operationID, typ, err)

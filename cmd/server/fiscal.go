@@ -71,7 +71,7 @@ func (a *app) registerFiscalHandlers(mux *http.ServeMux) {
 func (a *app) handleFiscalQRInspect(w http.ResponseWriter, r *http.Request) {
 	var req fiscalQRRequest
 	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.QR) == "" {
-		writeJSONError(w, http.StatusBadRequest, "QR inválido")
+		writeJSONError(w, http.StatusBadRequest, "QR code inválido.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), fiscalTimeout)
@@ -105,7 +105,7 @@ func (a *app) handleFiscalConfirm(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	var req fiscalConfirmRequest
 	if err := dec.Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "Os dados da nota fiscal enviados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	req.OperationID = strings.TrimSpace(req.OperationID)
@@ -113,23 +113,23 @@ func (a *app) handleFiscalConfirm(w http.ResponseWriter, r *http.Request) {
 	req.AccessKey = strings.TrimSpace(req.AccessKey)
 	key, err := parseFiscalAccessKey(req.AccessKey)
 	if err != nil || key.Model != "65" {
-		writeJSONError(w, http.StatusBadRequest, "chave fiscal inválida")
+		writeJSONError(w, http.StatusBadRequest, "Chave da nota inválida.")
 		return
 	}
 	if req.QuantitySemantics != "" && req.QuantitySemantics != presentationQuantitySemantics {
-		writeJSONError(w, http.StatusBadRequest, "Semântica de quantidade inválida.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	if req.OperationID == "" {
-		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar esta confirmação fiscal. Recarregue a página antes de tentar novamente.")
+		writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar este envio. Atualize a página e tente de novo.")
 		return
 	}
 	if req.WarehouseID <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Selecione um depósito para a entrada da nota fiscal.")
+		writeJSONError(w, http.StatusBadRequest, "Escolha o depósito de entrada da nota.")
 		return
 	}
 	if len(req.Lines) == 0 {
-		writeJSONError(w, http.StatusBadRequest, "Adicione pelo menos um item à nota fiscal.")
+		writeJSONError(w, http.StatusBadRequest, "Adicione ao menos um item à nota.")
 		return
 	}
 	body, _ := json.Marshal(req)
@@ -140,12 +140,12 @@ func (a *app) handleFiscalConfirm(w http.ResponseWriter, r *http.Request) {
 }
 
 var (
-	errFiscalInvalidURL       = errors.New("QR inválido")
-	errFiscalDomainDenied     = errors.New("domínio fiscal não permitido")
-	errFiscalTargetDenied     = errors.New("destino fiscal não permitido")
-	errFiscalRedirectRejected = errors.New("redirect fiscal rejeitado")
-	errFiscalBodyTooLarge     = errors.New("resposta fiscal excedeu o limite")
-	errFiscalTimeout          = errors.New("consulta fiscal expirou")
+	errFiscalInvalidURL       = errors.New("QR code inválido.")
+	errFiscalDomainDenied     = errors.New("Este endereço de nota fiscal não é aceito.")
+	errFiscalTargetDenied     = errors.New("Este endereço de nota fiscal não é aceito.")
+	errFiscalRedirectRejected = errors.New("Não foi possível consultar esta nota. Confira o endereço.")
+	errFiscalBodyTooLarge     = errors.New("A consulta da nota não respondeu como esperado. Tente de novo.")
+	errFiscalTimeout          = errors.New("A consulta da nota demorou demais. Tente de novo.")
 )
 
 func fetchFiscalQR(ctx context.Context, raw string) (fiscalFetchResult, error) {
@@ -176,12 +176,12 @@ func fetchFiscalQR(ctx context.Context, raw string) (fiscalFetchResult, error) {
 		if errors.Is(err, errFiscalRedirectRejected) {
 			return fiscalFetchResult{}, errFiscalRedirectRejected
 		}
-		return fiscalFetchResult{}, fmt.Errorf("consulta fiscal falhou")
+		return fiscalFetchResult{}, fmt.Errorf("Não foi possível consultar a nota agora. Tente de novo.")
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, fiscalMaxBody+1))
 	if err != nil {
-		return fiscalFetchResult{}, fmt.Errorf("consulta fiscal falhou")
+		return fiscalFetchResult{}, fmt.Errorf("Não foi possível consultar a nota agora. Tente de novo.")
 	}
 	if int64(len(body)) > fiscalMaxBody {
 		return fiscalFetchResult{}, errFiscalBodyTooLarge
@@ -274,18 +274,18 @@ func loadFiscalAllowedHosts() map[string]bool {
 func fiscalHTTPError(err error) (int, string) {
 	switch {
 	case errors.Is(err, errFiscalInvalidURL):
-		return http.StatusBadRequest, "QR inválido"
+		return http.StatusBadRequest, "QR code inválido."
 	case errors.Is(err, errFiscalDomainDenied):
-		return http.StatusBadRequest, "domínio fiscal não permitido"
+		return http.StatusBadRequest, "Este endereço de nota fiscal não é aceito."
 	case errors.Is(err, errFiscalTargetDenied):
-		return http.StatusBadRequest, "destino fiscal não permitido"
+		return http.StatusBadRequest, "Este endereço de nota fiscal não é aceito."
 	case errors.Is(err, errFiscalRedirectRejected):
-		return http.StatusBadGateway, "redirect fiscal rejeitado"
+		return http.StatusBadGateway, "Não foi possível consultar esta nota. Confira o endereço."
 	case errors.Is(err, errFiscalBodyTooLarge):
-		return http.StatusBadGateway, "resposta fiscal excedeu o limite"
+		return http.StatusBadGateway, "A consulta da nota não respondeu como esperado. Tente de novo."
 	case errors.Is(err, errFiscalTimeout):
-		return http.StatusBadGateway, "consulta fiscal expirou"
+		return http.StatusBadGateway, "A consulta da nota demorou demais. Tente de novo."
 	default:
-		return http.StatusBadGateway, "consulta fiscal falhou"
+		return http.StatusBadGateway, "Não foi possível consultar a nota agora. Tente de novo."
 	}
 }

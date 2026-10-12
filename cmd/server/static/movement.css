@@ -1,0 +1,72 @@
+/* Movimentação (Entrada, Saída, Transferência).
+   Um único DOM de campos, duas apresentações com modelos de interação próprios:
+   - mobile (< 1000px): assistente de 3 passos, uma decisão por tela, ações fixas no polegar;
+   - desktop (>= 1000px): área de trabalho com produto à esquerda, operação à direita e
+     confirmação sempre visível, sem passos ocultos. */
+
+.movement-main{max-width:1180px}
+
+/* Seletores com .movement para vencer as regras legadas de app.css (.movement form, .movement label:has(#quantity)). */
+
+/* ---------- Mobile: assistente de passos ---------- */
+
+.movement .movement-form{display:flex;flex-direction:column;gap:0}
+.movement label.movement-quantity:has(#quantity){width:100%;margin-bottom:0}
+.movement .movement-quantity #quantity{width:100%}
+
+.movement-progress{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:0 0 16px;padding:0;list-style:none}
+.movement-progress li{padding:10px 4px 8px;border-bottom:3px solid var(--border);color:var(--text-muted);font-size:13px;font-weight:700;text-align:center}
+.movement-progress li.is-done{border-bottom-color:var(--brand-primary);color:var(--text-secondary)}
+.movement-progress li.is-current{border-bottom-color:var(--brand-primary-active);color:var(--brand-primary-active)}
+
+.movement-step{display:none;gap:12px;align-content:start}
+.movement-step.is-current{display:grid}
+.movement-step > h2{margin:0;font-size:1.05rem}
+.movement .summary:empty{display:block;padding:0;border:0;background:transparent;color:var(--text-muted)}
+.movement .summary:empty::before{content:"O resumo aparece aqui depois que você escolher o produto e a quantidade."}
+
+.movement-quantity input{font-size:1.5rem;font-weight:800;min-height:56px}
+
+body .main.movement-main{padding-bottom:128px}
+/* Barra de ações fixa logo acima do menu inferior: o botão principal fica sempre ao alcance do polegar. */
+.movement-actions{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:30;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:8px;margin:0;padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 16px rgba(16,24,40,.06)}
+.movement-actions .operation-feedback{grid-column:1/-1;margin:0}
+.movement-actions button{width:100%;min-height:52px;font-size:1rem}
+.movement-actions #movementAnother{grid-column:1/-1}
+
+.step-submit{display:none}
+.movement-form[data-step="3"] .step-submit{display:inline-flex}
+.movement-form[data-step="3"] .step-next{display:none}
+.movement-form[data-step="1"] .step-prev{display:none}
+.movement-form[data-step="1"] .movement-actions{grid-template-columns:minmax(0,1fr)}
+
+/* Tablet com menu lateral: a barra de ações acompanha a área de conteúdo. */
+@media (min-width:900px){
+  body .main.movement-main{padding-bottom:96px}
+  .movement-actions{left:232px;bottom:0}
+}
+
+/* ---------- Desktop: área de trabalho em duas colunas ---------- */
+
+@media (min-width:1000px){
+  .movement-progress{display:none}
+
+  .movement .movement-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"product operation" "review operation" "actions actions";gap:16px 20px;align-items:start}
+
+  .movement-step{display:grid;gap:12px;align-content:start;padding:16px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);box-shadow:var(--shadow-sm)}
+  .movement-step.is-current{display:grid}
+  .movement-step > h2{font-size:1rem;padding-bottom:8px;border-bottom:1px solid var(--border)}
+  .movement-step-product{grid-area:product}
+  .movement-step-operation{grid-area:operation;position:sticky;top:64px}
+  .movement-step-review{grid-area:review}
+
+  .movement-quantity input{font-size:1.25rem;min-height:48px}
+
+  body .main.movement-main{padding-bottom:24px}
+  .movement-actions{grid-area:actions;position:static;z-index:auto;display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:0;padding:12px 0 0;background:transparent;border-top:1px solid var(--border);box-shadow:none}
+  .movement-actions .operation-feedback{flex:1 1 auto;margin:0}
+  .movement-actions button{width:auto;min-width:160px;min-height:46px}
+  .movement-actions #movementAnother{grid-column:auto}
+  .step-prev,.step-next{display:none}
+  .step-submit{display:inline-flex}
+}

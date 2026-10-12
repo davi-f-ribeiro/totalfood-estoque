@@ -77,7 +77,7 @@ func (a *app) handleAdminCreateWarehouse(w http.ResponseWriter, r *http.Request)
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		writeJSONError(w, http.StatusBadRequest, "Informe um nome válido para o depósito.")
+		writeJSONError(w, http.StatusBadRequest, "Digite um nome válido para o depósito.")
 		return
 	}
 	tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
@@ -121,7 +121,7 @@ func (a *app) handleAdminDeactivateWarehouse(w http.ResponseWriter, r *http.Requ
 func (a *app) setWarehouseActive(w http.ResponseWriter, r *http.Request, active bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
-		writeJSONError(w, http.StatusBadRequest, "Depósito informado é inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Depósito inválido.")
 		return
 	}
 	tx, err := a.db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
@@ -159,7 +159,7 @@ func (a *app) setWarehouseActive(w http.ResponseWriter, r *http.Request, active 
 			return
 		}
 		if nonZero {
-			writeJSONError(w, http.StatusConflict, "Não é possível desativar este depósito porque ainda existe estoque ou patrimônio vinculado.")
+			writeJSONError(w, http.StatusConflict, "Não é possível desativar: o depósito ainda tem estoque ou patrimônio.")
 			return
 		}
 		var hasAssets bool
@@ -168,7 +168,7 @@ func (a *app) setWarehouseActive(w http.ResponseWriter, r *http.Request, active 
 			return
 		}
 		if hasAssets {
-			writeJSONError(w, http.StatusConflict, "Não é possível desativar este depósito porque ainda existe estoque ou patrimônio vinculado.")
+			writeJSONError(w, http.StatusConflict, "Não é possível desativar: o depósito ainda tem estoque ou patrimônio.")
 			return
 		}
 	}
@@ -198,7 +198,7 @@ func decodeWarehouseAdminJSON(w http.ResponseWriter, r *http.Request, dst any) b
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "Dados enviados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return false
 	}
 	return true

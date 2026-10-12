@@ -29,7 +29,7 @@ const (
 
 var (
 	errAuthRequired = errors.New("auth required")
-	errForbidden    = errors.New("forbidden")
+	errForbidden    = errors.New("Você não tem permissão para fazer isso.")
 )
 
 type authUser struct {
@@ -117,7 +117,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !authThrottle.allow(ip) {
 		log.Printf("login throttled ip=%s", ip)
-		writeJSONError(w, http.StatusTooManyRequests, "too many attempts")
+		writeJSONError(w, http.StatusTooManyRequests, "Muitas tentativas. Aguarde alguns minutos e tente de novo.")
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -126,7 +126,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil || strings.TrimSpace(req.Login) == "" || req.Password == "" {
-		writeJSONError(w, http.StatusBadRequest, "Dados de autenticação informados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	var id int64
@@ -135,7 +135,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	err := a.db.QueryRowContext(r.Context(), `SELECT id,password_hash,active,must_change_password FROM users WHERE login=$1`, req.Login).Scan(&id, &hash, &active, &mustChange)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Printf("login failed login=%s reason=not_found", req.Login)
-		writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
+		writeJSONError(w, http.StatusUnauthorized, "Usuário ou senha incorretos.")
 		return
 	}
 	if err != nil {
@@ -145,12 +145,12 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !active {
 		log.Printf("login failed login=%s reason=inactive", req.Login)
-		writeJSONError(w, http.StatusForbidden, "user inactive")
+		writeJSONError(w, http.StatusForbidden, "Este usuário está desativado.")
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 		log.Printf("login failed login=%s reason=password", req.Login)
-		writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
+		writeJSONError(w, http.StatusUnauthorized, "Usuário ou senha incorretos.")
 		return
 	}
 	tok, err := newToken()
@@ -195,7 +195,7 @@ func (a *app) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil || strings.TrimSpace(req.Login) == "" || req.Password == "" || strings.TrimSpace(req.Profile) == "" {
-		writeJSONError(w, http.StatusBadRequest, "Dados de autenticação informados são inválidos.")
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	active := true
@@ -204,7 +204,7 @@ func (a *app) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var profileID int64
 	if err := a.db.QueryRowContext(r.Context(), `SELECT id FROM profiles WHERE name=$1`, req.Profile).Scan(&profileID); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid profile")
+		writeJSONError(w, http.StatusBadRequest, "Perfil inválido.")
 		return
 	}
 	h, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcryptCost)
@@ -216,7 +216,7 @@ func (a *app) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	err = a.db.QueryRowContext(r.Context(), `INSERT INTO users (login,password_hash,profile_id,active) VALUES ($1,$2,$3,$4) RETURNING id`, req.Login, string(h), profileID, active).Scan(&id)
 	if err != nil {
 		log.Printf("user create failed error=%v", err)
-		writeJSONError(w, http.StatusConflict, "Usuário inicial não pôde ser criado com os dados informados.")
+		writeJSONError(w, http.StatusConflict, "Não foi possível criar o usuário inicial.")
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "login": req.Login, "active": active, "profile": req.Profile})
@@ -226,15 +226,15 @@ func (a *app) requireSession(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u, csrf, err := a.authenticate(r.Context(), r)
 		if err != nil {
-			writeJSONError(w, http.StatusUnauthorized, "authentication required")
+			writeJSONError(w, http.StatusUnauthorized, "Entre para continuar.")
 			return
 		}
 		if r.Method != http.MethodGet && subtle.ConstantTimeCompare([]byte(hashToken(r.Header.Get(csrfHeaderName))), []byte(csrf)) != 1 {
-			writeJSONError(w, http.StatusForbidden, "csrf rejected")
+			writeJSONError(w, http.StatusForbidden, "Sua sessão expirou. Atualize a página.")
 			return
 		}
 		if u.MustChangePassword && r.URL.Path != "/api/me/password" && r.URL.Path != "/api/logout" {
-			writeJSONError(w, http.StatusForbidden, "password change required")
+			writeJSONError(w, http.StatusForbidden, "Troque a senha para continuar.")
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), authCtxKey, u)))
@@ -245,11 +245,11 @@ func (a *app) requireAuthenticatedRead(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		u, _, err := a.authenticate(r.Context(), r)
 		if err != nil {
-			writeJSONError(w, http.StatusUnauthorized, "authentication required")
+			writeJSONError(w, http.StatusUnauthorized, "Entre para continuar.")
 			return
 		}
 		if u.MustChangePassword {
-			writeJSONError(w, http.StatusForbidden, "password change required")
+			writeJSONError(w, http.StatusForbidden, "Troque a senha para continuar.")
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), authCtxKey, u)))
@@ -260,15 +260,15 @@ func (a *app) requireAuth(resource, action string, next http.HandlerFunc) http.H
 	return func(w http.ResponseWriter, r *http.Request) {
 		u, csrf, err := a.authenticate(r.Context(), r)
 		if err != nil {
-			writeJSONError(w, http.StatusUnauthorized, "authentication required")
+			writeJSONError(w, http.StatusUnauthorized, "Entre para continuar.")
 			return
 		}
 		if r.Method != http.MethodGet && r.URL.Path != "/api/login" && subtle.ConstantTimeCompare([]byte(hashToken(r.Header.Get(csrfHeaderName))), []byte(csrf)) != 1 {
-			writeJSONError(w, http.StatusForbidden, "csrf rejected")
+			writeJSONError(w, http.StatusForbidden, "Sua sessão expirou. Atualize a página.")
 			return
 		}
 		if u.MustChangePassword && r.URL.Path != "/api/me/password" && r.URL.Path != "/api/logout" {
-			writeJSONError(w, http.StatusForbidden, "password change required")
+			writeJSONError(w, http.StatusForbidden, "Troque a senha para continuar.")
 			return
 		}
 		ok, err := a.hasPermission(r.Context(), u.ID, resource, action)
@@ -279,7 +279,7 @@ func (a *app) requireAuth(resource, action string, next http.HandlerFunc) http.H
 		}
 		if !ok {
 			log.Printf("access denied user_id=%d resource=%s action=%s", u.ID, resource, action)
-			writeJSONError(w, http.StatusForbidden, "forbidden")
+			writeJSONError(w, http.StatusForbidden, "Você não tem permissão para fazer isso.")
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), authCtxKey, u)))
