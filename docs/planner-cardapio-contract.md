@@ -37,7 +37,7 @@ Referência: cardápios reais da semana 12/10 a 17/10 (Data Center Pecém, Quent
 
 - **Grupo de clientes**: nome, refeições contratadas, **preço por pessoa por refeição**, CMV alvo padrão, desvio diário máximo padrão.
 - **Modelo de refeição** do grupo: funções e quantidade de cada uma por refeição.
-- **Per capita**: por grupo e função (ex.: Base Aérea, proteína = 200 g; Data Center, proteína = 120 g), com **exceção opcional por ficha** (ex.: peixe com 150 g mesmo na função proteína).
+- **Per capita do contrato**: por grupo e função (ex.: Base Aérea, proteína = 200 g; Data Center, proteína = 120 g). Quando o contrato fixa uma quantidade para um tipo de prato, ela é cadastrada no contrato do grupo, não na ficha.
 - **Peso da porção pronta** na ficha técnica (g, ml ou unidade): quanto de produto pronto uma porção da ficha entrega. Sem ele, a ficha não entra no planner e a tela diz qual ficha completar.
 - **Função** da ficha técnica e **etiquetas** (ex.: `feijoada`, `feijao-preto`, `frango`, `suino`, `peixe`) usadas nas regras. A ficha técnica atual não muda de comportamento.
 - **Grupo de equivalência** de itens (ex.: feijão carioca, feijão preto, feijão de corda). O solver só troca ingredientes dentro do grupo.
@@ -72,12 +72,14 @@ Referência: cardápios reais da semana 12/10 a 17/10 (Data Center Pecém, Quent
 - "Recalcular com o solver" mostra as trocas sugeridas para aceitar ou recusar.
 - Regras quebradas aparecem na célula, com o motivo e o que fazer.
 
-## Pontos para confirmar antes do Gate 02
+## Decisões fechadas (Gate 01 concluído)
 
-1. **Preço por pessoa por refeição** de cada grupo (pode variar com o per capita: contrato com proteína maior costuma pagar mais) (ex.: almoço Data Center = R$ X por pessoa). É o que os contratos cobram? O CMV por prato da ficha técnica continua existindo, mas o planner usa este preço.
-2. **Per capita:** definido por grupo e função, com exceção por ficha quando o prato fugir da regra do grupo? E o per capita é do produto **pronto** (como no seu exemplo), e o cru vem do fator de correção e do rendimento da ficha?
-3. **Ganho de escala**: entra só como preferência do solver (desempate), ou deve ter peso definido pelo operador?
-4. **Retrato na aprovação** (custos gravados) como descrito acima.
+1. **Preço por refeição, por grupo.** Cada grupo tem um preço por pessoa para cada refeição que contratou (café X, almoço Y, jantar Z...). O CMV de uma refeição é o custo da refeição inteira ÷ (pessoas × preço daquela refeição).
+2. **Quantidade por pessoa.** A ficha técnica descreve a porção de **uma pessoa**. Produção = pessoas × adesão × quantidade da porção. Exemplo: arroz com porção de 200 g para 900 pessoas = 180 kg. Quando o per capita do contrato do grupo difere da porção da ficha, a quantidade escala pela proporção (200 g contratados sobre 120 g da ficha = 1,67 porção da ficha por pessoa).
+3. **Ganho de escala prevalece quando o custo é próximo.** Se a opção compartilhada entre grupos custar quase o mesmo que a mais barata, o solver escolhe a compartilhada (menos gás, menos setup). "Quase o mesmo" é uma **tolerância configurável por plano**, padrão **3%** do custo da refeição. Acima da tolerância, vence o custo menor.
+4. **O contrato manda na quantidade.** O per capita vem do contrato do grupo (por função). Não há exceção por ficha que contrarie o contrato: se o contrato prevê uma quantidade específica para um tipo de prato, ela é cadastrada no próprio contrato do grupo. O planner nunca usa a quantidade da ficha para contrariar o contrato.
+5. **Per capita é de produto pronto.** O cru vem do fator de correção e do rendimento da ficha. A ficha precisa ter o **peso da porção pronta**; sem ele, não entra no planner.
+6. **Retrato na aprovação** (custos e quantidades gravados no plano aprovado), como descrito em "Fonte de verdade".
 
 ## Gates
 
