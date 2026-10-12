@@ -137,6 +137,7 @@ func newHTTPServer(addr string, a *app) *http.Server {
 	a.registerAdminHandlers(mux)
 	a.registerWarehouseAdminHandlers(mux)
 	a.registerCatalogHandlers(mux)
+	a.registerRecipeHandlers(mux)
 	a.registerAssetHandlers(mux)
 	a.registerFiscalHandlers(mux)
 	a.registerAuthHandlers(mux)
