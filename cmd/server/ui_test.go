@@ -109,7 +109,7 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`fallback=video_true`,
 		`decodeFromStream`,
 		`stage='+stage`,
-		`Não foi possível iniciar a visualização da câmera. Feche o leitor e tente novamente.`,
+		`Não foi possível abrir a câmera. Feche o leitor e tente de novo.`,
 		`SCANNER: `,
 		`BrowserMultiFormatReader`,
 		`BarcodeDetector`,
@@ -119,17 +119,17 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 		`stopScanner`,
 		`cancelAnimationFrame`,
 		`video.pause()`,
-		`Permissão da câmera negada. Libere o acesso à câmera nas configurações do navegador.`,
+		`A câmera está bloqueada. Libere o acesso nas configurações do navegador.`,
 		`Nenhuma câmera disponível.`,
-		`Câmera não suportada neste navegador.`,
+		`Este navegador não permite usar a câmera.`,
 		`Código identificado`,
-		`Selecione um produto`,
+		`Escolha um produto`,
 		`r.warehouse.replace(/^Totalfood\s+/i,'')`,
 		`aria-expanded`,
 		`openItem===row.item_id`,
 		`warehouse_id`,
-		`Quantidade acima do saldo disponível.`,
-		`Destino deve ser diferente da origem.`,
+		`Quantidade maior que o estoque disponível.`,
+		`O destino precisa ser diferente da origem.`,
 		`function movementConfirmed(msg)`,
 		`registrada.`,
 	}
@@ -153,7 +153,7 @@ func TestBetterInterfaceOperationalContracts(t *testing.T) {
 	combined := string(jsb)+string(cssb)+string(hb)
 	for _, want := range []string{
 		`prefers-reduced-motion: no-preference`, `function scrollToContext(`,
-		`Nenhum item com saldo neste depósito.`, `Abaixo do estoque mínimo`, `className='stock-expand'`,
+		`Nenhum item com estoque neste depósito.`, `Abaixo do estoque mínimo`, `className='stock-expand'`,
 		`--focus-ring:`, `body{font-size:16px}`,
 	} {
 		if !strings.Contains(combined,want) { t.Fatalf("better-interface contract missing %q",want) }
@@ -222,7 +222,7 @@ func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
 	for _, want := range []string{
 		`id="productParent"`,`id="productBrand"`,`id="productName"`,`id="productContent"`,`id="productBarcode"`,
 		`parentSelect.setDisabled(!!x.has_history)`,`brandSelect.setDisabled(!!x.has_history)`,
-		`Identificação específica do produto, por exemplo Original, Branco ou Oreo.`,
+		`Como o produto é conhecido, por exemplo Original, Branco ou Integral.`,
 		`name:name.value.trim()`,
 	} {
 		if !strings.Contains(combined,want) { t.Fatalf("Product/Item identity UI missing %q",want) }
@@ -328,7 +328,7 @@ func TestWarehouseAdminUIContracts(t *testing.T) {
 	combined := string(htmlb) + string(jsb) + string(cssb)
 	for _, want := range []string{
 		"Depósitos cadastrados",
-		"O nome é único e permanente para preservar a rastreabilidade.",
+		"O nome não pode se repetir nem ser mudado depois.",
 		"id=\"adminWarehouseStatus\" class=\"operation-feedback\"",
 		"Vazio",
 		"Não foi possível carregar os depósitos.",
@@ -368,7 +368,7 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 		".textContent=e.message",
 		"Formulário pronto para um novo cadastro.",
 		"Formulário pronto para uma nova movimentação.",
-		"Nota fiscal já estava confirmada. Formulário pronto para uma nova nota.",
+		"Esta nota já estava confirmada. Pode lançar outra.",
 		"O sistema não conseguiu concluir a operação.",
 	} {
 		if strings.Contains(js, forbidden) {
@@ -380,8 +380,8 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 		"function setFeedback(",
 		"function uiErrorMessage(",
 		"Sem conexão com o sistema.",
-		"Você não tem permissão para realizar esta ação.",
-		"A operação não pôde ser concluída.",
+		"Você não tem permissão para fazer isso.",
+		"Não foi possível concluir.",
 		"list-action",
 	} {
 		if !strings.Contains(js+css, want) {
@@ -425,15 +425,15 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 			t.Fatalf("inventory UI exposes internal terminology %q", forbidden)
 		}
 	}
-	for _, want := range []string{"Depósito ativo", "Criar inventário total", "Criar inventário cego"} {
+	for _, want := range []string{"Depósito", "Criar contagem completa", "Criar contagem às cegas"} {
 		if !strings.Contains(inventory, want) {
 			t.Fatalf("inventory UI missing business terminology %q", want)
 		}
 	}
 
 	for _, want := range []string{
-		"@media(min-width:1024px)",
-		"@media(min-width:768px) and (max-width:1023px)",
+		"@media(min-width:1280px)",
+		"@media(min-width:768px) and (max-width:1279px)",
 		"@media(max-width:767px)",
 		".assets{grid-template-columns:repeat(2,minmax(0,1fr))",
 		".admin-master-detail{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
@@ -480,10 +480,10 @@ func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 		`id="assetNewStatus" required`,
 		`id="assetUnitWarehouse" required`,
 		`id="fiscalWarehouse" required`,
-		"Ao baixar, a localização atual será removida",
-		"as sessões atuais dos usuários deste perfil serão encerradas",
+		"Ao dar baixa, o patrimônio sai do local atual",
+		"os usuários deste perfil serão desconectados",
 		".impact-warning{",
-		"Selecione um depósito.",
+		"Escolha um depósito.",
 	} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("operational guardrail missing %q", want)
@@ -511,7 +511,7 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 		`{{if .CanExit}}<a href="/exit">Saída</a>{{end}}`,
 		`{{if .CanTransfer}}<a href="/transfer">Transferir</a>{{end}}`,
 		`{{if .CanReports}}<a href="/reports">Relatórios</a>{{end}}`,
-		`{{if .CanCatalog}}<a href="/catalog">Catálogo</a><a href="/products">Produto/Item</a>{{end}}`,
+		`{{if .CanCatalog}}<a href="/catalog">Catálogo</a><a href="/products">Produtos</a>{{end}}`,
 		`{{if .CanAssets}}<a href="/assets">Patrimônio</a>{{end}}`,
 		`{{if .CanInventory}}<a href="/inventory">Contagem de estoque</a>{{end}}`,
 		`{{if .CanAdmin}}<a href="/admin">Administração</a>{{end}}`,
@@ -526,7 +526,7 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 	}
 	catalogb, err := os.ReadFile(filepath.Join("templates", "catalog.html")); if err != nil { t.Fatal(err) }
 	catalog := string(catalogb)
-	if !strings.Contains(catalog,"Item pai é o produto genérico; Produto/Item é a marca e embalagem com código de barras.") || strings.Contains(catalog,"Produtos/SKUs vinculados") {
+	if !strings.Contains(catalog,"“Item” é o nome geral, como Leite. “Produto” é esse item numa marca e embalagem, com código de barras.") || strings.Contains(catalog,"Produtos/SKUs vinculados") {
 		t.Fatal("catalog must contain only item and brand masters")
 	}
 }
@@ -562,8 +562,8 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	for _, want := range []string{"Novo item","Nova marca"} {
 		if !strings.Contains(catalog,want) { t.Fatalf("catalog create mode missing %q",want) }
 	}
-	if !strings.Contains(productHTML,"Novo Produto/Item") { t.Fatal("Product/Item create mode missing") }
-	for _, want := range []string{"Criar tipo","Criar unidade"} {
+	if !strings.Contains(productHTML,"Novo produto") { t.Fatal("Product/Item create mode missing") }
+	for _, want := range []string{"Criar tipo","Criar patrimônio"} {
 		if !strings.Contains(assets,want) { t.Fatalf("assets initial create mode missing %q",want) }
 	}
 	for _, want := range []string{"Criar usuário","Criar perfil"} {
@@ -713,15 +713,15 @@ func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 
 	for _, want := range []string{
 		`id="movementPending"`,
-		"Verificar resultado",
-		"Reenviar a mesma operação",
+		"Ver se foi registrado",
+		"Enviar de novo o mesmo lançamento",
 		"function readPending()",
 		"function savePending(p)",
 		"function resetMovementForm()",
 		"function verifyPending()",
 		"async function retryPending()",
-		"Existe uma operação pendente",
-		"A movimentação pendente já estava confirmada.",
+		"Há um lançamento aguardando envio",
+		"Este lançamento já estava registrado.",
 		"sessionStorage.getItem('pendingOp')",
 		"sessionStorage.removeItem('pendingOp')",
 		"await api('/api/operations/'+encodeURIComponent(p.body.operation_id))",
@@ -767,11 +767,11 @@ func TestAdminSafetyAtomicUserUpdateAndExplicitPermissionTarget(t *testing.T) {
 		"if(pass)body.password=pass",
 		"out=await api('/api/admin/users/'+id,{method:'PATCH'",
 		"selectedProfile=0",
-		"Nenhum perfil selecionado. Selecione um perfil na lista ao lado.",
-		"Perfil selecionado: ",
-		"Selecione explicitamente um perfil antes de salvar os acessos.",
+		"Nenhum perfil escolhido. Escolha um na lista.",
+		"Perfil escolhido: ",
+		"Escolha um perfil antes de salvar os acessos.",
 		`id="adminSavePerms" type="button" disabled>Salvar acessos`,
-		"Obrigatória ao criar. Ao editar, deixe em branco para manter a senha atual.",
+		"Obrigatória ao criar. Ao editar, deixe em branco para manter a senha.",
 		"/api/admin/profile-options",
 		"function permissionActionLabel(resource,action)",
 		"Perfis e acessos",
@@ -796,8 +796,8 @@ func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
 		"let body=id?{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,version:editingAssetVersion}:{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
 		"body.tag+(id?' atualizado. Estado e localização permanecem inalterados.':' criado.')" ,
 		"id=\"assetUnitOperationalHint\"",
-		"Estado e localização preservam histórico.",
-		"altere-os somente pelos controles",
+		"O histórico de estado e de local é mantido.",
+		"Para mudar um deles, use",
 	}
 	for _, want := range checks {
 		if !strings.Contains(js+html, want) {
@@ -823,14 +823,14 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 	for _, want := range []string{
 		"function resetFiscalAfterSuccess()",
 		"lines.textContent=''",
-		"Este SKU já foi adicionado à nota.",
-		"Cada item deve ter um SKU selecionado e sem duplicidade.",
-		"Nota fiscal já estava confirmada.",
+		"Este produto já está na nota.",
+		"Cada linha precisa de um produto escolhido, sem repetir produtos.",
+		"Esta nota já estava confirmada.",
 		"const inventoryCreatePendingKey='pendingInventoryCreate'",
 		"function readInventoryCreatePending()",
 		"function saveInventoryCreatePending(p)",
 		"function clearInventoryCreatePending()",
-		"Reenviar criação pendente",
+		"Enviar a criação de novo",
 		"operation_id:pending.operation_id",
 		"definitiveWriteError(err)",
 		"sort.Slice(skuIDs",
@@ -847,7 +847,7 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 	if strings.Contains(js, "body:JSON.stringify({warehouse_id:warehouseId})") {
 		t.Fatal("inventory total creation reintroduced request without operation_id")
 	}
-	if strings.Contains(js, "body:'{}'});setListMessage('Inventário cego criado.") {
+	if strings.Contains(js, "body:'{}'});setListMessage('Contagem às cegas criada.") {
 		t.Fatal("inventory blind creation reintroduced request without operation_id")
 	}
 }
@@ -861,7 +861,7 @@ func TestCRUDOptimisticConcurrencyUIContracts(t *testing.T) {
 	if err != nil { t.Fatal(err) }
 	js := string(jsb)+string(mb)+string(pb)
 	for _, want := range []string{
-		"registro foi alterado por outro operador",
+		"Outra pessoa alterou este registro",
 		"body.version=itemVersion",
 		"body.version=editing.version",
 		"version:editingAssetVersion",
@@ -948,7 +948,7 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 		`renderAsset(r,true)`,
 		`ops.parentElement===unitOpsHost`,
 		`className='operation-feedback fiscal-line-feedback'`,
-		`Selecione um produto/SKU nesta linha.`,
+		`Escolha um produto nesta linha.`,
 		".asset-unit-layout{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
 		".fiscal-line-feedback{grid-column:1/-1",
 	} {

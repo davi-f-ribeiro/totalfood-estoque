@@ -3,20 +3,20 @@
 {{template "nav" .}}
 <main class="main inventory-shell" data-can-write="{{.CanInventoryWrite}}" data-can-adjust="{{.CanStockAdjustment}}">
 <section class="panel inventory-home">
-<div class="section-heading"><div><h1>Contagem de estoque</h1><p class="hint">Crie, localize e retome inventários sem alterar o saldo operacional.</p></div></div>
+<div class="section-heading"><div><h1>Contagem de estoque</h1><p class="hint">Crie, encontre e retome contagens. Criar uma contagem não muda o estoque.</p></div></div>
 <button id="inventoryCreateToggle" class="secondary inventory-secondary-toggle" type="button" hidden>Nova contagem</button>
 {{if .CanInventoryWrite}}
 <div class="inventory-create-grid">
 <form id="inventoryCreateTotal" class="inventory-create-card">
-<h2>Novo inventário total</h2>
-<p class="hint">O sistema incluirá 100% dos SKUs elegíveis do depósito escolhido.</p>
-<label>Depósito ativo<select id="inventoryCreateWarehouse" required><option value="">Carregando depósitos…</option></select></label>
-<button type="submit">Criar inventário total</button>
+<h2>Nova contagem completa</h2>
+<p class="hint">Entram todos os produtos que podem ser contados no depósito escolhido.</p>
+<label>Depósito<select id="inventoryCreateWarehouse" required><option value="">Carregando depósitos</option></select></label>
+<button type="submit">Criar contagem completa</button>
 </form>
 <form id="inventoryCreateBlind" class="inventory-create-card">
-<h2>Novo inventário cego</h2>
-<p>Depósito e itens serão escolhidos automaticamente. As quantidades esperadas permanecerão ocultas durante a primeira contagem.</p>
-<button type="submit">Criar inventário cego</button>
+<h2>Nova contagem às cegas</h2>
+<p>O sistema escolhe o depósito e os itens. Na primeira contagem, a quantidade esperada fica escondida de quem conta.</p>
+<button type="submit">Criar contagem às cegas</button>
 </form>
 </div>
 <p id="inventoryCreateMessage" class="operation-feedback" role="status" aria-live="polite" hidden></p>
@@ -37,11 +37,11 @@
 </section>
 
 <section class="panel inventory-panel">
-<div class="section-heading"><div><h2>Contagem, revisão ou histórico</h2><p class="hint">Abra pela lista acima. O número do inventário permanece disponível como atalho.</p></div><span id="inventoryMode" class="badge" hidden></span></div>
-<form id="inventoryOpenForm" class="inventory-open"><label>Número do inventário<input id="inventoryId" inputmode="numeric" pattern="[0-9]*" required></label><button type="submit">Abrir inventário</button></form>
+<div class="section-heading"><div><h2>Contagem, revisão ou histórico</h2><p class="hint">Abra uma contagem pela lista acima ou digite o número dela.</p></div><span id="inventoryMode" class="badge" hidden></span></div>
+<form id="inventoryOpenForm" class="inventory-open"><label>Número da contagem<input id="inventoryId" inputmode="numeric" pattern="[0-9]*" required></label><button type="submit">Abrir contagem</button></form>
 <div id="inventoryWorkspace" hidden>
 <div class="inventory-progress"><strong id="inventoryProgress">0 de 0 itens contados</strong><progress id="inventoryProgressBar" max="100" value="0"></progress><small id="inventoryStatusText"></small></div>
-<div class="product-scan inventory-tools"><label>Buscar item<input id="inventorySearch" autocomplete="off" placeholder="Descrição, SKU ou código de barras"></label><button id="scanInventory" class="secondary scan-action" type="button"><span class="scan-icon" aria-hidden="true"></span><span>Ler código</span></button></div>
+<div class="product-scan inventory-tools"><label>Buscar item<input id="inventorySearch" autocomplete="off" placeholder="Nome, código ou código de barras"></label><button id="scanInventory" class="secondary scan-action" type="button"><span class="scan-icon" aria-hidden="true"></span><span>Ler código</span></button></div>
 <section id="scanner" class="scanner" hidden><video id="scanner-video" autoplay muted playsinline webkit-playsinline></video><p id="scanStatus" class="msg" aria-live="polite"></p><button id="scanCancel" class="secondary" type="button">Fechar câmera</button></section>
 <div class="inventory-filter actions" role="group" aria-label="Filtrar itens"><button type="button" class="secondary selected" data-inventory-filter="pending">Pendentes</button><button type="button" class="secondary" data-inventory-filter="counted">Contados</button><button type="button" class="secondary" data-inventory-filter="all">Todos</button></div>
 <p id="inventoryMessage" class="operation-feedback" role="status" aria-live="polite" hidden></p><section id="inventoryTerminalActions" class="inventory-terminal-actions" hidden></section><div id="inventoryLines" class="inventory-lines"></div>

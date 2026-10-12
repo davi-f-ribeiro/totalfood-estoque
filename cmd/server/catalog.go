@@ -33,7 +33,7 @@ type catalogSKURequest struct {
 
 func (a *app) registerCatalogHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /catalog", a.uiPage("catalog", "Catálogo", "catalog", "read"))
-	mux.HandleFunc("GET /products", a.uiPage("products", "Produto/Item", "catalog", "read"))
+	mux.HandleFunc("GET /products", a.uiPage("products", "Produtos", "catalog", "read"))
 	mux.HandleFunc("GET /api/catalog/options", a.requireAuth("catalog", "read", a.handleCatalogOptions))
 	mux.HandleFunc("GET /api/catalog/items", a.requireAuth("catalog", "read", a.handleCatalogItems))
 	mux.HandleFunc("GET /api/catalog/items/{id}/skus", a.requireAuth("catalog", "read", a.handleCatalogItemSKUs))
@@ -279,7 +279,7 @@ func (a *app) handleCatalogItemSKUs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !exists {
-		writeJSONError(w, http.StatusNotFound, "Item pai não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Item não encontrado.")
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
@@ -322,7 +322,7 @@ func (a *app) handleCreateCatalogItem(w http.ResponseWriter, r *http.Request) {
 	var duplicateID int64
 	err := a.db.QueryRowContext(r.Context(), `SELECT id FROM inventory_items WHERE lower(btrim(name))=lower(btrim($1)) LIMIT 1`, req.Name).Scan(&duplicateID)
 	if err == nil {
-		writeJSONError(w, http.StatusConflict, "Já existe um item pai com este nome.")
+		writeJSONError(w, http.StatusConflict, "Já existe um item com este nome.")
 		return
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -359,7 +359,7 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 	var currentUnit string
 	var currentVersion int64
 	if err := a.db.QueryRowContext(r.Context(), `SELECT unit_code,version FROM inventory_items WHERE id=$1`, id).Scan(&currentUnit, &currentVersion); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "Item pai não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Item não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, 500, "Erro interno.")
@@ -375,7 +375,7 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if duplicate {
-		writeJSONError(w, http.StatusConflict, "Já existe outro item pai com este nome.")
+		writeJSONError(w, http.StatusConflict, "Já existe outro item com este nome.")
 		return
 	}
 	if currentUnit != req.UnitCode {
@@ -417,7 +417,7 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 	}
 	normalizeCatalogSKURequest(&req)
 	if req.ItemID<=0 || req.BrandID<=0 || req.Barcode=="" || !positiveDecimal(req.ContentQuantity) {
-		writeJSONError(w, http.StatusBadRequest, "Preencha item pai, marca, conteúdo da apresentação e código de barras.")
+		writeJSONError(w, http.StatusBadRequest, "Preencha item, marca, quanto vem em cada embalagem e código de barras.")
 		return
 	}
 	active := true
@@ -430,7 +430,7 @@ SELECT i.name,b.name,i.unit_code
 FROM inventory_items i
 JOIN brands b ON b.id=$2
 WHERE i.id=$1 AND i.active=true AND b.active=true`,req.ItemID,req.BrandID).Scan(&itemName,&brandName,&unit); err!=nil {
-		writeJSONError(w,http.StatusBadRequest,"Item pai ou marca inválidos.")
+		writeJSONError(w,http.StatusBadRequest,"Item ou marca inválidos.")
 		return
 	}
 	if req.Name=="" {
@@ -470,7 +470,7 @@ JOIN inventory_items src ON src.id=s.item_id
 JOIN brands b ON b.id=s.brand_id
 WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,&currentContentQuantity,&currentName,&currentItemName,&currentBrandName,&hasHistory)
 	if errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusNotFound, "SKU não encontrado.")
+		writeJSONError(w, http.StatusNotFound, "Produto não encontrado.")
 		return
 	}
 	if err != nil {
@@ -488,7 +488,7 @@ WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,
 	}
 	nameProvided := req.Name!=""
 	if !positiveDecimal(req.ContentQuantity) {
-		writeJSONError(w, http.StatusBadRequest, "Informe um conteúdo por apresentação maior que zero.")
+		writeJSONError(w, http.StatusBadRequest, "Informe um quanto vem em cada embalagem maior que zero.")
 		return
 	}
 	var targetItemName,targetBrandName string
@@ -496,7 +496,7 @@ WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,
 SELECT i.unit_code,i.name,b.name
 FROM inventory_items i JOIN brands b ON b.id=$2
 WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&targetItemName,&targetBrandName); errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, http.StatusBadRequest, "Item pai de destino não encontrado.")
+		writeJSONError(w, http.StatusBadRequest, "Item de destino não encontrado.")
 		return
 	} else if err != nil {
 		writeJSONError(w, 500, "Erro interno.")
@@ -511,7 +511,7 @@ WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&targetItemName,&targetB
 		}
 	}
 	if hasHistory && (currentItem!=req.ItemID || currentBrand!=req.BrandID) {
-		writeJSONError(w,http.StatusConflict,"Item pai e marca não podem ser alterados porque este Produto/Item possui histórico.")
+		writeJSONError(w,http.StatusConflict,"Item e marca não podem ser alterados porque este Produto possui histórico.")
 		return
 	}
 	active := true
@@ -538,10 +538,10 @@ RETURNING version`,req.ItemID,req.BrandID,req.Name,req.Barcode,req.ContentQuanti
 func writeCatalogItemError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
 	if strings.Contains(err.Error(), "idx_inventory_items_normalized_name_unique") {
-		writeJSONError(w, http.StatusConflict, "Já existe um item pai com este nome.")
+		writeJSONError(w, http.StatusConflict, "Já existe um item com este nome.")
 		return
 	}
-	writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o item pai.")
+	writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o item.")
 }
 
 func writeCatalogSKUError(w http.ResponseWriter, err error, logPrefix string) {
@@ -551,10 +551,10 @@ func writeCatalogSKUError(w http.ResponseWriter, err error, logPrefix string) {
 		return
 	}
 	if strings.Contains(err.Error(), "foreign key") {
-		writeJSONError(w, http.StatusBadRequest, "Item pai inválido.")
+		writeJSONError(w, http.StatusBadRequest, "Item inválido.")
 		return
 	}
-	writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o SKU.")
+	writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o produto.")
 }
 
 func normalizeCatalogItemRequest(req *catalogItemRequest) {

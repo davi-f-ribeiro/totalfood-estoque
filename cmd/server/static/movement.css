@@ -1,7 +1,7 @@
 /* Movimentação (Entrada, Saída, Transferência).
    Um único DOM de campos, duas apresentações com modelos de interação próprios:
-   - mobile (< 900px): assistente de 3 passos, uma decisão por tela, ações fixas no polegar;
-   - desktop (>= 900px): área de trabalho com produto à esquerda, operação à direita e
+   - mobile (< 1000px): assistente de 3 passos, uma decisão por tela, ações fixas no polegar;
+   - desktop (>= 1000px): área de trabalho com produto à esquerda, operação à direita e
      confirmação sempre visível, sem passos ocultos. */
 
 .movement-main{max-width:1180px}
@@ -22,10 +22,14 @@
 .movement-step{display:none;gap:12px;align-content:start}
 .movement-step.is-current{display:grid}
 .movement-step > h2{margin:0;font-size:1.05rem}
+.movement .summary:empty{display:block;padding:0;border:0;background:transparent;color:var(--text-muted)}
+.movement .summary:empty::before{content:"O resumo aparece aqui depois que você escolher o produto e a quantidade."}
 
 .movement-quantity input{font-size:1.5rem;font-weight:800;min-height:56px}
 
-.movement-actions{position:sticky;bottom:0;z-index:2;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:8px;margin:16px -16px -16px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 16px rgba(16,24,40,.06)}
+body .main.movement-main{padding-bottom:128px}
+/* Barra de ações fixa logo acima do menu inferior: o botão principal fica sempre ao alcance do polegar. */
+.movement-actions{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:30;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:8px;margin:0;padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 16px rgba(16,24,40,.06)}
 .movement-actions .operation-feedback{grid-column:1/-1;margin:0}
 .movement-actions button{width:100%;min-height:52px;font-size:1rem}
 .movement-actions #movementAnother{grid-column:1/-1}
@@ -36,9 +40,15 @@
 .movement-form[data-step="1"] .step-prev{display:none}
 .movement-form[data-step="1"] .movement-actions{grid-template-columns:minmax(0,1fr)}
 
+/* Tablet com menu lateral: a barra de ações acompanha a área de conteúdo. */
+@media (min-width:900px){
+  body .main.movement-main{padding-bottom:96px}
+  .movement-actions{left:232px;bottom:0}
+}
+
 /* ---------- Desktop: área de trabalho em duas colunas ---------- */
 
-@media (min-width:900px){
+@media (min-width:1000px){
   .movement-progress{display:none}
 
   .movement .movement-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"product operation" "review operation" "actions actions";gap:16px 20px;align-items:start}
@@ -52,7 +62,8 @@
 
   .movement-quantity input{font-size:1.25rem;min-height:48px}
 
-  .movement-actions{grid-area:actions;position:static;display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:0;padding:12px 0 0;background:transparent;border-top:1px solid var(--border);box-shadow:none}
+  body .main.movement-main{padding-bottom:24px}
+  .movement-actions{grid-area:actions;position:static;z-index:auto;display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:0;padding:12px 0 0;background:transparent;border-top:1px solid var(--border);box-shadow:none}
   .movement-actions .operation-feedback{flex:1 1 auto;margin:0}
   .movement-actions button{width:auto;min-width:160px;min-height:46px}
   .movement-actions #movementAnother{grid-column:auto}
