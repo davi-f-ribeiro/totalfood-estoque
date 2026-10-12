@@ -9,6 +9,10 @@ import (
 )
 
 func (a *app) createEntry(ctx context.Context, req movementRequest, hash string) (operationResult, error) {
+	return a.inMovementTx(ctx, func(tx *sql.Tx) (operationResult, error) { return createEntryTx(ctx, tx, req, hash) })
+}
+
+func createEntryTx(ctx context.Context, tx *sql.Tx, req movementRequest, hash string) (operationResult, error) {
 	if req.WarehouseID <= 0 {
 		return operationResult{}, errMovementWarehouseRequired
 	}
@@ -18,7 +22,7 @@ func (a *app) createEntry(ctx context.Context, req movementRequest, hash string)
 	if !nonNegativeDecimal(req.UnitCost) {
 		return operationResult{}, errMovementCostInvalid
 	}
-	return a.writeMovement(ctx, "ENTRADA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
+	return writeMovementTx(ctx, tx, "ENTRADA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		if err := ensureRefs(ctx, tx, req.SKUID, req.WarehouseID); err != nil {
 			return 0, err
 		}
@@ -143,13 +147,17 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 }
 
 func (a *app) createExit(ctx context.Context, req movementRequest, hash string) (operationResult, error) {
+	return a.inMovementTx(ctx, func(tx *sql.Tx) (operationResult, error) { return createExitTx(ctx, tx, req, hash) })
+}
+
+func createExitTx(ctx context.Context, tx *sql.Tx, req movementRequest, hash string) (operationResult, error) {
 	if req.WarehouseID <= 0 {
 		return operationResult{}, errMovementWarehouseRequired
 	}
 	if !positiveDecimal(req.Quantity) {
 		return operationResult{}, errMovementQuantityInvalid
 	}
-	return a.writeMovement(ctx, "SAIDA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
+	return writeMovementTx(ctx, tx, "SAIDA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		if err := ensureRefs(ctx, tx, req.SKUID, req.WarehouseID); err != nil {
 			return 0, err
 		}
@@ -183,6 +191,10 @@ func (a *app) createExit(ctx context.Context, req movementRequest, hash string) 
 }
 
 func (a *app) createTransfer(ctx context.Context, req movementRequest, hash string) (operationResult, error) {
+	return a.inMovementTx(ctx, func(tx *sql.Tx) (operationResult, error) { return createTransferTx(ctx, tx, req, hash) })
+}
+
+func createTransferTx(ctx context.Context, tx *sql.Tx, req movementRequest, hash string) (operationResult, error) {
 	if req.FromWarehouseID <= 0 || req.ToWarehouseID <= 0 {
 		return operationResult{}, errTransferWarehousesRequired
 	}
@@ -192,7 +204,7 @@ func (a *app) createTransfer(ctx context.Context, req movementRequest, hash stri
 	if !positiveDecimal(req.Quantity) {
 		return operationResult{}, errMovementQuantityInvalid
 	}
-	return a.writeMovement(ctx, "TRANSFERENCIA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
+	return writeMovementTx(ctx, tx, "TRANSFERENCIA", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		if err := ensureSKU(ctx, tx, req.SKUID); err != nil {
 			return 0, err
 		}
@@ -463,4 +475,21 @@ func lockActiveWarehouses(ctx context.Context, tx *sql.Tx, warehouseIDs ...int64
 		}
 	}
 	return nil
+}
+
+// inMovementTx executa fn em uma transação; qualquer erro desfaz tudo.
+func (a *app) inMovementTx(ctx context.Context, fn func(*sql.Tx) (operationResult, error)) (operationResult, error) {
+	tx, err := a.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return operationResult{}, err
+	}
+	defer tx.Rollback()
+	res, err := fn(tx)
+	if err != nil {
+		return operationResult{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return operationResult{}, err
+	}
+	return res, nil
 }

@@ -60,6 +60,10 @@ func (a *app) getOperation(ctx context.Context, operationID string) (operationRe
 	var r operationResult
 	err := a.db.QueryRowContext(ctx, `SELECT operation_id, id, 'confirmed', movement_type, COALESCE(user_id,0) FROM movements WHERE operation_id=$1`, operationID).Scan(&r.OperationID, &r.MovementID, &r.Status, &r.Type, &r.UserID)
 	if errors.Is(err, sql.ErrNoRows) {
+		// Lote: o envio é confirmado quando a primeira linha existe (tudo ou nada).
+		err = a.db.QueryRowContext(ctx, `SELECT $1::text, id, 'confirmed', movement_type, COALESCE(user_id,0) FROM movements WHERE operation_id=$2`, operationID, lineOperationID(operationID, 1)).Scan(&r.OperationID, &r.MovementID, &r.Status, &r.Type, &r.UserID)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
 		return r, errOperationNotFound
 	}
 	return r, err
