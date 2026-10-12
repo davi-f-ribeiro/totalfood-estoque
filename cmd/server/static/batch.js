@@ -1,3 +1,4 @@
+function newOperationID(){if(globalThis.crypto&&typeof crypto.randomUUID==="function")return crypto.randomUUID();const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&0x0f)|0x40;b[8]=(b[8]&0x3f)|0x80;const h=Array.from(b,x=>x.toString(16).padStart(2,"0")).join("");return h.slice(0,8)+"-"+h.slice(8,12)+"-"+h.slice(12,16)+"-"+h.slice(16,20)+"-"+h.slice(20)}
 /* Lote de Entrada, Saída e Transferência (desktop, a partir de 1000 px).
    Usa as funções comuns de app.js (api, skuLabel, productLookup, displayDecimal...).
    O servidor grava o lote inteiro ou nada; aqui só montamos o envio e mostramos o resultado. */
@@ -184,7 +185,7 @@ function validate(){
   return true;
 }
 function buildBody(){
-  const body={operation_id:crypto.randomUUID(),quantity_semantics:'presentation',document_number:doc.value,notes:notes.value,
+  const body={operation_id:newOperationID(),quantity_semantics:'presentation',document_number:doc.value,notes:notes.value,
     lines:lines.map(l=>{const o={sku_id:l.sku_id,quantity:requestDecimal(l.qty)};if(isEntry)o.unit_cost=requestDecimal(l.price);return o})};
   if(isTransfer){body.warehouse_from_id=+wh.value;body.warehouse_to_id=+to.value}else body.warehouse_id=+wh.value;
   return body;
