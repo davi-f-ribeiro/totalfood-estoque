@@ -960,3 +960,25 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 		t.Fatal("inventory creation must not retain duplicated guards")
 	}
 }
+
+func TestMovementBatchViewContract(t *testing.T) {
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.FromSlash(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	html := read("templates/movement.html")
+	for _, want := range []string{`id="batchView"`, `id="batchTable"`, `id="batchSubmit"`, `/static/batch.js`, `/static/batch.css`, `aria-label="Resumo do lote"`} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("movement.html missing %q", want)
+		}
+	}
+	js := read("static/batch.js")
+	for _, want := range []string{"/api/movements/'+kind+'/batch", "crypto.randomUUID()", "claimPending('movement'", "/api/operations/"} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("batch.js missing %q", want)
+		}
+	}
+}

@@ -57,6 +57,8 @@ Ação destrutiva usa o secundário em vermelho e pede confirmação.
 
 **Avisos.** Um bloco (`.operation-feedback`) com quatro estados: neutro, carregando, sucesso, erro. Frase curta, dizendo o que aconteceu e o que fazer.
 
+**Lançamento em lote (desktop, a partir de 1000 px).** Entrada, Saída e Transferência usam a tela de lote do mockup "Operar em lote": seletor de tipo no alto, depósito(s), campo de leitura em destaque, tabela de produtos (estoque atual, quantidade, preço da embalagem na entrada, estoque após) e resumo fixo à direita com o botão principal. O servidor grava o lote inteiro ou nada (`/api/movements/{entry,exit,transfer}/batch`). No celular continua o assistente de 3 passos, um produto por vez.
+
 ## 5. Navegação
 
 - **Computador (≥ 900 px):** menu lateral fixo, na esquerda, com grupos: *Dia a dia* (Estoque, Entrada, Saída, Transferir), *Cadastros* (Catálogo, Produtos, Patrimônio) e *Controle* (Contagem de estoque, Relatórios, Administração). A conta (usuário, trocar senha, sair) fica no rodapé do menu.
