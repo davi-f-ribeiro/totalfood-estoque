@@ -49,6 +49,7 @@ type vehicleRequest struct {
 	CapacityKG    string `json:"capacity_kg"`
 	CapacityBoxes int64  `json:"capacity_boxes,omitempty"`
 	Refrigerated  bool   `json:"refrigerated"`
+	Ownership     string `json:"ownership,omitempty"`
 	Active        *bool  `json:"active"`
 	Version       int64  `json:"version,omitempty"`
 }
@@ -344,7 +345,13 @@ func normalizeVehicleRequest(req *vehicleRequest) string {
 	req.Plate = strings.ToUpper(strings.NewReplacer("-", "", " ", "").Replace(req.Plate))
 	req.Description = strings.TrimSpace(req.Description)
 	req.CapacityKG = normalizeDecimalInput(req.CapacityKG)
+	// Frota mista: a maior parte é própria, alguns veículos são alugados.
+	if req.Ownership = strings.TrimSpace(req.Ownership); req.Ownership == "" {
+		req.Ownership = "propria"
+	}
 	switch {
+	case req.Ownership != "propria" && req.Ownership != "alugada":
+		return "Escolha se o veículo é próprio ou alugado."
 	case !platePattern.MatchString(req.Plate):
 		return "Placa inválida. Use o formato ABC1234 ou ABC1D23."
 	case req.Description == "":
@@ -374,7 +381,7 @@ func writeVehicleError(w http.ResponseWriter, err error, logPrefix string) {
 
 func (a *app) handleVehicles(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
-SELECT v.id,v.plate,v.description,v.asset_id,s.tag,v.capacity_kg::text,v.capacity_boxes,v.refrigerated,v.active,v.version
+SELECT v.id,v.plate,v.description,v.asset_id,s.tag,v.capacity_kg::text,v.capacity_boxes,v.refrigerated,v.ownership,v.active,v.version
 FROM vehicles v
 LEFT JOIN assets s ON s.id=v.asset_id
 ORDER BY v.active DESC,v.plate,v.id`)
@@ -386,11 +393,11 @@ ORDER BY v.active DESC,v.plate,v.id`)
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, version int64
-		var plate, description, capacity string
+		var plate, description, capacity, ownership string
 		var assetID, boxes sql.NullInt64
 		var assetTag sql.NullString
 		var refrigerated, active bool
-		if err := rows.Scan(&id, &plate, &description, &assetID, &assetTag, &capacity, &boxes, &refrigerated, &active, &version); err != nil {
+		if err := rows.Scan(&id, &plate, &description, &assetID, &assetTag, &capacity, &boxes, &refrigerated, &ownership, &active, &version); err != nil {
 			logisticsFail(w, http.StatusInternalServerError, "Não foi possível carregar os veículos.", "vehicles scan failed", err)
 			return
 		}
@@ -398,7 +405,7 @@ ORDER BY v.active DESC,v.plate,v.id`)
 			"id": id, "plate": plate, "description": description,
 			"asset_id": nullInt(assetID), "asset_tag": nullText(assetTag),
 			"capacity_kg": capacity, "capacity_boxes": nullInt(boxes),
-			"refrigerated": refrigerated, "active": active, "version": version,
+			"refrigerated": refrigerated, "ownership": ownership, "active": active, "version": version,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -417,20 +424,20 @@ func (a *app) handleSaveVehicle(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, problem)
 		return
 	}
-	args := []any{req.Plate, req.Description, optionalID(req.AssetID), req.CapacityKG, optionalID(req.CapacityBoxes), req.Refrigerated, activeOrDefault(req.Active)}
+	args := []any{req.Plate, req.Description, optionalID(req.AssetID), req.CapacityKG, optionalID(req.CapacityBoxes), req.Refrigerated, activeOrDefault(req.Active), req.Ownership}
 	a.saveVersioned(w, r, "vehicles", "Veículo não encontrado.", req.Version,
 		func(ctx context.Context) (int64, error) {
 			var id int64
 			err := a.db.QueryRowContext(ctx, `
-INSERT INTO vehicles (plate,description,asset_id,capacity_kg,capacity_boxes,refrigerated,active)
-VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, args...).Scan(&id)
+INSERT INTO vehicles (plate,description,asset_id,capacity_kg,capacity_boxes,refrigerated,active,ownership)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, args...).Scan(&id)
 			return id, err
 		},
 		func(ctx context.Context, id int64) (int64, error) {
 			var version int64
 			err := a.db.QueryRowContext(ctx, `
-UPDATE vehicles SET plate=$1,description=$2,asset_id=$3,capacity_kg=$4,capacity_boxes=$5,refrigerated=$6,active=$7,version=version+1
-WHERE id=$8 AND version=$9 RETURNING version`, append(args, id, req.Version)...).Scan(&version)
+UPDATE vehicles SET plate=$1,description=$2,asset_id=$3,capacity_kg=$4,capacity_boxes=$5,refrigerated=$6,active=$7,ownership=$8,version=version+1
+WHERE id=$9 AND version=$10 RETURNING version`, append(args, id, req.Version)...).Scan(&version)
 			return version, err
 		},
 		writeVehicleError)
