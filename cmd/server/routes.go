@@ -27,6 +27,9 @@ var routeNext = map[string][]string{
 	"cancelado":    {},
 }
 
+// Texto do histórico do pedido quando a rota muda.
+var routeEventNote = map[string]string{"liberado": "liberada", "em_andamento": "iniciada", "concluido": "concluída", "cancelado": "cancelada"}
+
 // Pedidos que podem entrar numa rota: novo, já programado (troca de rota) ou que falhou.
 var routableOrderStatuses = []string{"criado", "programado", "falhou"}
 
@@ -209,7 +212,7 @@ func (a *app) routeStops(ctx context.Context, routeID int64) ([]map[string]any, 
 SELECT s.sequence,o.id,o.status,o.meal,to_char(o.due_at AT TIME ZONE 'America/Fortaleza','HH24:MI'),o.pod_required,
        p.name,p.address,p.city,p.latitude::text,p.longitude::text,
        to_char(p.window_start,'HH24:MI'),to_char(p.window_end,'HH24:MI'),p.contact,p.access_notes,
-       s.distance_from_prev_m,s.duration_from_prev_s
+       s.distance_from_prev_m,s.duration_from_prev_s,to_char(s.eta AT TIME ZONE 'America/Fortaleza','HH24:MI')
 FROM route_stops s
 JOIN delivery_orders o ON o.id=s.order_id
 JOIN places p ON p.id=o.place_id
@@ -224,10 +227,10 @@ ORDER BY s.sequence`, routeID)
 		var sequence, orderID int64
 		var status, dueAt, place, address string
 		var pod bool
-		var meal, city, lat, lng, ws, we, contact, access sql.NullString
+		var meal, city, lat, lng, ws, we, contact, access, eta sql.NullString
 		var distance, duration sql.NullInt64
 		if err := rows.Scan(&sequence, &orderID, &status, &meal, &dueAt, &pod, &place, &address, &city, &lat, &lng,
-			&ws, &we, &contact, &access, &distance, &duration); err != nil {
+			&ws, &we, &contact, &access, &distance, &duration, &eta); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -237,7 +240,7 @@ ORDER BY s.sequence`, routeID)
 			"pod_required": pod, "place_name": place, "address": address, "city": nullText(city),
 			"latitude": nullText(lat), "longitude": nullText(lng), "window_start": nullText(ws), "window_end": nullText(we),
 			"contact": nullText(contact), "access_notes": nullText(access),
-			"distance_from_prev_m": nullInt(distance), "duration_from_prev_s": nullInt(duration),
+			"distance_from_prev_m": nullInt(distance), "duration_from_prev_s": nullInt(duration), "eta": nullText(eta),
 		})
 	}
 	err = rows.Err()
@@ -511,7 +514,7 @@ WHERE id=$2 RETURNING version`, req.Status, id).Scan(&version)
 		// O identificador nasce da rota e da versão nova, então é único e determinístico.
 		op := fmt.Sprintf("route:%d:v%d:%s:%d", id, version, req.Status, o.id)
 		if _, _, err := recordDeliveryStatus(ctx, tx, deliveryStatusChange{
-			OrderID: o.id, Status: next, OperationID: op, Notes: "Rota #" + fmt.Sprint(id) + " " + req.Status, UserID: user, OccurredAt: now,
+			OrderID: o.id, Status: next, OperationID: op, Notes: fmt.Sprintf("Rota #%d %s", id, routeEventNote[req.Status]), UserID: user, OccurredAt: now,
 		}); err != nil {
 			logisticsFail(w, http.StatusInternalServerError, "Não foi possível alterar a rota.", "route status order event failed", err)
 			return

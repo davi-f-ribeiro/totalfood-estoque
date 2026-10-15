@@ -1,0 +1,26 @@
+.dispatch-day{margin:0;min-width:170px}
+.dispatch-columns{display:grid;gap:24px;margin-top:8px}
+.dispatch-grid{grid-template-columns:1fr 1fr}
+.dispatch-check{align-self:end}
+.dispatch-lines{display:grid;gap:8px}
+.dispatch-line{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:8px;align-items:end}
+.dispatch-line label{margin:0}
+.dispatch-chip{display:inline-block;border-radius:999px;padding:1px 8px;font-size:.8rem;font-weight:800;background:var(--surface-secondary);color:var(--text-secondary)}
+.dispatch-chip.entregue,.dispatch-chip.concluido{background:var(--success-soft);color:var(--success)}
+.dispatch-chip.falhou,.dispatch-chip.cancelado{background:var(--danger-soft);color:var(--danger)}
+.dispatch-chip.em_rota,.dispatch-chip.chegou,.dispatch-chip.em_andamento,.dispatch-chip.despachado{background:var(--info-soft);color:var(--info)}
+.dispatch-route-dialog{width:min(760px,100vw - 16px)}
+.dispatch-stops{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:6px}
+.dispatch-stops li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface)}
+.dispatch-stops li small{display:block;color:var(--text-muted)}
+.dispatch-stops .seq{font-weight:800;color:var(--brand-primary-active)}
+.dispatch-stops .move{display:flex;gap:4px}
+.dispatch-stops .move button{min-height:36px;padding:4px 10px}
+.dispatch-addlist{display:grid;gap:4px;max-height:220px;overflow:auto}
+.dispatch-addlist label{margin:0;font-weight:500}
+.dispatch-detail h3{font-size:1rem;margin:14px 0 6px}
+.dispatch-panel>.actions{flex-wrap:wrap}
+.dispatch-detail ul{margin:0;padding-left:18px}
+.dispatch-proof{max-width:220px;max-height:160px;border:1px solid var(--border);border-radius:var(--radius-sm);display:block;margin-top:6px;background:#fff}
+@media(min-width:1024px){.dispatch-columns{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);align-items:start}}
+@media(max-width:600px){.dispatch-grid,.dispatch-line{grid-template-columns:1fr}.dispatch-stops li{grid-template-columns:24px minmax(0,1fr)}.dispatch-stops .move{grid-column:1/-1}}

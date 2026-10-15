@@ -202,3 +202,34 @@ func TestTwoRoutesCannotClaimTheSameOrderConcurrently(t *testing.T) {
 		t.Fatalf("order in %d routes, want 1 (err=%v)", stops, err)
 	}
 }
+
+func TestDispatchPageFollowsPermissions(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "page-director", "secret", "Diretor", true)
+	createTestUser(t, a, "page-manager", "secret", "Gerente", true)
+	createTestUser(t, a, "page-stock", "secret", "Estoquista", true)
+	director := doLogin(t, a, "page-director", "secret")
+	manager := doLogin(t, a, "page-manager", "secret")
+	stock := doLogin(t, a, "page-stock", "secret")
+
+	full := authReq(a, http.MethodGet, "/dispatch", nil, director, "")
+	if full.Code != http.StatusOK || !strings.Contains(full.Body.String(), `id="orderDialog"`) || !strings.Contains(full.Body.String(), `href="/dispatch"`) {
+		t.Fatalf("director dispatch page status=%d", full.Code)
+	}
+	ro := authReq(a, http.MethodGet, "/dispatch", nil, manager, "")
+	if ro.Code != http.StatusOK || strings.Contains(ro.Body.String(), `id="orderDialog"`) || !strings.Contains(ro.Body.String(), `id="routePrint"`) {
+		t.Fatalf("manager must see a read-only page with the romaneio, status=%d", ro.Code)
+	}
+	if rr := authReq(a, http.MethodGet, "/api/dispatch/options", nil, manager, ""); rr.Code != http.StatusForbidden {
+		t.Fatalf("manager options status=%d, want 403", rr.Code)
+	}
+	if rr := authReq(a, http.MethodGet, "/dispatch", nil, stock, ""); rr.Code != http.StatusSeeOther {
+		t.Fatalf("stock clerk page status=%d, want redirect", rr.Code)
+	}
+	opts := authReq(a, http.MethodGet, "/api/dispatch/options", nil, director, "")
+	for _, key := range []string{`"places"`, `"warehouses"`, `"items"`, `"recipes"`, `"vehicles"`, `"drivers"`} {
+		if !strings.Contains(opts.Body.String(), key) {
+			t.Fatalf("options missing %s: %s", key, opts.Body.String())
+		}
+	}
+}

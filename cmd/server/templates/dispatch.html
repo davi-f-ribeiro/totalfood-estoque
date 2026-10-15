@@ -1,0 +1,33 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><title>Expedição · Gestão de Estoque</title><link rel="stylesheet" href="/static/app.css"><link rel="stylesheet" href="/static/dispatch.css"></head><body>{{template "header" .}}{{template "nav" .}}
+<main class="main"><section class="panel catalog-manager dispatch" id="dispatchRoot" data-can-write="{{if .CanDispatchWrite}}1{{else}}0{{end}}">
+<div class="catalog-title"><div><h1>Expedição</h1><p class="hint">Entregas de insumos e refeições prontas do dia, montadas em rotas por veículo e motorista.</p></div><label class="dispatch-day">Dia<input id="dispatchDay" type="date" required></label></div>
+<div id="dispatchStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+<div class="dispatch-columns">
+<section aria-labelledby="ordersHeading"><div class="section-heading"><h2 id="ordersHeading">Entregas</h2>{{if .CanDispatchWrite}}<button id="orderNew" type="button">+ Nova entrega</button>{{end}}</div><div id="orderList" class="catalog-parent-list" aria-live="polite"></div></section>
+<section aria-labelledby="routesHeading"><div class="section-heading"><h2 id="routesHeading">Rotas</h2>{{if .CanDispatchWrite}}<button id="routeNew" class="secondary" type="button">+ Nova rota</button>{{end}}</div><div id="routeList" class="catalog-parent-list" aria-live="polite"></div></section>
+</div>
+
+<dialog id="orderDetailDialog" class="editor-dialog" aria-labelledby="orderDetailTitle"><div class="editor-dialog-head"><h2 id="orderDetailTitle">Entrega</h2></div><form class="dispatch-panel" novalidate><div id="orderDetailBody" class="dispatch-detail"></div>
+<div class="actions">{{if .CanDispatchWrite}}<button id="orderCancel" class="danger" type="button" hidden>Cancelar entrega</button>{{end}}<button id="orderDetailClose" class="secondary" type="button">Fechar</button></div><div id="orderDetailStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
+
+<dialog id="routeDialog" class="editor-dialog dispatch-route-dialog" aria-labelledby="routeDialogTitle"><div class="editor-dialog-head"><h2 id="routeDialogTitle">Rota</h2></div>
+<form class="dispatch-panel" novalidate><p id="routeSummary" class="hint"></p><div id="routeWarnings" class="operation-feedback" role="status" hidden></div>
+<ol id="routeStops" class="dispatch-stops"></ol>
+{{if .CanDispatchWrite}}<fieldset id="routeAddBox" class="logistics-group"><legend>Entregas sem rota</legend><div id="routeAddList" class="dispatch-addlist"></div></fieldset>
+<label id="routeDepartureField">Saída do depósito<input id="routeDeparture" type="time" value="07:00"></label>{{end}}
+<div class="actions">{{if .CanDispatchWrite}}<button id="routeSave" type="button">Salvar entregas</button><button id="routeOptimize" class="secondary" type="button">Calcular melhor ordem</button><button id="routeKeep" class="secondary" type="button">Calcular na ordem atual</button><button id="routeRelease" type="button">Liberar para o motorista</button><button id="routeCancel" class="danger" type="button">Cancelar rota</button>{{end}}<button id="routePrint" class="secondary" type="button">Imprimir romaneio</button><button id="routeClose" class="secondary" type="button">Fechar</button></div>
+<div id="routeStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
+
+{{if .CanDispatchWrite}}
+<dialog id="orderDialog" class="editor-dialog" aria-labelledby="orderDialogTitle"><div class="editor-dialog-head"><h2 id="orderDialogTitle">Nova entrega</h2></div><form id="orderForm">
+<label>Local de entrega<select id="orderPlace" required></select></label>
+<div class="grid dispatch-grid"><label>Depósito de saída<select id="orderWarehouse" required></select></label><label>Horário combinado<input id="orderDue" type="time" required value="11:00"></label></div>
+<div class="grid dispatch-grid"><label>Refeição<select id="orderMeal"><option value="">Não se aplica</option><option value="cafe">Café</option><option value="almoco">Almoço</option><option value="lanche">Lanche</option><option value="jantar">Jantar</option></select></label><label class="check dispatch-check"><input id="orderPod" type="checkbox" checked> Exige comprovante</label></div>
+<fieldset class="logistics-group"><legend>O que vai</legend><div id="orderLines" class="dispatch-lines"></div><div class="actions"><button id="addMeal" class="secondary" type="button">+ Refeição pronta</button><button id="addItem" class="secondary" type="button">+ Insumo</button></div></fieldset>
+<label>Observação<input id="orderNotes" autocomplete="off"></label>
+<div class="actions"><button type="submit">Criar entrega</button><button id="orderFormCancel" class="secondary" type="button">Cancelar</button></div><div id="orderFormStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
+<dialog id="routeNewDialog" class="editor-dialog" aria-labelledby="routeNewTitle"><div class="editor-dialog-head"><h2 id="routeNewTitle">Nova rota</h2></div><form id="routeNewForm">
+<label>Veículo<select id="routeVehicle" required></select></label><label>Motorista<select id="routeDriver" required></select></label>
+<div class="actions"><button type="submit">Criar rota</button><button id="routeNewCancel" class="secondary" type="button">Cancelar</button></div><div id="routeNewStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
+{{end}}
+</section></main><script src="/static/app.js" defer></script><script src="/static/dispatch.js" defer></script></body></html>

@@ -143,6 +143,7 @@ func newHTTPServer(addr string, a *app) *http.Server {
 	a.registerDispatchHandlers(mux)
 	a.registerRouteHandlers(mux)
 	a.registerProofHandlers(mux)
+	a.registerDriverHandlers(mux)
 	a.registerAssetHandlers(mux)
 	a.registerFiscalHandlers(mux)
 	a.registerAuthHandlers(mux)

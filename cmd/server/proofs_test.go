@@ -14,6 +14,14 @@ import (
 )
 
 func deliverReq(a *app, order int64, fields map[string]string, file []byte, ld loginData) *httptest.ResponseRecorder {
+	return multipartReq(a, "/api/delivery-orders/"+itoa(order)+"/deliver", fields, file, ld)
+}
+
+func driverDeliverReq(a *app, order int64, fields map[string]string, file []byte, ld loginData) *httptest.ResponseRecorder {
+	return multipartReq(a, "/api/driver/orders/"+itoa(order)+"/deliver", fields, file, ld)
+}
+
+func multipartReq(a *app, path string, fields map[string]string, file []byte, ld loginData) *httptest.ResponseRecorder {
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	for k, v := range fields {
@@ -24,7 +32,7 @@ func deliverReq(a *app, order int64, fields map[string]string, file []byte, ld l
 		_, _ = fw.Write(file)
 	}
 	_ = mw.Close()
-	req := httptest.NewRequest(http.MethodPost, "/api/delivery-orders/"+itoa(order)+"/deliver", &body)
+	req := httptest.NewRequest(http.MethodPost, path, &body)
 	req.RemoteAddr = "127.0.0.1:12345"
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.AddCookie(ld.Cookie)

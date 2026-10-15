@@ -137,3 +137,18 @@ FROM profiles p
 JOIN permissions perm ON perm.resource = 'dispatch' AND perm.action = 'read'
 WHERE p.name = 'Gerente'
 ON CONFLICT DO NOTHING;
+
+-- Motorista: vê a própria rota e registra as entregas dela pelo celular. A checagem
+-- de que a rota é dele fica na aplicação (drivers.user_id).
+INSERT INTO profiles (name) VALUES ('Motorista') ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO permissions (resource, action)
+VALUES ('delivery', 'read'), ('delivery', 'write')
+ON CONFLICT (resource, action) DO NOTHING;
+
+INSERT INTO profile_permissions (profile_id, permission_id)
+SELECT p.id, perm.id
+FROM profiles p
+JOIN permissions perm ON perm.resource = 'delivery'
+WHERE p.name IN ('Motorista', 'Diretor')
+ON CONFLICT DO NOTHING;

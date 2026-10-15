@@ -65,6 +65,8 @@ type deliveryEventRequest struct {
 }
 
 func (a *app) registerDispatchHandlers(mux *http.ServeMux) {
+	mux.HandleFunc("GET /dispatch", a.uiPage("dispatch", "Expedição", "dispatch", "read"))
+	mux.HandleFunc("GET /api/dispatch/options", a.requireAuth("dispatch", "write", a.handleDispatchOptions))
 	mux.HandleFunc("GET /api/delivery-orders", a.requireAuth("dispatch", "read", a.handleDeliveryOrders))
 	mux.HandleFunc("POST /api/delivery-orders", a.requireAuth("dispatch", "write", a.handleCreateDeliveryOrder))
 	mux.HandleFunc("GET /api/delivery-orders/{id}", a.requireAuth("dispatch", "read", a.handleDeliveryOrder))
@@ -202,10 +204,16 @@ func (a *app) handleDeliveryOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
-SELECT o.id,o.operation_id,o.day::text,o.meal,to_char(o.due_at AT TIME ZONE 'America/Fortaleza','HH24:MI'),o.status,p.name,w.name,o.pod_required,o.version
+SELECT o.id,o.operation_id,o.day::text,o.meal,to_char(o.due_at AT TIME ZONE 'America/Fortaleza','HH24:MI'),o.status,p.name,w.name,o.pod_required,o.version,
+       p.latitude IS NOT NULL,open_route.id,
+       (SELECT count(*) FROM delivery_order_lines l WHERE l.order_id=o.id)
 FROM delivery_orders o
 JOIN places p ON p.id=o.place_id
 JOIN warehouses w ON w.id=o.origin_warehouse_id
+LEFT JOIN LATERAL (
+  SELECT r.id FROM route_stops s JOIN routes r ON r.id=s.route_id
+  WHERE s.order_id=o.id AND r.status IN ('rascunho','liberado','em_andamento') LIMIT 1
+) open_route ON true
 WHERE o.day=$1::date
 ORDER BY o.due_at,o.id`, day)
 	if err != nil {
@@ -218,14 +226,17 @@ ORDER BY o.due_at,o.id`, day)
 		var id, version int64
 		var opID, dayText, status, place, warehouse, dueAt string
 		var meal sql.NullString
-		var pod bool
-		if err := rows.Scan(&id, &opID, &dayText, &meal, &dueAt, &status, &place, &warehouse, &pod, &version); err != nil {
+		var pod, routable bool
+		var routeID sql.NullInt64
+		var lines int64
+		if err := rows.Scan(&id, &opID, &dayText, &meal, &dueAt, &status, &place, &warehouse, &pod, &version, &routable, &routeID, &lines); err != nil {
 			logisticsFail(w, http.StatusInternalServerError, "Não foi possível carregar as entregas.", "delivery scan failed", err)
 			return
 		}
 		out = append(out, map[string]any{
 			"id": id, "operation_id": opID, "day": dayText, "meal": nullText(meal), "due_at": dueAt,
 			"status": status, "place_name": place, "origin_warehouse": warehouse, "pod_required": pod, "version": version,
+			"has_coordinates": routable, "route_id": nullInt(routeID), "lines": lines,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -285,7 +296,7 @@ WHERE o.id=$1`, id).Scan(&opID, &dayText, &meal, &dueAt, &status, &place, &wareh
 
 func (a *app) deliveryLines(ctx context.Context, orderID int64) ([]map[string]any, error) {
 	rows, err := a.db.QueryContext(ctx, `
-SELECT l.id,l.recipe_id,r.name,l.portions,l.item_id,i.name,l.quantity::text,l.movement_line_id
+SELECT l.id,l.recipe_id,r.name,l.portions,l.item_id,i.name,i.unit_code,l.quantity::text,l.movement_line_id
 FROM delivery_order_lines l
 LEFT JOIN recipes r ON r.id=l.recipe_id
 LEFT JOIN inventory_items i ON i.id=l.item_id
@@ -298,13 +309,13 @@ WHERE l.order_id=$1 ORDER BY l.id`, orderID)
 	for rows.Next() {
 		var id int64
 		var recipeID, portions, itemID, movementLineID sql.NullInt64
-		var recipeName, itemName, quantity sql.NullString
-		if err := rows.Scan(&id, &recipeID, &recipeName, &portions, &itemID, &itemName, &quantity, &movementLineID); err != nil {
+		var recipeName, itemName, unit, quantity sql.NullString
+		if err := rows.Scan(&id, &recipeID, &recipeName, &portions, &itemID, &itemName, &unit, &quantity, &movementLineID); err != nil {
 			return nil, err
 		}
 		out = append(out, map[string]any{
 			"id": id, "recipe_id": nullInt(recipeID), "recipe_name": nullText(recipeName), "portions": nullInt(portions),
-			"item_id": nullInt(itemID), "item_name": nullText(itemName), "quantity": nullText(quantity),
+			"item_id": nullInt(itemID), "item_name": nullText(itemName), "unit": nullText(unit), "quantity": nullText(quantity),
 			"movement_line_id": nullInt(movementLineID),
 		})
 	}
@@ -459,4 +470,26 @@ func deliveryTransitionAllowed(from, to string) bool {
 		}
 	}
 	return false
+}
+
+// handleDispatchOptions junta o que os formulários da expedição precisam escolher.
+func (a *app) handleDispatchOptions(w http.ResponseWriter, r *http.Request) {
+	queries := map[string]string{
+		"places":     `SELECT id,name||CASE WHEN latitude IS NULL THEN ' (sem coordenada)' ELSE '' END FROM places WHERE active AND kind<>'deposito' ORDER BY name`,
+		"warehouses": `SELECT id,name FROM warehouses WHERE active ORDER BY name`,
+		"items":      `SELECT id,name||' ('||unit_code||')' FROM inventory_items WHERE active ORDER BY name`,
+		"recipes":    `SELECT id,name FROM recipes WHERE active ORDER BY name`,
+		"vehicles":   `SELECT id,plate||' · '||description||CASE WHEN ownership='alugada' THEN ' (alugado)' ELSE '' END FROM vehicles WHERE active ORDER BY plate`,
+		"drivers":    `SELECT id,name FROM drivers WHERE active ORDER BY name`,
+	}
+	out := map[string]any{}
+	for key, q := range queries {
+		rows, err := simpleRows(r, a.db, q)
+		if err != nil {
+			logisticsFail(w, http.StatusInternalServerError, "Não foi possível carregar as opções da expedição.", "dispatch options "+key+" failed", err)
+			return
+		}
+		out[key] = rows
+	}
+	writeJSON(w, http.StatusOK, out)
 }

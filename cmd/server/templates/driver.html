@@ -1,0 +1,26 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><meta name="current-user-id" content="{{.User.ID}}"><meta name="theme-color" content="#236b04"><title>Minha rota · Gestão de Estoque</title><link rel="stylesheet" href="/static/app.css"><link rel="stylesheet" href="/static/driver.css"></head><body>{{template "header" .}}{{template "nav" .}}
+<main class="main"><section class="panel driver" id="driverRoot">
+<div class="driver-head"><div><h1 id="driverTitle">Minha rota</h1><p id="driverSubtitle" class="hint"></p></div><span id="syncBadge" class="driver-sync" role="status" aria-live="polite"></span></div>
+<div id="driverStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+<div id="driverFailures" class="operation-feedback error" role="alert" hidden></div>
+<div id="routeActions" class="actions" hidden><button id="routeStart" type="button">Iniciar rota</button><button id="routeFinish" type="button" hidden>Concluir rota</button></div>
+<ol id="stopList" class="driver-stops" aria-live="polite"></ol>
+
+<dialog id="deliverDialog" class="editor-dialog driver-dialog" aria-labelledby="deliverTitle"><div class="editor-dialog-head"><h2 id="deliverTitle">Registrar entrega</h2></div><form id="deliverForm">
+<fieldset class="driver-kind"><legend>Comprovante</legend>
+<label class="check"><input type="radio" name="proofKind" value="foto" checked> Foto</label>
+<label class="check"><input type="radio" name="proofKind" value="assinatura"> Assinatura</label>
+<label class="check"><input type="radio" name="proofKind" value="codigo"> Código</label></fieldset>
+<div id="proofPhotoField"><label>Foto da entrega<input id="proofPhoto" type="file" accept="image/*" capture="environment"></label><img id="proofPreview" class="driver-preview" alt="Prévia da foto" hidden></div>
+<div id="proofSignField" hidden><p class="hint">Peça para quem recebe assinar no quadro.</p><canvas id="proofCanvas" class="driver-signature" width="600" height="240" aria-label="Quadro de assinatura"></canvas><button id="proofClear" class="secondary" type="button">Limpar assinatura</button></div>
+<label id="proofCodeField" hidden>Código informado por quem recebe<input id="proofCode" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+<label>Quem recebeu<input id="proofReceiver" autocomplete="off" placeholder="Nome de quem recebeu"></label>
+<label id="proofTempField" hidden>Temperatura da refeição (°C)<input id="proofTemp" inputmode="decimal" autocomplete="off" placeholder="65"></label>
+<div class="actions"><button type="submit">Confirmar entrega</button><button id="deliverCancel" class="secondary" type="button">Voltar</button></div>
+<div id="deliverStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
+
+<dialog id="failDialog" class="editor-dialog driver-dialog" aria-labelledby="failTitle"><div class="editor-dialog-head"><h2 id="failTitle">Entrega não realizada</h2></div><form id="failForm">
+<label>O que aconteceu?<select id="failReason" required><option value="">Escolha o motivo</option><option>Local fechado</option><option>Ninguém para receber</option><option>Recusado pelo cliente</option><option>Endereço não encontrado</option><option>Problema com o veículo</option><option>Outro</option></select></label>
+<label>Detalhe<textarea id="failNotes" rows="3" placeholder="Opcional"></textarea></label>
+<div class="actions"><button class="danger" type="submit">Registrar falha</button><button id="failCancel" class="secondary" type="button">Voltar</button></div></form></dialog>
+</section></main><script src="/static/app.js" defer></script><script src="/static/driver.js" defer></script></body></html>
