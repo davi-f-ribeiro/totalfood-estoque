@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
+	"math"
 	"net/http"
 	"slices"
 	"strings"
@@ -50,6 +52,7 @@ func (a *app) registerRouteHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/routes/{id}", a.requireAuth("dispatch", "read", a.handleRoute))
 	mux.HandleFunc("PUT /api/routes/{id}/stops", a.requireAuth("dispatch", "write", a.handleRouteStops))
 	mux.HandleFunc("POST /api/routes/{id}/status", a.requireAuth("dispatch", "write", a.handleRouteStatus))
+	mux.HandleFunc("POST /api/routes/{id}/optimize", a.requireAuth("dispatch", "write", a.handleRouteOptimize))
 }
 
 func (a *app) handleCreateRoute(w http.ResponseWriter, r *http.Request) {
@@ -520,4 +523,236 @@ WHERE id=$2 RETURNING version`, req.Status, id).Scan(&version)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": req.Status, "version": version, "orders_moved": moved})
+}
+
+type routeOptimizeRequest struct {
+	Version   int64  `json:"version"`
+	Departure string `json:"departure"`
+	KeepOrder bool   `json:"keep_order"`
+}
+
+type routeStopPlan struct {
+	OrderID     int64
+	Place       string
+	Point       latLng
+	WindowStart string
+	WindowEnd   string
+}
+
+// Tempo parado em cada entrega (descarregar, conferir, comprovante).
+const routeServiceTime = 10 * time.Minute
+
+func fortalezaLocation() *time.Location {
+	if loc, err := time.LoadLocation("America/Fortaleza"); err == nil {
+		return loc
+	}
+	return time.FixedZone("America/Fortaleza", -3*3600)
+}
+
+// handleRouteOptimize ordena as paradas pelo menor tempo (ou mantém a ordem, se pedido)
+// e grava distância, tempo e previsão de chegada de cada parada. Só em rascunho.
+func (a *app) handleRouteOptimize(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var req routeOptimizeRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	req.Departure = strings.TrimSpace(req.Departure)
+	if req.Departure == "" {
+		req.Departure = "07:00"
+	}
+	if !deliveryDueAtPattern.MatchString(req.Departure) {
+		writeJSONError(w, http.StatusBadRequest, "Horário de saída inválido. Use hora e minuto, como 07:00.")
+		return
+	}
+	ctx := r.Context()
+	var status, day string
+	var version int64
+	err := a.db.QueryRowContext(ctx, `SELECT status,day::text,version FROM routes WHERE id=$1`, id).Scan(&status, &day, &version)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, http.StatusNotFound, "Rota não encontrada.")
+		return
+	}
+	if err != nil {
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível calcular a rota.", "route optimize lookup failed", err)
+		return
+	}
+	if version != req.Version {
+		writeConcurrentEditError(w)
+		return
+	}
+	if status != "rascunho" {
+		writeJSONError(w, http.StatusConflict, "Só dá para reordenar uma rota em rascunho.")
+		return
+	}
+	depot, stops, problem, err := a.routePlanInput(ctx, id)
+	if err != nil {
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível calcular a rota.", "route optimize input failed", err)
+		return
+	}
+	if problem != "" {
+		writeJSONError(w, http.StatusBadRequest, problem)
+		return
+	}
+
+	pts := make([]latLng, 0, len(stops)+1)
+	pts = append(pts, depot)
+	for _, s := range stops {
+		pts = append(pts, s.Point)
+	}
+	matrix, source, osrmErr := travelMatrixFor(ctx, pts)
+	if osrmErr != nil {
+		log.Printf("route optimize osrm fallback route_id=%d error=%v", id, osrmErr)
+	}
+	order := make([]int, len(stops))
+	for i := range order {
+		order[i] = i + 1
+	}
+	if !req.KeepOrder {
+		order = solveOpenPath(matrix.Durations)
+	}
+
+	loc := fortalezaLocation()
+	clock, _ := time.ParseInLocation("2006-01-02 15:04", day+" "+req.Departure, loc)
+	type leg struct {
+		orderID            int64
+		distance, duration int
+		eta                time.Time
+	}
+	legs := make([]leg, 0, len(order))
+	warnings := []string{}
+	prev := 0
+	totalDistance, totalDuration := 0, 0
+	for seq, k := range order {
+		s := stops[k-1]
+		distance := int(math.Round(matrix.Distances[prev][k]))
+		duration := int(math.Round(matrix.Durations[prev][k]))
+		if seq > 0 {
+			clock = clock.Add(routeServiceTime)
+		}
+		clock = clock.Add(time.Duration(duration) * time.Second)
+		if s.WindowStart != "" {
+			opens, _ := time.ParseInLocation("2006-01-02 15:04", day+" "+s.WindowStart, loc)
+			if clock.Before(opens) {
+				clock = opens // chega cedo e espera a janela abrir
+			}
+		}
+		if s.WindowEnd != "" {
+			closes, _ := time.ParseInLocation("2006-01-02 15:04", day+" "+s.WindowEnd, loc)
+			if clock.After(closes) {
+				warnings = append(warnings, fmt.Sprintf("Parada %d (%s) chega %s, depois da janela que fecha %s.", seq+1, s.Place, clock.Format("15:04"), s.WindowEnd))
+			}
+		}
+		legs = append(legs, leg{orderID: s.OrderID, distance: distance, duration: duration, eta: clock})
+		totalDistance += distance
+		totalDuration += duration
+		prev = k
+	}
+
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível calcular a rota.", "route optimize begin failed", err)
+		return
+	}
+	defer tx.Rollback()
+	// Confere de novo com a rota travada: alguém pode ter mudado as paradas enquanto o OSRM respondia.
+	if _, _, ok := lockRoute(ctx, tx, w, id, req.Version); !ok {
+		return
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM route_stops WHERE route_id=$1`, id); err != nil {
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível calcular a rota.", "route optimize delete failed", err)
+		return
+	}
+	out := make([]map[string]any, 0, len(legs))
+	for i, l := range legs {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO route_stops (route_id,sequence,order_id,eta,distance_from_prev_m,duration_from_prev_s) VALUES ($1,$2,$3,$4,$5,$6)`,
+			id, i+1, l.orderID, l.eta.UTC(), l.distance, l.duration); err != nil {
+			logisticsFail(w, http.StatusInternalServerError, "Não foi possível calcular a rota.", "route optimize insert failed", err)
+			return
+		}
+		out = append(out, map[string]any{"sequence": i + 1, "order_id": l.orderID, "eta": l.eta.Format("15:04"),
+			"distance_from_prev_m": l.distance, "duration_from_prev_s": l.duration})
+	}
+	var newVersion int64
+	if err := tx.QueryRowContext(ctx, `UPDATE routes SET total_distance_m=$1,total_duration_s=$2,version=version+1 WHERE id=$3 RETURNING version`,
+		totalDistance, totalDuration, id).Scan(&newVersion); err != nil {
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível calcular a rota.", "route optimize update failed", err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível calcular a rota.", "route optimize commit failed", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id": id, "version": newVersion, "source": source, "total_distance_m": totalDistance, "total_duration_s": totalDuration,
+		"stops": out, "warnings": warnings,
+	})
+}
+
+// routePlanInput junta o ponto de saída (o local do depósito) e as paradas com coordenada.
+// problem vem preenchido quando falta cadastro que só a pessoa pode corrigir.
+func (a *app) routePlanInput(ctx context.Context, routeID int64) (depot latLng, stops []routeStopPlan, problem string, err error) {
+	rows, err := a.db.QueryContext(ctx, `
+SELECT o.id,o.origin_warehouse_id,p.name,p.latitude::float8,p.longitude::float8,
+       coalesce(to_char(p.window_start,'HH24:MI'),''),coalesce(to_char(p.window_end,'HH24:MI'),'')
+FROM route_stops s
+JOIN delivery_orders o ON o.id=s.order_id
+JOIN places p ON p.id=o.place_id
+WHERE s.route_id=$1
+ORDER BY s.sequence`, routeID)
+	if err != nil {
+		return depot, nil, "", err
+	}
+	defer rows.Close()
+	warehouses := map[int64]bool{}
+	var warehouseID int64
+	var missing []string
+	for rows.Next() {
+		var s routeStopPlan
+		var wh int64
+		var lat, lng sql.NullFloat64
+		if err := rows.Scan(&s.OrderID, &wh, &s.Place, &lat, &lng, &s.WindowStart, &s.WindowEnd); err != nil {
+			return depot, nil, "", err
+		}
+		warehouses[wh] = true
+		warehouseID = wh
+		if !lat.Valid || !lng.Valid {
+			missing = append(missing, s.Place)
+			continue
+		}
+		s.Point = latLng{lat.Float64, lng.Float64}
+		stops = append(stops, s)
+	}
+	if err := rows.Err(); err != nil {
+		return depot, nil, "", err
+	}
+	switch {
+	case len(warehouses) == 0:
+		return depot, nil, "Inclua ao menos uma entrega na rota antes de calcular.", nil
+	case len(missing) > 0:
+		return depot, nil, "Locais sem coordenada: " + strings.Join(missing, ", ") + ". Cadastre a coordenada em Locais e frota.", nil
+	case len(warehouses) > 1:
+		return depot, nil, "As entregas desta rota saem de depósitos diferentes. Monte uma rota por depósito.", nil
+	case len(stops) > 99:
+		return depot, nil, "Rota com entregas demais para calcular. Divida em rotas de até 99 paradas.", nil
+	}
+	var lat, lng sql.NullFloat64
+	var warehouse string
+	err = a.db.QueryRowContext(ctx, `
+SELECT w.name,p.latitude::float8,p.longitude::float8
+FROM warehouses w
+LEFT JOIN places p ON p.warehouse_id=w.id AND p.kind='deposito' AND p.active AND p.latitude IS NOT NULL
+WHERE w.id=$1
+ORDER BY p.id LIMIT 1`, warehouseID).Scan(&warehouse, &lat, &lng)
+	if err != nil {
+		return depot, nil, "", err
+	}
+	if !lat.Valid || !lng.Valid {
+		return depot, nil, "Cadastre o local do depósito " + warehouse + " com coordenada em Locais e frota. A rota sai de lá.", nil
+	}
+	return latLng{lat.Float64, lng.Float64}, stops, "", nil
 }
