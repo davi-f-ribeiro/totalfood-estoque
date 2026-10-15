@@ -269,11 +269,16 @@ WHERE o.id=$1`, id).Scan(&opID, &dayText, &meal, &dueAt, &status, &place, &wareh
 		logisticsFail(w, http.StatusInternalServerError, "Não foi possível carregar a entrega.", "delivery events failed", err)
 		return
 	}
+	proofs, err := a.deliveryProofs(ctx, id)
+	if err != nil {
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível carregar a entrega.", "delivery proofs failed", err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": id, "operation_id": opID, "day": dayText, "meal": nullText(meal), "due_at": dueAt,
 		"status": status, "place_name": place, "origin_warehouse": warehouse, "pod_required": pod,
 		"notes": nullText(notes), "tracking_token": token, "version": version,
-		"lines": lines, "events": events,
+		"lines": lines, "events": events, "proofs": proofs,
 		"next_statuses": deliveryNext[status],
 	})
 }
@@ -375,8 +380,9 @@ func (a *app) handleDeliveryEvent(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	var current string
+	var podRequired bool
 	var version int64
-	err = tx.QueryRowContext(ctx, `SELECT status,version FROM delivery_orders WHERE id=$1 FOR UPDATE`, id).Scan(&current, &version)
+	err = tx.QueryRowContext(ctx, `SELECT status,version,pod_required FROM delivery_orders WHERE id=$1 FOR UPDATE`, id).Scan(&current, &version, &podRequired)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "Entrega não encontrada.")
 		return
@@ -399,6 +405,10 @@ func (a *app) handleDeliveryEvent(w http.ResponseWriter, r *http.Request) {
 
 	if !deliveryTransitionAllowed(current, req.Status) {
 		writeJSONError(w, http.StatusConflict, "Não dá para mudar de "+current+" para "+req.Status+". Atualize a página e confira o status atual.")
+		return
+	}
+	if req.Status == "entregue" && podRequired {
+		writeJSONError(w, http.StatusConflict, "Esta entrega exige comprovante. Registre com foto, assinatura ou código.")
 		return
 	}
 	eventID, newVersion, err := recordDeliveryStatus(ctx, tx, deliveryStatusChange{

@@ -117,7 +117,13 @@ func TestRoutesAssignStopsAndMoveOrdersThroughTheDay(t *testing.T) {
 	}
 	event(o1, "o1-rota", "em_rota")
 	event(o1, "o1-chegou", "chegou")
-	event(o1, "o1-entregue", "entregue")
+	var token string
+	if err := a.db.QueryRow(`SELECT tracking_token FROM delivery_orders WHERE id=$1`, o1).Scan(&token); err != nil {
+		t.Fatal(err)
+	}
+	if rr := deliverReq(a, o1, map[string]string{"operation_id": "o1-entregue", "kind": "codigo", "code": token}, nil, director); rr.Code != http.StatusCreated {
+		t.Fatalf("deliver o1 status=%d body=%s", rr.Code, rr.Body.String())
+	}
 	event(o2, "o2-rota", "em_rota")
 	event(o2, "o2-falhou", "falhou")
 
