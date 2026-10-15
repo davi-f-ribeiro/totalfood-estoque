@@ -401,19 +401,12 @@ func (a *app) handleDeliveryEvent(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusConflict, "Não dá para mudar de "+current+" para "+req.Status+". Atualize a página e confira o status atual.")
 		return
 	}
-	var eventID int64
-	err = tx.QueryRowContext(ctx, `
-INSERT INTO delivery_events (order_id,status,operation_id,latitude,longitude,notes,user_id,occurred_at)
-VALUES ($1,$2,$3,$4::numeric,$5::numeric,$6,$7,$8) RETURNING id`,
-		id, req.Status, req.OperationID, optionalText(lat), optionalText(lng), optionalText(req.Notes),
-		userFromContext(ctx).ID, occurred).Scan(&eventID)
+	eventID, newVersion, err := recordDeliveryStatus(ctx, tx, deliveryStatusChange{
+		OrderID: id, Status: req.Status, OperationID: req.OperationID, Latitude: lat, Longitude: lng,
+		Notes: req.Notes, UserID: userFromContext(ctx).ID, OccurredAt: occurred,
+	})
 	if err != nil {
-		logisticsFail(w, http.StatusBadRequest, "Não foi possível registrar o status.", "event insert failed", err)
-		return
-	}
-	var newVersion int64
-	if err := tx.QueryRowContext(ctx, `UPDATE delivery_orders SET status=$1,version=version+1 WHERE id=$2 RETURNING version`, req.Status, id).Scan(&newVersion); err != nil {
-		logisticsFail(w, http.StatusInternalServerError, "Não foi possível registrar o status.", "event status update failed", err)
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível registrar o status.", "event insert failed", err)
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -421,6 +414,32 @@ VALUES ($1,$2,$3,$4::numeric,$5::numeric,$6,$7,$8) RETURNING id`,
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": eventID, "status": req.Status, "version": newVersion})
+}
+
+type deliveryStatusChange struct {
+	OrderID     int64
+	Status      string
+	OperationID string
+	Latitude    string
+	Longitude   string
+	Notes       string
+	UserID      int64
+	OccurredAt  time.Time
+}
+
+// recordDeliveryStatus grava o evento e muda o status do pedido. Quem chama já travou
+// o pedido e conferiu a transição com deliveryTransitionAllowed.
+func recordDeliveryStatus(ctx context.Context, tx *sql.Tx, c deliveryStatusChange) (eventID, version int64, err error) {
+	err = tx.QueryRowContext(ctx, `
+INSERT INTO delivery_events (order_id,status,operation_id,latitude,longitude,notes,user_id,occurred_at)
+VALUES ($1,$2,$3,$4::numeric,$5::numeric,$6,$7,$8) RETURNING id`,
+		c.OrderID, c.Status, c.OperationID, optionalText(c.Latitude), optionalText(c.Longitude), optionalText(c.Notes),
+		c.UserID, c.OccurredAt).Scan(&eventID)
+	if err != nil {
+		return 0, 0, err
+	}
+	err = tx.QueryRowContext(ctx, `UPDATE delivery_orders SET status=$1,version=version+1 WHERE id=$2 RETURNING version`, c.Status, c.OrderID).Scan(&version)
+	return eventID, version, err
 }
 
 func deliveryTransitionAllowed(from, to string) bool {

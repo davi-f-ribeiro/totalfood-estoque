@@ -106,13 +106,19 @@ CREATE UNIQUE INDEX idx_routes_open_driver_day ON routes (driver_id, day)
 CREATE TABLE route_stops (
     route_id bigint NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
     sequence integer NOT NULL CHECK (sequence > 0),
-    order_id bigint NOT NULL UNIQUE REFERENCES delivery_orders(id),
+    order_id bigint NOT NULL REFERENCES delivery_orders(id),
     eta timestamptz,
     arrived_at timestamptz,
     distance_from_prev_m integer CHECK (distance_from_prev_m >= 0),
     duration_from_prev_s integer CHECK (duration_from_prev_s >= 0),
-    PRIMARY KEY (route_id, sequence)
+    PRIMARY KEY (route_id, sequence),
+    UNIQUE (route_id, order_id)
 );
+
+-- Pedido que falhou volta para outra rota, então o mesmo pedido pode aparecer em
+-- rotas diferentes. Estar em no máximo uma rota aberta é garantido na aplicação,
+-- com o pedido travado (FOR UPDATE) durante a montagem da rota.
+CREATE INDEX idx_route_stops_order_id ON route_stops (order_id);
 
 INSERT INTO permissions (resource, action)
 VALUES ('dispatch', 'read'), ('dispatch', 'write')
