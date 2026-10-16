@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Acompanhar entrega · TotalFood</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main class="main">
+<section class="panel">
+<h1>Acompanhar entrega</h1>
+<p class="hint">Situação atualizada a cada vez que você abre ou atualiza esta página.</p>
+<h2 role="status">{{.Status}}</h2>
+<p><strong>Data:</strong> {{.Day}}</p>
+{{if .Meal}}<p><strong>Refeição:</strong> {{.Meal}}</p>{{end}}
+<p><strong>Horário combinado:</strong> {{.DueAt}}</p>
+{{if .ETA}}<p><strong>Previsão de chegada:</strong> {{.ETA}} (estimativa)</p>{{end}}
+<p class="hint">Os horários são de Fortaleza. A previsão pode mudar durante o trajeto.</p>
+</section>
+</main>
+</body>
+</html>
