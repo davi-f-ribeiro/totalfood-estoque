@@ -1,0 +1,36 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="csrf-token" content="{{.CSRF}}"><title>Locais e frota · Gestão de Estoque</title><link rel="stylesheet" href="/static/app.css"><link rel="stylesheet" href="/static/logistics.css"></head><body>{{template "header" .}}{{template "nav" .}}
+<main class="main"><section class="panel catalog-manager logistics-manager" id="logisticsRoot" data-can-write="{{if .CanLogisticsWrite}}1{{else}}0{{end}}">
+<div class="catalog-title"><div><h1>Locais e frota</h1><p class="hint">Onde entregamos e coletamos, com que veículo e com qual motorista. Cliente sem local com coordenada não entra na rota de entrega.</p></div></div>
+<div id="coverageNotice" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+<div id="logisticsStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+<div class="logistics-sections">
+<section aria-labelledby="placesHeading"><div class="section-heading"><h2 id="placesHeading">Locais</h2>{{if .CanLogisticsWrite}}<button id="placeNew" type="button">+ Novo local</button>{{end}}</div><label class="catalog-search">Buscar local<input id="placeSearch" autocomplete="off" placeholder="Nome, cliente ou cidade"></label><div id="placeList" class="catalog-parent-list" aria-live="polite"></div></section>
+<section aria-labelledby="vehiclesHeading"><div class="section-heading"><h2 id="vehiclesHeading">Veículos</h2>{{if .CanLogisticsWrite}}<button id="vehicleNew" class="secondary" type="button">+ Novo veículo</button>{{end}}</div><div id="vehicleList" class="catalog-parent-list" aria-live="polite"></div></section>
+<section aria-labelledby="driversHeading"><div class="section-heading"><h2 id="driversHeading">Motoristas</h2>{{if .CanLogisticsWrite}}<button id="driverNew" class="secondary" type="button">+ Novo motorista</button>{{end}}</div><div id="driverList" class="catalog-parent-list" aria-live="polite"></div></section>
+</div>
+{{if .CanLogisticsWrite}}
+<dialog id="placeDialog" class="editor-dialog" aria-labelledby="placeDialogTitle"><div class="editor-dialog-head"><h2 id="placeDialogTitle">Local</h2></div><form id="placeForm" hidden><input id="placeId" type="hidden">
+<div class="grid"><label>Nome do local<input id="placeName" autocomplete="off" required placeholder="Data Center Pecém — refeitório"></label><label>Tipo<select id="placeKind" required><option value="cliente">Cliente</option><option value="fornecedor">Fornecedor</option><option value="deposito">Depósito</option><option value="outro">Outro</option></select></label></div>
+<label id="placeCustomerField">Cliente<select id="placeCustomer"></select></label>
+<label id="placeWarehouseField" hidden>Depósito<select id="placeWarehouse"></select></label>
+<div class="grid"><label>Endereço<input id="placeAddress" autocomplete="off" required></label><label>Cidade<input id="placeCity" autocomplete="off"></label></div>
+<fieldset class="logistics-group"><legend>Coordenada</legend><p class="hint">Copie do mapa (ex.: -3.543210 e -38.812345). Sem coordenada o local não entra na rota.</p><div class="grid"><label>Latitude<input id="placeLat" inputmode="decimal" autocomplete="off"></label><label>Longitude<input id="placeLng" inputmode="decimal" autocomplete="off"></label></div></fieldset>
+<fieldset class="logistics-group"><legend>Janela de recebimento</legend><div class="grid"><label>De<input id="placeWindowStart" type="time"></label><label>Até<input id="placeWindowEnd" type="time"></label></div></fieldset>
+<div class="grid"><label>Contato no local<input id="placeContact" autocomplete="off" placeholder="Nome e telefone"></label><label>Como chegar e entrar<input id="placeAccess" autocomplete="off" placeholder="Portão 2, falar com a nutricionista"></label></div>
+<label class="check"><input id="placeActive" type="checkbox" checked> Local ativo</label>
+<div class="actions"><button type="submit">Criar local</button><button id="placeCancel" class="secondary" type="button">Cancelar</button></div><div id="placeFormStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
+<dialog id="vehicleDialog" class="editor-dialog" aria-labelledby="vehicleDialogTitle"><div class="editor-dialog-head"><h2 id="vehicleDialogTitle">Veículo</h2></div><form id="vehicleForm" hidden><input id="vehicleId" type="hidden">
+<div class="grid"><label>Placa<input id="vehiclePlate" autocomplete="off" required placeholder="ABC1D23"></label><label>Descrição<input id="vehicleDescription" autocomplete="off" required placeholder="Fiorino refrigerada"></label></div>
+<div class="grid"><label>Capacidade (kg)<input id="vehicleCapacityKg" inputmode="decimal" autocomplete="off" required></label><label>Caixas térmicas<input id="vehicleBoxes" inputmode="numeric" autocomplete="off"></label></div>
+<label>Bem do patrimônio<select id="vehicleAsset"></select><small class="hint">Opcional. Liga o veículo à etiqueta do patrimônio.</small></label>
+<label class="check"><input id="vehicleRefrigerated" type="checkbox"> Baú refrigerado</label>
+<label class="check"><input id="vehicleActive" type="checkbox" checked> Veículo ativo</label>
+<div class="actions"><button type="submit">Criar veículo</button><button id="vehicleCancel" class="secondary" type="button">Cancelar</button></div><div id="vehicleFormStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
+<dialog id="driverDialog" class="editor-dialog" aria-labelledby="driverDialogTitle"><div class="editor-dialog-head"><h2 id="driverDialogTitle">Motorista</h2></div><form id="driverForm" hidden><input id="driverId" type="hidden">
+<div class="grid"><label>Nome<input id="driverName" autocomplete="off" required></label><label>Telefone<input id="driverPhone" inputmode="tel" autocomplete="off"></label></div>
+<div class="grid"><label>CNH (11 dígitos)<input id="driverLicense" inputmode="numeric" autocomplete="off" maxlength="11"></label><label>Categoria<select id="driverCategory"><option value="">—</option><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>AB</option><option>AC</option><option>AD</option><option>AE</option></select></label><label>Validade da CNH<input id="driverExpires" type="date"></label></div>
+<div class="grid"><label>Veículo de costume<select id="driverVehicle"></select></label><label>Usuário do sistema<select id="driverUser"></select><small class="hint">Opcional agora. Será o login do motorista no celular.</small></label></div>
+<label class="check"><input id="driverActive" type="checkbox" checked> Motorista ativo</label>
+<div class="actions"><button type="submit">Criar motorista</button><button id="driverCancel" class="secondary" type="button">Cancelar</button></div><div id="driverFormStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
+{{end}}
+</section></main><script src="/static/app.js" defer></script><script src="/static/logistics.js" defer></script></body></html>

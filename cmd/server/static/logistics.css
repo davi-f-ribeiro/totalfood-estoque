@@ -1,0 +1,7 @@
+.logistics-sections{display:grid;gap:24px}
+.logistics-sections .section-heading button{white-space:nowrap}
+.logistics-group{margin:0 0 14px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md)}
+.logistics-group legend{padding:0 6px;font-weight:700}
+@media(min-width:1280px){
+  .logistics-sections{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);align-items:start}
+}
