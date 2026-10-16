@@ -393,7 +393,8 @@ ORDER BY v.active DESC,v.plate,v.id`)
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, version int64
-		var plate, description, capacity, ownership string
+		var plate, description, ownership string
+		var capacity sql.NullString
 		var assetID, boxes sql.NullInt64
 		var assetTag sql.NullString
 		var refrigerated, active bool
@@ -404,7 +405,7 @@ ORDER BY v.active DESC,v.plate,v.id`)
 		out = append(out, map[string]any{
 			"id": id, "plate": plate, "description": description,
 			"asset_id": nullInt(assetID), "asset_tag": nullText(assetTag),
-			"capacity_kg": capacity, "capacity_boxes": nullInt(boxes),
+			"capacity_kg": nullText(capacity), "capacity_boxes": nullInt(boxes),
 			"refrigerated": refrigerated, "ownership": ownership, "active": active, "version": version,
 		})
 	}
