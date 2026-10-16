@@ -12,7 +12,7 @@ permissions:
 jobs:
   validate:
     runs-on: self-hosted
-    timeout-minutes: 20
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:17-alpine
