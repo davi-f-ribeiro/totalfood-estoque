@@ -65,6 +65,7 @@ type deliveryEventRequest struct {
 }
 
 func (a *app) registerDispatchHandlers(mux *http.ServeMux) {
+	mux.HandleFunc("GET /tracking/{token}", a.handlePublicTracking)
 	mux.HandleFunc("GET /dispatch", a.uiPage("dispatch", "Expedição", "dispatch", "read"))
 	mux.HandleFunc("GET /api/dispatch/options", a.requireAuth("dispatch", "write", a.handleDispatchOptions))
 	mux.HandleFunc("GET /api/delivery-orders", a.requireAuth("dispatch", "read", a.handleDeliveryOrders))
@@ -146,6 +147,11 @@ func (a *app) handleCreateDeliveryOrder(w http.ResponseWriter, r *http.Request) 
 		logisticsFail(w, http.StatusInternalServerError, "Não foi possível gravar o pedido de entrega.", "delivery token failed", err)
 		return
 	}
+	publicToken, err := newToken()
+	if err != nil {
+		logisticsFail(w, http.StatusInternalServerError, "Não foi possível gravar o pedido de entrega.", "delivery public token failed", err)
+		return
+	}
 	ctx := r.Context()
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -168,9 +174,9 @@ func (a *app) handleCreateDeliveryOrder(w http.ResponseWriter, r *http.Request) 
 
 	var id int64
 	err = tx.QueryRowContext(ctx, `
-INSERT INTO delivery_orders (operation_id,place_id,origin_warehouse_id,day,meal,due_at,status,tracking_token,pod_required,notes,created_by)
-VALUES ($1,$2,$3,$4::date,$5,($4::date+$6::time) AT TIME ZONE 'America/Fortaleza','criado',$7,$8,$9,$10) RETURNING id`,
-		req.OperationID, req.PlaceID, req.OriginWarehouse, req.Day, optionalText(req.Meal), req.DueAt, token,
+INSERT INTO delivery_orders (operation_id,place_id,origin_warehouse_id,day,meal,due_at,status,tracking_token,public_tracking_token,pod_required,notes,created_by)
+VALUES ($1,$2,$3,$4::date,$5,($4::date+$6::time) AT TIME ZONE 'America/Fortaleza','criado',$7,$8,$9,$10,$11) RETURNING id`,
+		req.OperationID, req.PlaceID, req.OriginWarehouse, req.Day, optionalText(req.Meal), req.DueAt, token, publicToken,
 		req.PODRequired == nil || *req.PODRequired, optionalText(req.Notes), userFromContext(ctx).ID).Scan(&id)
 	if err != nil {
 		writeDeliveryError(w, err, "delivery order create failed")
@@ -252,16 +258,16 @@ func (a *app) handleDeliveryOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	var opID, dayText, status, place, warehouse, dueAt, token string
+	var opID, dayText, status, place, warehouse, dueAt, token, publicToken string
 	var meal, notes sql.NullString
 	var pod bool
 	var version int64
 	err := a.db.QueryRowContext(ctx, `
-SELECT o.operation_id,o.day::text,o.meal,to_char(o.due_at AT TIME ZONE 'America/Fortaleza','HH24:MI'),o.status,p.name,w.name,o.pod_required,o.notes,o.tracking_token,o.version
+SELECT o.operation_id,o.day::text,o.meal,to_char(o.due_at AT TIME ZONE 'America/Fortaleza','HH24:MI'),o.status,p.name,w.name,o.pod_required,o.notes,o.tracking_token,o.public_tracking_token,o.version
 FROM delivery_orders o
 JOIN places p ON p.id=o.place_id
 JOIN warehouses w ON w.id=o.origin_warehouse_id
-WHERE o.id=$1`, id).Scan(&opID, &dayText, &meal, &dueAt, &status, &place, &warehouse, &pod, &notes, &token, &version)
+WHERE o.id=$1`, id).Scan(&opID, &dayText, &meal, &dueAt, &status, &place, &warehouse, &pod, &notes, &token, &publicToken, &version)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "Entrega não encontrada.")
 		return
@@ -288,7 +294,7 @@ WHERE o.id=$1`, id).Scan(&opID, &dayText, &meal, &dueAt, &status, &place, &wareh
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": id, "operation_id": opID, "day": dayText, "meal": nullText(meal), "due_at": dueAt,
 		"status": status, "place_name": place, "origin_warehouse": warehouse, "pod_required": pod,
-		"notes": nullText(notes), "tracking_token": token, "version": version,
+		"notes": nullText(notes), "tracking_token": token, "public_tracking_token": publicToken, "version": version,
 		"lines": lines, "events": events, "proofs": proofs,
 		"next_statuses": deliveryNext[status],
 	})
