@@ -15,6 +15,7 @@ Variáveis de ambiente:
 - `DATABASE_URL` — DSN do PostgreSQL. Obrigatória. Exemplo local: `postgres://usuario:senha@127.0.0.1:5432/estoque?sslmode=disable`
 - `HTTP_ADDR` — endereço do servidor HTTP. Opcional, padrão `:8080`.
 - `MIGRATIONS_DIR` — diretório de migrations. Opcional, padrão `migrations`.
+- `OSRM_URL` — endereço do serviço OSRM usado para ordenar as paradas das rotas, como `http://osrm:5000`. Opcional. Sem ele, ou com o OSRM fora do ar, a rota usa uma estimativa pela distância em linha reta e a tela avisa.
 
 Credenciais devem ficar somente no ambiente. Não exponha PostgreSQL diretamente à internet; exponha apenas a aplicação HTTP atrás da rede/firewall apropriado.
 

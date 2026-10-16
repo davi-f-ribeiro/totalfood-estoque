@@ -23,6 +23,7 @@
 <div class="grid"><label>Placa<input id="vehiclePlate" autocomplete="off" required placeholder="ABC1D23"></label><label>Descrição<input id="vehicleDescription" autocomplete="off" required placeholder="Fiorino refrigerada"></label></div>
 <div class="grid"><label>Capacidade (kg)<input id="vehicleCapacityKg" inputmode="decimal" autocomplete="off" required></label><label>Caixas térmicas<input id="vehicleBoxes" inputmode="numeric" autocomplete="off"></label></div>
 <label>Bem do patrimônio<select id="vehicleAsset"></select><small class="hint">Opcional. Liga o veículo à etiqueta do patrimônio.</small></label>
+<label>Propriedade<select id="vehicleOwnership" required><option value="propria">Próprio</option><option value="alugada">Alugado</option></select></label>
 <label class="check"><input id="vehicleRefrigerated" type="checkbox"> Baú refrigerado</label>
 <label class="check"><input id="vehicleActive" type="checkbox" checked> Veículo ativo</label>
 <div class="actions"><button type="submit">Criar veículo</button><button id="vehicleCancel" class="secondary" type="button">Cancelar</button></div><div id="vehicleFormStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>

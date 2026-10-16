@@ -23,7 +23,7 @@ function renderPlaces(){
 function renderVehicles(){
  let list=$('vehicleList');list.textContent='';
  if(!vehicles.length){list.append(el('p','hint','Nenhum veículo cadastrado.'));return}
- vehicles.forEach(v=>list.append(card(v.plate+' · '+v.description,[nf.format(Number(v.capacity_kg))+' kg',v.capacity_boxes?v.capacity_boxes+' caixas térmicas':null,v.refrigerated?'Refrigerado':null,v.asset_tag?'Patrimônio '+v.asset_tag:null],!v.active,()=>openVehicle(v))))}
+ vehicles.forEach(v=>list.append(card(v.plate+' · '+v.description,[nf.format(Number(v.capacity_kg))+' kg',v.capacity_boxes?v.capacity_boxes+' caixas térmicas':null,v.ownership==='alugada'?'Alugado':null,v.refrigerated?'Refrigerado':null,v.asset_tag?'Patrimônio '+v.asset_tag:null],!v.active,()=>openVehicle(v))))}
 function renderDrivers(){
  let list=$('driverList');list.textContent='';
  if(!drivers.length){list.append(el('p','hint','Nenhum motorista cadastrado.'));return}
@@ -65,7 +65,7 @@ function openVehicle(v){withOptions(()=>{
  showVehicle(v,v?'Editar veículo':'Novo veículo','Criar veículo','Atualizar veículo','vehiclePlate');
  fillSelect($('vehicleAsset'),options.assets,'Sem vínculo',v&&v.asset_id);
  $('vehiclePlate').value=v?v.plate:'';$('vehicleDescription').value=v?v.description:'';$('vehicleCapacityKg').value=v?inputDec(v.capacity_kg):'';$('vehicleBoxes').value=v&&v.capacity_boxes||'';
- $('vehicleRefrigerated').checked=!!(v&&v.refrigerated);$('vehicleActive').checked=v?v.active:true})}
+ $('vehicleOwnership').value=v&&v.ownership||'propria';$('vehicleRefrigerated').checked=!!(v&&v.refrigerated);$('vehicleActive').checked=v?v.active:true})}
 function openDriver(d){withOptions(()=>{
  showDriver(d,d?'Editar motorista':'Novo motorista','Criar motorista','Atualizar motorista','driverName');
  fillSelect($('driverVehicle'),vehicles.filter(v=>v.active||(d&&v.id===d.default_vehicle_id)).map(v=>({id:v.id,name:v.plate+' · '+v.description})),'Nenhum',d&&d.default_vehicle_id);
@@ -75,7 +75,7 @@ function openDriver(d){withOptions(()=>{
 if(canWrite){
  const num=v=>Number(v)||0;
  showPlace=wireDialog('place','local',()=>({name:$('placeName').value.trim(),kind:$('placeKind').value,customer_id:num($('placeCustomer').value),warehouse_id:num($('placeWarehouse').value),address:$('placeAddress').value.trim(),city:$('placeCity').value.trim(),latitude:$('placeLat').value.trim(),longitude:$('placeLng').value.trim(),window_start:$('placeWindowStart').value,window_end:$('placeWindowEnd').value,contact:$('placeContact').value.trim(),access_notes:$('placeAccess').value.trim(),active:$('placeActive').checked}),'/api/places',(b,upd)=>'Local '+b.name+(upd?' atualizado.':' criado.'));
- showVehicle=wireDialog('vehicle','veículo',()=>({plate:$('vehiclePlate').value.trim(),description:$('vehicleDescription').value.trim(),asset_id:num($('vehicleAsset').value),capacity_kg:$('vehicleCapacityKg').value.trim(),capacity_boxes:num($('vehicleBoxes').value),refrigerated:$('vehicleRefrigerated').checked,active:$('vehicleActive').checked}),'/api/vehicles',(b,upd)=>'Veículo '+b.plate.toUpperCase()+(upd?' atualizado.':' criado.'));
+ showVehicle=wireDialog('vehicle','veículo',()=>({plate:$('vehiclePlate').value.trim(),description:$('vehicleDescription').value.trim(),asset_id:num($('vehicleAsset').value),capacity_kg:$('vehicleCapacityKg').value.trim(),capacity_boxes:num($('vehicleBoxes').value),refrigerated:$('vehicleRefrigerated').checked,ownership:$('vehicleOwnership').value,active:$('vehicleActive').checked}),'/api/vehicles',(b,upd)=>'Veículo '+b.plate.toUpperCase()+(upd?' atualizado.':' criado.'));
  showDriver=wireDialog('driver','motorista',()=>({name:$('driverName').value.trim(),phone:$('driverPhone').value.trim(),license_number:$('driverLicense').value.trim(),license_category:$('driverCategory').value,license_expires_at:$('driverExpires').value,default_vehicle_id:num($('driverVehicle').value),user_id:num($('driverUser').value),active:$('driverActive').checked}),'/api/drivers',(b,upd)=>'Motorista '+b.name+(upd?' atualizado.':' criado.'));
  $('placeKind').addEventListener('change',syncPlaceKind);
  $('placeNew').onclick=()=>openPlace(null);$('vehicleNew').onclick=()=>openVehicle(null);$('driverNew').onclick=()=>openDriver(null)}

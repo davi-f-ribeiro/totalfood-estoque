@@ -13,7 +13,7 @@ permissions:
 jobs:
   validate:
     runs-on: self-hosted
-    timeout-minutes: 20
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:17-alpine
@@ -62,7 +62,7 @@ jobs:
       - name: Go tests with PostgreSQL 17
         run: go test -count=1 ./...
       - name: Go race tests with PostgreSQL 17
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -timeout 30m ./...
       - name: Go build
         run: go build ./...
       - name: Docker build

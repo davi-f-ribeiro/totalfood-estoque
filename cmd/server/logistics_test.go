@@ -226,3 +226,26 @@ func TestLogisticsPermissions(t *testing.T) {
 		t.Fatalf("stock clerk page status=%d", rr.Code)
 	}
 }
+
+func TestVehicleOwnershipOwnedOrRented(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "own-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "own-director", "secret")
+	logisticsErrorIs(t, authReq(a, http.MethodPost, "/api/vehicles", map[string]any{"plate": "ALU1G23", "description": "Van", "capacity_kg": "900", "ownership": "comodato"}, director, ""), http.StatusBadRequest, "próprio ou alugado")
+	rented := authReq(a, http.MethodPost, "/api/vehicles", map[string]any{"plate": "ALU1G23", "description": "Van alugada", "capacity_kg": "900", "ownership": "alugada"}, director, "")
+	owned := authReq(a, http.MethodPost, "/api/vehicles", map[string]any{"plate": "PRO1P23", "description": "Fiorino", "capacity_kg": "600"}, director, "")
+	if rented.Code != http.StatusCreated || owned.Code != http.StatusCreated {
+		t.Fatalf("create rented=%d owned=%d", rented.Code, owned.Code)
+	}
+	got := map[string]string{}
+	for _, v := range logisticsList(t, authReq(a, http.MethodGet, "/api/vehicles", nil, director, "")) {
+		got[v["plate"].(string)] = v["ownership"].(string)
+	}
+	if got["ALU1G23"] != "alugada" || got["PRO1P23"] != "propria" {
+		t.Fatalf("ownership = %v", got)
+	}
+	id := jsonID(t, rented.Body.Bytes())
+	if rr := authReq(a, http.MethodPatch, "/api/vehicles/"+itoa(id), map[string]any{"plate": "ALU1G23", "description": "Van devolvida", "capacity_kg": "900", "ownership": "propria", "version": 1}, director, ""); rr.Code != http.StatusOK {
+		t.Fatalf("update ownership status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
