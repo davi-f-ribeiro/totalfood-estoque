@@ -5,7 +5,7 @@ const status=$('logisticsStatus'),coverage=$('coverageNotice'),placeSearch=$('pl
 const kindLabel={cliente:'Cliente',fornecedor:'Fornecedor',deposito:'Depósito',outro:'Outro'};
 const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
 const inputDec=v=>v==null?'':String(v).replace('.',',');
-let places=[],vehicles=[],drivers=[],options=null;
+let places=[],vehicles=[],drivers=[],options=null,telemetry=[];
 function el(tag,cls,text){let e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
 function card(title,detail,inactive,onOpen){
  let b=el('button','catalog-parent-card');b.type='button';b.append(el('strong',null,title));
@@ -23,7 +23,7 @@ function renderPlaces(){
 function renderVehicles(){
  let list=$('vehicleList');list.textContent='';
  if(!vehicles.length){list.append(el('p','hint','Nenhum veículo cadastrado.'));return}
- vehicles.forEach(v=>list.append(card(v.plate+' · '+v.description,[nf.format(Number(v.capacity_kg))+' kg',v.capacity_boxes?v.capacity_boxes+' caixas térmicas':null,v.ownership==='alugada'?'Alugado':null,v.refrigerated?'Refrigerado':null,v.asset_tag?'Patrimônio '+v.asset_tag:null],!v.active,()=>openVehicle(v))))}
+ vehicles.forEach(v=>{const gps=telemetry.find(t=>t.vehicle_id===v.id),fresh=gps&&(Date.now()-new Date(gps.synced_at).getTime()<10*60*1000);list.append(card(v.plate+' · '+v.description,[v.capacity_kg?nf.format(Number(v.capacity_kg))+' kg':'Capacidade pendente',gps?(fresh?'Consulta recente ao rastreador':'Consulta ao rastreador antiga'):null,gps&&gps.speed_kmh!=null?'Velocidade informada: '+nf.format(Number(gps.speed_kmh))+' km/h':null,v.capacity_boxes?v.capacity_boxes+' caixas térmicas':null,v.ownership==='alugada'?'Alugado':null,v.refrigerated?'Refrigerado':null,v.asset_tag?'Patrimônio '+v.asset_tag:null],!v.active,()=>openVehicle(v)))})}
 function renderDrivers(){
  let list=$('driverList');list.textContent='';
  if(!drivers.length){list.append(el('p','hint','Nenhum motorista cadastrado.'));return}
@@ -34,7 +34,7 @@ function renderCoverage(missing){
  setFeedback(coverage,'',missing.length+(missing.length===1?' cliente ativo está':' clientes ativos estão')+' sem local com coordenada: '+names+'.')}
 async function loadAll(){
  setFeedback(status,'loading','Carregando locais e frota…');
- try{let cov;[places,vehicles,drivers,cov]=await Promise.all([api('/api/places'),api('/api/vehicles'),api('/api/drivers'),api('/api/places/coverage')]);renderCoverage(cov.customers_without_place||[])}
+ try{let cov;[places,vehicles,drivers,cov,telemetry]=await Promise.all([api('/api/places'),api('/api/vehicles'),api('/api/drivers'),api('/api/places/coverage'),api('/api/vehicles/telemetry')]);renderCoverage(cov.customers_without_place||[]);const notice=$('rastroFleetNotice');if(notice)notice.textContent=telemetry.length?'Rastro Connect: '+telemetry.length+' veículo(s) vinculado(s). Posições coletadas na última sincronização manual.':''}
  catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível carregar locais e frota. Atualize a página.'));return false}
  setFeedback(status,'','');renderPlaces();renderVehicles();renderDrivers();return true}
 async function loadOptions(){if(!options)options=await api('/api/logistics/options');return options}
