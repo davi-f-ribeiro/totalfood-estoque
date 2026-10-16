@@ -85,6 +85,8 @@ func rastroFleet(ctx context.Context, origin, company, username, password string
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Authorization", "token "+string(token[1]))
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Referer", res.Request.URL.String())
 	res, err = client.Do(req)
 	if err != nil {

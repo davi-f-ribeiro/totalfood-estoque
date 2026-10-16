@@ -56,7 +56,7 @@ func TestRastroProviderReadOnlySession(t *testing.T) {
 			io.WriteString(w, `<script>const token_ajax = 'testing-token';</script>`)
 		case "/home/api/monitoramento/":
 			cookie, err := r.Cookie("sessionid")
-			monitorValidated = err == nil && cookie.Value == "session" && r.Method == http.MethodPost && r.Header.Get("Authorization") == "token testing-token"
+			monitorValidated = err == nil && cookie.Value == "session" && r.Method == http.MethodPost && r.Header.Get("Authorization") == "token testing-token" && r.Header.Get("X-Requested-With") == "XMLHttpRequest"
 			raw := r.FormValue("json")
 			var args struct {
 				Op    string         `json:"op"`
