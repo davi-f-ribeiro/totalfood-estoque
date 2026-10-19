@@ -186,7 +186,7 @@ func (a *app) handleRastroSync(w http.ResponseWriter, r *http.Request) {
 	if len(skipped) > 5 {
 		skipped = skipped[:5]
 	}
-	writeJSON(w, 200, map[string]any{"received": len(vehicles) + len(skipped), "imported": imported, "linked": linked, "pending_capacity": imported, "skipped_count": skippedCount, "skipped_examples": skipped})
+	writeJSON(w, 200, map[string]any{"received": len(vehicles) + skippedCount, "imported": imported, "linked": linked, "pending_capacity": imported, "skipped_count": skippedCount, "skipped_examples": skipped})
 }
 
 type rastroConflictError struct{ message string }
