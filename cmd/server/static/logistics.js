@@ -23,7 +23,7 @@ function renderPlaces(){
 function renderVehicles(){
  let list=$('vehicleList');list.textContent='';
  if(!vehicles.length){list.append(el('p','hint','Nenhum veículo cadastrado.'));return}
- vehicles.forEach(v=>{const gps=telemetry.find(t=>t.vehicle_id===v.id),fresh=gps&&(Date.now()-new Date(gps.synced_at).getTime()<10*60*1000);list.append(card(v.plate+' · '+v.description,[v.capacity_kg?nf.format(Number(v.capacity_kg))+' kg':'Capacidade pendente',gps?(fresh?'Consulta recente ao rastreador':'Consulta ao rastreador antiga'):null,gps&&gps.speed_kmh!=null?'Velocidade informada: '+nf.format(Number(gps.speed_kmh))+' km/h':null,v.capacity_boxes?v.capacity_boxes+' caixas térmicas':null,v.ownership==='alugada'?'Alugado':null,v.refrigerated?'Refrigerado':null,v.asset_tag?'Patrimônio '+v.asset_tag:null],!v.active,()=>openVehicle(v)))})}
+ vehicles.forEach(v=>{const gps=telemetry.find(t=>t.vehicle_id===v.id);list.append(card(v.plate+' · '+v.description,[v.capacity_kg?nf.format(Number(v.capacity_kg))+' kg':'Capacidade pendente',gps?'GPS informado: '+(gps.source_time||'horário desconhecido'):null,gps?'Consultado em: '+new Date(gps.synced_at).toLocaleString('pt-BR'):null,gps&&!gps.source_time?'Posição não verificada':null,gps&&gps.speed_kmh!=null?'Velocidade informada: '+nf.format(Number(gps.speed_kmh))+' km/h':null,v.capacity_boxes?v.capacity_boxes+' caixas térmicas':null,v.ownership==='alugada'?'Alugado':null,v.refrigerated?'Refrigerado':null,v.asset_tag?'Patrimônio '+v.asset_tag:null],!v.active,()=>openVehicle(v)))})}
 function renderDrivers(){
  let list=$('driverList');list.textContent='';
  if(!drivers.length){list.append(el('p','hint','Nenhum motorista cadastrado.'));return}
@@ -34,7 +34,7 @@ function renderCoverage(missing){
  setFeedback(coverage,'',missing.length+(missing.length===1?' cliente ativo está':' clientes ativos estão')+' sem local com coordenada: '+names+'.')}
 async function loadAll(){
  setFeedback(status,'loading','Carregando locais e frota…');
- try{let cov;[places,vehicles,drivers,cov,telemetry]=await Promise.all([api('/api/places'),api('/api/vehicles'),api('/api/drivers'),api('/api/places/coverage'),api('/api/vehicles/telemetry')]);renderCoverage(cov.customers_without_place||[]);const notice=$('rastroFleetNotice');if(notice)notice.textContent=telemetry.length?'Rastro Connect: '+telemetry.length+' veículo(s) vinculado(s). Posições coletadas na última sincronização manual.':''}
+ try{let cov;[places,vehicles,drivers,cov,telemetry]=await Promise.all([api('/api/places'),api('/api/vehicles'),api('/api/drivers'),api('/api/places/coverage'),api('/api/vehicles/telemetry')]);renderCoverage(cov.customers_without_place||[]);const notice=$('rastroFleetNotice');if(notice)notice.textContent=telemetry.length?'Rastro Connect: '+telemetry.length+' veículo(s) vinculado(s). Últimas posições informadas pelo provedor; consulte o horário GPS de cada veículo.':''}
  catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível carregar locais e frota. Atualize a página.'));return false}
  setFeedback(status,'','');renderPlaces();renderVehicles();renderDrivers();return true}
 async function loadOptions(){if(!options)options=await api('/api/logistics/options');return options}
