@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -71,12 +72,15 @@ func TestRastroProviderReadOnlySession(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	got, err := rastroFleet(context.Background(), server.URL, "enterprise", "operator", "pass")
+	got, skipped, err := rastroFleet(context.Background(), server.URL, "enterprise", "operator", "pass")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !loginValidated || !monitorValidated {
 		t.Fatal("login or monitored endpoint incorrect")
+	}
+	if len(skipped) != 1 || skipped[0] != "Registro 2: placa inválida" {
+		t.Fatalf("unexpected skipped vehicle diagnostics: %v", skipped)
 	}
 	if len(got) != 1 || got[0].Plate != "ABC1D23" || got[0].RemoteID != "100" || got[0].Latitude == nil || *got[0].Latitude != -3.7 || got[0].Ignition == nil || !*got[0].Ignition {
 		t.Fatalf("unexpected vehicle parse: %+v", got)
@@ -145,3 +149,68 @@ func TestRastroImportPreservesFleet(t *testing.T) {
 	}
 }
 func pointerFloat(v float64) *float64 { return &v }
+
+func TestRastroImportConflictsRollback(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	_, _, err := a.syncRastroVehicles(context.Background(), []rastroVehicle{{Plate: "ABC1D23", RemoteID: "10", Description: "Original"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name     string
+		input    []rastroVehicle
+		expected string
+	}{
+		{"same plate different remote ID", []rastroVehicle{{Plate: "DEF2G34", RemoteID: "11", Description: "New"}, {Plate: "ABC1D23", RemoteID: "99", Description: "Changed"}}, "Placa ABC1D23 já está vinculada"},
+		{"same remote ID different plate", []rastroVehicle{{Plate: "DEF2G34", RemoteID: "11", Description: "New"}, {Plate: "GHI3J45", RemoteID: "10", Description: "Wrong"}}, "Identificador 10 já está vinculado à placa ABC1D23"},
+		{"provider plate collision", []rastroVehicle{{Plate: "DEF2G34", RemoteID: "11", Description: "New"}, {Plate: "DEF2G34", RemoteID: "12", Description: "Conflict"}}, "Placa DEF2G34 recebida com identificadores diferentes"},
+		{"provider remote collision", []rastroVehicle{{Plate: "DEF2G34", RemoteID: "11", Description: "New"}, {Plate: "GHI3J45", RemoteID: "11", Description: "Conflict"}}, "Identificador 11 recebido para as placas"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := a.syncRastroVehicles(context.Background(), tc.input)
+			var conflict *rastroConflictError
+			if !errors.As(err, &conflict) || !strings.Contains(err.Error(), tc.expected) {
+				t.Fatalf("wrong conflict: %v", err)
+			}
+			var count int
+			if err := a.db.QueryRow(`SELECT count(*) FROM vehicles`).Scan(&count); err != nil || count != 1 {
+				t.Fatalf("partial import despite collision: %v count=%d", err, count)
+			}
+		})
+	}
+	created, linked, err := a.syncRastroVehicles(context.Background(), []rastroVehicle{{Plate: "ABC1D23", RemoteID: "10", Description: "Van"}, {Plate: "ABC1D23", RemoteID: "10", Description: "Van"}})
+	if err != nil || created != 0 || linked != 1 {
+		t.Fatalf("identical duplicate should be harmless: created=%d linked=%d err=%v", created, linked, err)
+	}
+}
+
+func TestRastroTelemetryShowsSourceAndSyncSeparately(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	createTestUser(t, a, "rastro-clock-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "rastro-clock-director", "secret")
+	_, _, err := a.syncRastroVehicles(context.Background(), []rastroVehicle{{Plate: "ABC1D23", RemoteID: "10", Description: "Van", SourceTime: "2026-01-02 01:01:00"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := logisticsList(t, authReq(a, http.MethodGet, "/api/vehicles/telemetry", nil, director, ""))
+	if len(output) != 1 || output[0]["source_time"] != "2026-01-02 01:01:00" || output[0]["synced_at"] == nil {
+		t.Fatalf("source clock conflated with query time: %+v", output)
+	}
+	ui, err := uiFS.ReadFile("static/logistics.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(ui), "Date.now()-new Date(gps.synced_at)") || !strings.Contains(string(ui), "GPS informado:") || !strings.Contains(string(ui), "Consultado em:") {
+		t.Fatal("UI conflates sync time with source clock")
+	}
+}
+
+func TestRastroRejectsNonFiniteCoordinates(t *testing.T) {
+	for _, value := range []string{"NaN", "Inf", "-Inf"} {
+		v, ok := parseRastroVehicle(map[string]any{"placa": "ABC1D23", "veiculo_id": float64(10), "latitude": value, "longitude": "-38.5", "velocidade": value})
+		if !ok || v.Latitude != nil || v.Longitude != nil || v.Speed != nil {
+			t.Fatalf("invalid numeric telemetry accepted %s: %+v", value, v)
+		}
+	}
+}

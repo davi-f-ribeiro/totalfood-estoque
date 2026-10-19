@@ -161,20 +161,37 @@ func (a *app) handleRastroSync(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
-	vehicles, err := rastroFleet(ctx, rastroBaseURL, company, login, pass)
+	vehicles, skipped, err := rastroFleet(ctx, rastroBaseURL, company, login, pass)
 	if err != nil {
 		log.Printf("rastro sync fetch failed: %T", err)
-		writeJSONError(w, 502, "Não foi possível consultar a frota no Rastro Connect. Confira o acesso e tente novamente.")
+		if errors.Is(err, errRastroFleetSchema) {
+			writeJSONError(w, 502, errRastroFleetSchema.Error())
+		} else {
+			writeJSONError(w, 502, "Não foi possível consultar a frota no Rastro Connect. Confira o acesso e tente novamente.")
+		}
 		return
 	}
 	imported, linked, err := a.syncRastroVehicles(r.Context(), vehicles)
 	if err != nil {
-		log.Printf("rastro sync database failed: %T", err)
-		writeJSONError(w, 500, "Não foi possível conciliar a frota recebida.")
+		var conflict *rastroConflictError
+		if errors.As(err, &conflict) {
+			writeJSONError(w, http.StatusConflict, conflict.Error())
+		} else {
+			log.Printf("rastro sync database failed: %T", err)
+			writeJSONError(w, 500, "Não foi possível conciliar a frota recebida.")
+		}
 		return
 	}
-	writeJSON(w, 200, map[string]any{"received": len(vehicles), "imported": imported, "linked": linked, "pending_capacity": imported})
+	skippedCount := len(skipped)
+	if len(skipped) > 5 {
+		skipped = skipped[:5]
+	}
+	writeJSON(w, 200, map[string]any{"received": len(vehicles) + len(skipped), "imported": imported, "linked": linked, "pending_capacity": imported, "skipped_count": skippedCount, "skipped_examples": skipped})
 }
+
+type rastroConflictError struct{ message string }
+
+func (e *rastroConflictError) Error() string { return e.message }
 
 func (a *app) syncRastroVehicles(ctx context.Context, vehicles []rastroVehicle) (int, int, error) {
 	tx, err := a.db.BeginTx(ctx, nil)
@@ -187,14 +204,39 @@ func (a *app) syncRastroVehicles(ctx context.Context, vehicles []rastroVehicle) 
 		return 0, 0, err
 	}
 	inserted, linked := 0, 0
-	seenPlate := map[string]bool{}
-	seenRemote := map[string]bool{}
+	seenPlate := map[string]string{}
+	seenRemote := map[string]string{}
 	for _, v := range vehicles {
-		if seenPlate[v.Plate] || seenRemote[v.RemoteID] {
-			continue
+		if !platePattern.MatchString(v.Plate) || strings.TrimSpace(v.RemoteID) == "" {
+			return 0, 0, &rastroConflictError{"Veículo com placa ou identificador inválido; nenhum cadastro foi alterado."}
 		}
-		seenPlate[v.Plate] = true
-		seenRemote[v.RemoteID] = true
+		if existingID, ok := seenPlate[v.Plate]; ok {
+			if existingID != v.RemoteID {
+				return 0, 0, &rastroConflictError{fmt.Sprintf("Placa %s recebida com identificadores diferentes (%s e %s). Nenhum cadastro foi alterado.", v.Plate, existingID, v.RemoteID)}
+			}
+			continue // o mesmo registro pode constar mais de uma vez na consulta
+		}
+		if existingPlate, ok := seenRemote[v.RemoteID]; ok {
+			return 0, 0, &rastroConflictError{fmt.Sprintf("Identificador %s recebido para as placas %s e %s. Nenhum cadastro foi alterado.", v.RemoteID, existingPlate, v.Plate)}
+		}
+		seenPlate[v.Plate] = v.RemoteID
+		seenRemote[v.RemoteID] = v.Plate
+		var storedRemote sql.NullString
+		err = tx.QueryRowContext(ctx, `SELECT t.remote_id FROM rastroconnect_vehicle_telemetry t JOIN vehicles v ON v.id=t.vehicle_id WHERE v.plate=$1`, v.Plate).Scan(&storedRemote)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return 0, 0, err
+		}
+		if err == nil && storedRemote.String != v.RemoteID {
+			return 0, 0, &rastroConflictError{fmt.Sprintf("Placa %s já está vinculada ao identificador %s, mas o rastreador enviou %s. Confira o vínculo antes de sincronizar.", v.Plate, storedRemote.String, v.RemoteID)}
+		}
+		var storedPlate string
+		err = tx.QueryRowContext(ctx, `SELECT v.plate FROM rastroconnect_vehicle_telemetry t JOIN vehicles v ON v.id=t.vehicle_id WHERE t.remote_id=$1`, v.RemoteID).Scan(&storedPlate)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return 0, 0, err
+		}
+		if err == nil && storedPlate != v.Plate {
+			return 0, 0, &rastroConflictError{fmt.Sprintf("Identificador %s já está vinculado à placa %s, mas o rastreador enviou %s. Confira o vínculo antes de sincronizar.", v.RemoteID, storedPlate, v.Plate)}
+		}
 		var id int64
 		err = tx.QueryRowContext(ctx, `INSERT INTO vehicles(plate,description,capacity_kg,active)
             VALUES ($1,$2,NULL,false) ON CONFLICT (plate) DO NOTHING RETURNING id`, v.Plate, v.Description).Scan(&id)

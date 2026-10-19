@@ -22,7 +22,8 @@
  sync.addEventListener('click',()=>runLocked(sync,async()=>{
   setFeedback(status,'loading','Consultando veículos e posições no Rastro Connect…');
   try{const result=await api('/api/admin/rastroconnect/sync',{method:'POST',body:'{}'});
-   setFeedback(status,'success',result.received+' veículo(s) recebido(s); '+result.imported+' novo(s) cadastrado(s) como inativos; '+result.linked+' já existente(s) vinculado(s). Confira a capacidade dos novos veículos em Locais e frota.');
+   const issues=result.skipped_count?(' Atenção: '+result.skipped_count+' registro(s) ignorado(s): '+(result.skipped_examples||[]).join('; ')+'.'):'';
+   setFeedback(status,result.skipped_count?'error':'success',result.received+' veículo(s) recebido(s); '+result.imported+' novo(s) cadastrado(s) como inativos; '+result.linked+' já existente(s) vinculado(s).'+issues+' Confira a capacidade dos novos veículos em Locais e frota.');
   }catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível consultar o Rastro Connect. Confira o acesso.'))}
  }));
  load().catch(err=>setFeedback(status,'error',uiErrorMessage(err,'Não foi possível carregar a configuração do rastreamento.')));

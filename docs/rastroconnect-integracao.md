@@ -8,7 +8,7 @@ Integra o cadastro **existente** de veículos do TotalFood (Go + PostgreSQL) com
 2. Em **Sincronizar frota**, o servidor autentica no Rastro Connect e consulta o endpoint somente de leitura empregado no painel.
 3. Os veículos são reconciliados por placa normalizada (`ABC1D23`), sem alteração de capacidade, titularidade, refrigeração ou descrição dos já cadastrados.
 4. Um veículo desconhecido é registrado no cadastro existente **inativo e sem capacidade**. A capacidade real deve ser informada em **Locais e frota** antes da ativação. Não inventar quilogramas.
-5. A última posição retornada é vinculada ao ID do veículo, junto do horário informado pelo provedor e do horário da consulta ao servidor. A telemetria não é considerada uma confirmação de GPS atual ou de localização segura.
+5. A última posição retornada é vinculada ao ID do veículo, junto de **dois horários distintos**: o do rastreador (texto enviado pelo provedor, quando disponível) e o da sincronização no TotalFood. O horário de sincronização **não prova posição GPS recente**; sem fuso/relógio validado do equipamento não é feita inferência de atualidade nem autorização de saída.
 
 ## Configuração no servidor
 
@@ -28,7 +28,7 @@ A senha é cifrada com AES-256-GCM e nonce aleatório por alteração; nunca é 
 - Origem HTTPS é fixa no backend; a UI não aceita URLs arbitrárias.
 - Sincronização é **manual nesta versão**; ainda não habilita geofence ou liberação de Cargo Plan.
 - A interface HTTP foi identificada em código público do painel, mas não constitui contrato oficial de API. Mudanças no portal podem exigir ajuste do adaptador; confirmar com o fornecedor se há endpoint oficial/token de integração dedicado.
-- Se a API retornar veículos sem placa válida ou identificador, não são importados; não adivinhar dados.
+- Registros sem placa válida ou identificador remoto são ignorados com contagem e amostra dos motivos apresentados na Administração. Colisões de placa ↔ identificador suspendem a transação inteira com diagnóstico específico (HTTP 409); nenhum vínculo é substituído automaticamente.
 
 ## Validação
 

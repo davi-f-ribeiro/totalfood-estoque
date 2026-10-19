@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -18,6 +19,8 @@ import (
 
 const rastroBaseURL = "https://rastroconnect.rastrosystem.com.br"
 
+var errRastroFleetSchema = errors.New("O rastreador enviou veículos sem placa ou identificador válido; nenhuma importação foi realizada.")
+
 var (
 	rastroInputRx = regexp.MustCompile(`(?is)<input\b[^>]*>`)
 	rastroAttrRx  = regexp.MustCompile(`(?i)([\w-]+)\s*=\s*["']([^"']*)["']`)
@@ -27,22 +30,22 @@ var (
 // rastroFleet queries the read-only monitoring endpoint used by the web panel.
 // A caller-supplied origin exists for local integration tests; production fixes it
 // to the provider host, never to arbitrary user input.
-func rastroFleet(ctx context.Context, origin, company, username, password string) ([]rastroVehicle, error) {
+func rastroFleet(ctx context.Context, origin, company, username, password string) ([]rastroVehicle, []string, error) {
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Timeout: 18 * time.Second, Jar: jar}
 	loginURL := origin + "/acl/login/?next=/"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("abrir página de login: %w", err)
+		return nil, nil, fmt.Errorf("abrir página de login: %w", err)
 	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
 	res.Body.Close()
 	if err != nil || res.StatusCode != http.StatusOK {
-		return nil, errors.New("não foi possível abrir o login do rastreador")
+		return nil, nil, errors.New("não foi possível abrir o login do rastreador")
 	}
 
 	form := url.Values{"empresa": {company}, "login": {username}, "senha": {password}}
@@ -57,22 +60,22 @@ func rastroFleet(ctx context.Context, origin, company, username, password string
 	}
 	req, err = http.NewRequestWithContext(ctx, http.MethodPost, loginURL, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Referer", loginURL)
 	res, err = client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("autenticar no rastreador: %w", err)
+		return nil, nil, fmt.Errorf("autenticar no rastreador: %w", err)
 	}
 	body, err = io.ReadAll(io.LimitReader(res.Body, 4<<20))
 	res.Body.Close()
 	if err != nil || res.StatusCode != http.StatusOK || strings.Contains(res.Request.URL.Path, "/acl/login") {
-		return nil, errors.New("Rastro Connect rejeitou o acesso; confira as credenciais")
+		return nil, nil, errors.New("Rastro Connect rejeitou o acesso; confira as credenciais")
 	}
 	token := rastroTokenRx.FindSubmatch(body)
 	if len(token) != 2 {
-		return nil, errors.New("Rastro Connect não disponibilizou o token de monitoramento")
+		return nil, nil, errors.New("Rastro Connect não disponibilizou o token de monitoramento")
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"op": "update", "kargs": map[string]any{"ids": []int{}, "rastro": false},
@@ -81,7 +84,7 @@ func rastroFleet(ctx context.Context, origin, company, username, password string
 	reqBody := url.Values{"json": {string(payload)}}.Encode()
 	req, err = http.NewRequestWithContext(ctx, http.MethodPost, origin+"/home/api/monitoramento/", strings.NewReader(reqBody))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Authorization", "token "+string(token[1]))
@@ -90,29 +93,37 @@ func rastroFleet(ctx context.Context, origin, company, username, password string
 	req.Header.Set("Referer", res.Request.URL.String())
 	res, err = client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("consultar monitoramento: %w", err)
+		return nil, nil, fmt.Errorf("consultar monitoramento: %w", err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("monitoramento indisponível (HTTP %d)", res.StatusCode)
+		return nil, nil, fmt.Errorf("monitoramento indisponível (HTTP %d)", res.StatusCode)
 	}
 	var items []map[string]any
 	if err := json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(&items); err != nil {
-		return nil, errors.New("formato de resposta do monitoramento incompatível")
+		return nil, nil, errors.New("formato de resposta do monitoramento incompatível")
 	}
 	if items == nil {
-		return nil, errors.New("monitoramento devolveu resposta vazia")
+		return nil, nil, errors.New("monitoramento devolveu resposta vazia")
 	}
 	out := make([]rastroVehicle, 0, len(items))
-	for _, item := range items {
+	skipped := []string{}
+	for index, item := range items {
 		if v, ok := parseRastroVehicle(item); ok {
 			out = append(out, v)
+			continue
+		}
+		plate := strings.ToUpper(strings.NewReplacer("-", "", " ", "").Replace(rastroString(item["placa"])))
+		if platePattern.MatchString(plate) {
+			skipped = append(skipped, plate+": identificador remoto inválido")
+		} else {
+			skipped = append(skipped, fmt.Sprintf("Registro %d: placa inválida", index+1))
 		}
 	}
 	if len(items) > 0 && len(out) == 0 {
-		return nil, errors.New("nenhum veículo válido no formato do monitoramento")
+		return nil, skipped, errRastroFleetSchema
 	}
-	return out, nil
+	return out, skipped, nil
 }
 
 type rastroVehicle struct {
@@ -139,7 +150,7 @@ func rastroFloat(v any) *float64 {
 		return nil
 	}
 	n, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
 		return nil
 	}
 	return &n
