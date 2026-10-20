@@ -982,3 +982,20 @@ func TestMovementBatchViewContract(t *testing.T) {
 		}
 	}
 }
+
+func TestMovementConfirmedHidesConfirmUntilNextLaunch(t *testing.T) {
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js")); if err != nil { t.Fatal(err) }
+	cssb, err := os.ReadFile(filepath.Join("static", "movement.css")); if err != nil { t.Fatal(err) }
+	js, css := string(jsb), string(cssb)
+	for _, want := range []string{
+		"resetMovementForm();setMovementDone(true);movementMsg('success',msg+balance)",
+		"submit.disabled=locked||submit.dataset.busy==='1'||f.dataset.done==='1'",
+		"async function pick(r){setMovementDone(false);",
+		"another?.addEventListener('click',()=>{setMovementDone(false);",
+	} {
+		if !strings.Contains(js, want) { t.Fatalf("movement done state missing %q", want) }
+	}
+	if !strings.Contains(css, `.movement-form[data-done="1"] .step-submit`) {
+		t.Fatal("confirm button must leave the screen after the launch is recorded")
+	}
+}
