@@ -20,14 +20,14 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 	sales := doLogin(t, a, "sales-catalog", "secret")
 
 	catID := lookupID(t, a, `SELECT id FROM categories WHERE name='Alimentos'`)
-	itemResp := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Feijão Carioca <b>", "category_id": catID, "unit_code": "KG", "minimum_stock": "3", "notes": "uso <script>alert(1)</script>"}, director, "")
+	itemResp := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), "name": "Feijão Carioca <b>", "category_id": catID, "unit_code": "KG", "minimum_stock": "3", "notes": "uso <script>alert(1)</script>"}, director, "")
 	if itemResp.Code != http.StatusCreated {
 		t.Fatalf("create item status=%d body=%s", itemResp.Code, itemResp.Body.String())
 	}
 	itemID := jsonID(t, itemResp.Body.Bytes())
 	brandA := createTestBrand(t,a,"Marca A Catalog")
 	brandB := createTestBrand(t,a,"Marca B Catalog")
-	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandA, "name":"Original", "content_quantity":"1", "barcode": "7891000000011"}, director, "")
+	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), "item_id": itemID, "brand_id": brandA, "name":"Original", "content_quantity":"1", "barcode": "7891000000011"}, director, "")
 	if skuResp.Code != http.StatusCreated {
 		t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
 	}
@@ -36,22 +36,22 @@ func TestCatalogItemAndSKUFlow(t *testing.T) {
 	if err := a.db.QueryRow(`SELECT name FROM product_skus WHERE id=$1`, firstSKU).Scan(&productName); err != nil || productName != "Original" {
 		t.Fatalf("product identity after create=%q err=%v", productName, err)
 	}
-	secondResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandB, "content_quantity":"1", "barcode": "7891000000028"}, director, "")
+	secondResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), "item_id": itemID, "brand_id": brandB, "content_quantity":"1", "barcode": "7891000000028"}, director, "")
 	if secondResp.Code != http.StatusCreated {
 		t.Fatalf("create second sku status=%d body=%s", secondResp.Code, secondResp.Body.String())
 	}
-	dupResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": itemID, "brand_id": brandA, "content_quantity":"1", "barcode": "7891000000011"}, director, "")
+	dupResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), "item_id": itemID, "brand_id": brandA, "content_quantity":"1", "barcode": "7891000000011"}, director, "")
 	if dupResp.Code != http.StatusConflict || !strings.Contains(dupResp.Body.String(), "Este código de barras já está cadastrado.") {
 		t.Fatalf("duplicate barcode status=%d body=%s", dupResp.Code, dupResp.Body.String())
 	}
-	badFK := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": 999999, "brand_id": brandA, "content_quantity":"1", "barcode": "7891000000998"}, director, "")
+	badFK := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), "item_id": 999999, "brand_id": brandA, "content_quantity":"1", "barcode": "7891000000998"}, director, "")
 	if badFK.Code != http.StatusBadRequest {
 		t.Fatalf("invalid fk status=%d body=%s", badFK.Code, badFK.Body.String())
 	}
-	if rr := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Negado", "category_id": catID, "unit_code": "KG", "minimum_stock": "0"}, sales, ""); rr.Code != http.StatusForbidden {
+	if rr := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), "name": "Negado", "category_id": catID, "unit_code": "KG", "minimum_stock": "0"}, sales, ""); rr.Code != http.StatusForbidden {
 		t.Fatalf("user without permission status=%d", rr.Code)
 	}
-	if rr := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Sem CSRF", "category_id": catID, "unit_code": "KG", "minimum_stock": "0"}, director, "bad-csrf"); rr.Code != http.StatusForbidden {
+	if rr := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), "name": "Sem CSRF", "category_id": catID, "unit_code": "KG", "minimum_stock": "0"}, director, "bad-csrf"); rr.Code != http.StatusForbidden {
 		t.Fatalf("csrf status=%d", rr.Code)
 	}
 	lookup := authReq(a, http.MethodGet, "/api/products/lookup?q=7891000000011", nil, director, "")
@@ -96,7 +96,7 @@ func TestCatalogPageEscapesData(t *testing.T) {
 	createTestUser(t, a, "director-catalog-ui", "secret", "Diretor", true)
 	login := doLogin(t, a, "director-catalog-ui", "secret")
 	catID := lookupID(t, a, `SELECT id FROM categories WHERE name='Alimentos'`)
-	authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "<script>alert(1)</script>", "category_id": catID, "unit_code": "KG", "minimum_stock": "0", "notes": "<img src=x>"}, login, "")
+	authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), "name": "<script>alert(1)</script>", "category_id": catID, "unit_code": "KG", "minimum_stock": "0", "notes": "<img src=x>"}, login, "")
 	rr := authReq(a, http.MethodGet, "/catalog", nil, login, "")
 	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "Catálogo") {
 		t.Fatalf("catalog page status=%d body=%s", rr.Code, rr.Body.String())
@@ -134,7 +134,7 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 	director := doLogin(t, a, "director-catalog-parent", "secret")
 	catID := lookupID(t, a, `SELECT id FROM categories WHERE name='Alimentos'`)
 
-	parentA := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Feijão Teste Pai A", "category_id": catID, "unit_code": "KG", "minimum_stock": "2,5"}, director, "")
+	parentA := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), "name": "Feijão Teste Pai A", "category_id": catID, "unit_code": "KG", "minimum_stock": "2,5"}, director, "")
 	if parentA.Code != http.StatusCreated { t.Fatalf("create parent A status=%d body=%s", parentA.Code, parentA.Body.String()) }
 	parentAID := jsonID(t, parentA.Body.Bytes())
 	var minimum string
@@ -142,13 +142,13 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 		t.Fatalf("minimum normalization got=%q err=%v", minimum, err)
 	}
 
-	parentB := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Feijão Teste Pai B", "category_id": catID, "unit_code": "KG", "minimum_stock": "1"}, director, "")
+	parentB := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), "name": "Feijão Teste Pai B", "category_id": catID, "unit_code": "KG", "minimum_stock": "1"}, director, "")
 	parentBID := jsonID(t, parentB.Body.Bytes())
-	parentC := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": "Feijão Teste Pai C", "category_id": catID, "unit_code": "L", "minimum_stock": "1"}, director, "")
+	parentC := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), "name": "Feijão Teste Pai C", "category_id": catID, "unit_code": "L", "minimum_stock": "1"}, director, "")
 	parentCID := jsonID(t, parentC.Body.Bytes())
 
 	brandID := createTestBrand(t,a,"Marca Teste Pai")
-	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"item_id": parentAID, "brand_id":brandID, "content_quantity":"1", "barcode": "7890000999911"}, director, "")
+	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), "item_id": parentAID, "brand_id":brandID, "content_quantity":"1", "barcode": "7890000999911"}, director, "")
 	if skuResp.Code != http.StatusCreated { t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String()) }
 	skuID := jsonID(t, skuResp.Body.Bytes())
 	moveRes, moveErr := a.createEntry(context.Background(), movementRequest{OperationID: "catalog-parent-history", SKUID: skuID, WarehouseID: wh, Quantity: "3", UnitCost: "10"}, "catalog-parent-history")
@@ -190,7 +190,7 @@ func TestCatalogParentManagementReassignAndHistorySnapshot(t *testing.T) {
 		t.Fatalf("catalog barcode search status=%d body=%s", search.Code, search.Body.String())
 	}
 
-	dup := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"name": " feijão teste pai b ", "category_id": catID, "unit_code": "KG", "minimum_stock": "0"}, director, "")
+	dup := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), "name": " feijão teste pai b ", "category_id": catID, "unit_code": "KG", "minimum_stock": "0"}, director, "")
 	if dup.Code != http.StatusConflict { t.Fatalf("duplicate normalized parent status=%d body=%s", dup.Code, dup.Body.String()) }
 }
 
@@ -211,7 +211,7 @@ func TestCatalogNormalizedNameUniqueAtDatabaseLayer(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			rr := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{
+			rr := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), 
 				"name": names[i],
 				"category_id": catID,
 				"unit_code": "UN",

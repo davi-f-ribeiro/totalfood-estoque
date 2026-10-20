@@ -39,6 +39,12 @@ body .main.movement-main{padding-bottom:128px}
 .movement-form[data-step="3"] .step-next{display:none}
 .movement-form[data-step="1"] .step-prev{display:none}
 .movement-form[data-step="1"] .movement-actions{grid-template-columns:minmax(0,1fr)}
+/* Lançamento concluído: sobra só "Registrar outro"; confirmar e voltar não têm mais efeito. */
+.movement-form[data-done="1"] .step-submit,.movement-form[data-done="1"] .step-prev,.movement-form[data-done="1"] .step-next{display:none}
+.movement-form[data-done="1"] .movement-actions{grid-template-columns:minmax(0,1fr)}
+.movement-form[data-done="1"] .summary:empty{display:none}
+.movement-form[data-done="1"] .movement-step-review>h2{display:none}
+.movement-form[data-done="1"] .movement-progress li{border-bottom-color:var(--brand-primary);color:var(--text-secondary)}
 
 /* Tablet com menu lateral: a barra de ações acompanha a área de conteúdo. */
 @media (min-width:900px){

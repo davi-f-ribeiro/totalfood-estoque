@@ -1,6 +1,17 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"sync/atomic"
+	"testing"
+)
+
+var testOperationSeq atomic.Int64
+
+// testOperationID gera um identificador de envio único para criações de cadastro.
+func testOperationID() string {
+	return fmt.Sprintf("test-op-%d", testOperationSeq.Add(1))
+}
 
 func crudVersion(t *testing.T, a *app, table string, id int64) int64 {
 	t.Helper()

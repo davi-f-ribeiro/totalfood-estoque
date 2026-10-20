@@ -19,6 +19,7 @@ type catalogItemRequest struct {
 	Notes        string `json:"notes"`
 	Active       *bool  `json:"active"`
 	Version      int64  `json:"version,omitempty"`
+	OperationID  string `json:"operation_id,omitempty"`
 }
 
 type catalogSKURequest struct {
@@ -29,6 +30,7 @@ type catalogSKURequest struct {
 	ContentQuantity string `json:"content_quantity,omitempty"`
 	Active          *bool  `json:"active"`
 	Version         int64  `json:"version,omitempty"`
+	OperationID     string `json:"operation_id,omitempty"`
 }
 
 func (a *app) registerCatalogHandlers(mux *http.ServeMux) {
@@ -319,27 +321,35 @@ func (a *app) handleCreateCatalogItem(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "Preencha o nome, a categoria, a unidade e o estoque mínimo.")
 		return
 	}
-	var duplicateID int64
-	err := a.db.QueryRowContext(r.Context(), `SELECT id FROM inventory_items WHERE lower(btrim(name))=lower(btrim($1)) LIMIT 1`, req.Name).Scan(&duplicateID)
-	if err == nil {
-		writeJSONError(w, http.StatusConflict, "Já existe um item com este nome.")
-		return
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		writeJSONError(w, 500, "Erro interno.")
+	if req.OperationID == "" {
+		writeJSONError(w, http.StatusBadRequest, catalogOperationMissingMessage)
 		return
 	}
 	active := true
 	if req.Active != nil {
 		active = *req.Active
 	}
-	var id int64
-	err = a.db.QueryRowContext(r.Context(), `INSERT INTO inventory_items (name,category_id,unit_code,minimum_stock,notes,active) VALUES ($1,$2,$3,$4,NULLIF($5,''),$6) RETURNING id`, req.Name, req.CategoryID, req.UnitCode, req.MinimumStock, req.Notes, active).Scan(&id)
+	hash := catalogRequestHash(userFromContext(r.Context()).ID, "inventory_items", req)
+	res, err := a.createCatalogRecord(r.Context(), "inventory_items", req.OperationID, hash, func(tx *sql.Tx) (int64, error) {
+		var duplicateID int64
+		err := tx.QueryRowContext(r.Context(), `SELECT id FROM inventory_items WHERE lower(btrim(name))=lower(btrim($1)) LIMIT 1`, req.Name).Scan(&duplicateID)
+		if err == nil {
+			return 0, catalogDomainError{http.StatusConflict, "Já existe um item com este nome."}
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return 0, err
+		}
+		var id int64
+		err = tx.QueryRowContext(r.Context(), `INSERT INTO inventory_items (name,category_id,unit_code,minimum_stock,notes,active,operation_id,request_hash) VALUES ($1,$2,$3,$4,NULLIF($5,''),$6,$7,$8) RETURNING id`, req.Name, req.CategoryID, req.UnitCode, req.MinimumStock, req.Notes, active, req.OperationID, hash).Scan(&id)
+		return id, err
+	})
 	if err != nil {
-		writeCatalogItemError(w, err, "catalog item create failed")
+		if !writeCatalogCreateError(w, err) {
+			writeCatalogItemError(w, err, "catalog item create failed")
+		}
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
+	writeCatalogCreateResult(w, res)
 }
 
 func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
@@ -352,7 +362,7 @@ func (a *app) handleUpdateCatalogItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogItemRequest(&req)
-	if !validItemReq(req) || req.Version <= 0 {
+	if !validItemReq(req) || req.Version <= 0 || req.OperationID != "" {
 		writeJSONError(w, http.StatusBadRequest, "Preencha o nome, a categoria, a unidade e o estoque mínimo.")
 		return
 	}
@@ -420,29 +430,41 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "Preencha o item, a marca, quanto vem em cada embalagem e o código de barras.")
 		return
 	}
+	if req.OperationID == "" {
+		writeJSONError(w, http.StatusBadRequest, catalogOperationMissingMessage)
+		return
+	}
 	active := true
 	if req.Active != nil {
 		active = *req.Active
 	}
-	var itemName,brandName,unit string
-	if err:=a.db.QueryRowContext(r.Context(), `
+	hash := catalogRequestHash(userFromContext(r.Context()).ID, "product_skus", req)
+	res, err := a.createCatalogRecord(r.Context(), "product_skus", req.OperationID, hash, func(tx *sql.Tx) (int64, error) {
+		var itemName,brandName,unit string
+		if err:=tx.QueryRowContext(r.Context(), `
 SELECT i.name,b.name,i.unit_code
 FROM inventory_items i
 JOIN brands b ON b.id=$2
-WHERE i.id=$1 AND i.active=true AND b.active=true`,req.ItemID,req.BrandID).Scan(&itemName,&brandName,&unit); err!=nil {
-		writeJSONError(w,http.StatusBadRequest,"Item ou marca inválidos.")
-		return
-	}
-	if req.Name=="" {
-		req.Name=productDisplayName(itemName,brandName,req.ContentQuantity,unit)
-	}
-	var id int64
-	err := a.db.QueryRowContext(r.Context(), `INSERT INTO product_skus (item_id,brand_id,name,barcode,content_quantity,active) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, req.ItemID,req.BrandID,req.Name,req.Barcode,req.ContentQuantity,active).Scan(&id)
+WHERE i.id=$1 AND i.active=true AND b.active=true`,req.ItemID,req.BrandID).Scan(&itemName,&brandName,&unit); errors.Is(err, sql.ErrNoRows) {
+			return 0, catalogDomainError{http.StatusBadRequest, "Item ou marca inválidos."}
+		} else if err != nil {
+			return 0, err
+		}
+		name := req.Name
+		if name=="" {
+			name=productDisplayName(itemName,brandName,req.ContentQuantity,unit)
+		}
+		var id int64
+		err := tx.QueryRowContext(r.Context(), `INSERT INTO product_skus (item_id,brand_id,name,barcode,content_quantity,active,operation_id,request_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, req.ItemID,req.BrandID,name,req.Barcode,req.ContentQuantity,active,req.OperationID,hash).Scan(&id)
+		return id, err
+	})
 	if err != nil {
-		writeCatalogSKUError(w, err, "catalog sku create failed")
+		if !writeCatalogCreateError(w, err) {
+			writeCatalogSKUError(w, err, "catalog sku create failed")
+		}
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
+	writeCatalogCreateResult(w, res)
 }
 
 func (a *app) handleUpdateCatalogSKU(w http.ResponseWriter, r *http.Request) {
@@ -455,7 +477,7 @@ func (a *app) handleUpdateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogSKURequest(&req)
-	if req.Barcode=="" || req.Version<=0 {
+	if req.Barcode=="" || req.Version<=0 || req.OperationID!="" {
 		writeJSONError(w,http.StatusBadRequest,"Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
@@ -562,12 +584,14 @@ func normalizeCatalogItemRequest(req *catalogItemRequest) {
 	req.UnitCode = strings.TrimSpace(req.UnitCode)
 	req.MinimumStock = normalizeDecimalInput(req.MinimumStock)
 	req.Notes = strings.TrimSpace(req.Notes)
+	req.OperationID = catalogOperationID(req.OperationID)
 }
 
 func normalizeCatalogSKURequest(req *catalogSKURequest) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Barcode = cleanBarcode(req.Barcode)
 	req.ContentQuantity = normalizeDecimalInput(req.ContentQuantity)
+	req.OperationID = catalogOperationID(req.OperationID)
 	if req.ContentQuantity == "" && req.Version == 0 {
 		req.ContentQuantity = "1"
 	}
