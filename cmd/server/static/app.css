@@ -433,3 +433,49 @@ button:disabled{background:var(--surface-secondary);color:var(--text-muted);bord
   .stock-shell .stock-card.low .stock-state::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:var(--warning)}
   .stock-shell #stockDetail{margin:0;padding:16px;border:0;border-bottom:1px solid var(--border);background:var(--surface-secondary)}
 }
+
+/* Cadastro (Catálogo e Produtos): componentes compartilhados e modo celular.
+   Celular (< 900 px): uma lista por vez (abas Itens e Marcas), linhas compactas na rolagem da página,
+   próxima página ao chegar ao fim da lista e diálogo como folha presa à base, com as ações ao alcance do polegar. */
+.catalog-tabs{display:none}
+.catalog-panel{display:grid;gap:12px;align-content:start;min-width:0}
+.catalog-panel>.operation-feedback,.catalog-pending{margin:0}
+.catalog-pending{display:grid;gap:8px}
+.catalog-pending p{margin:0;color:var(--text-primary);font-weight:500}
+.catalog-pending .actions{display:flex;flex-wrap:wrap;gap:8px;margin:0}
+.catalog-pending .actions button{flex:1 1 140px;min-height:44px}
+.catalog-empty-hint{margin:0;padding:16px;border:1px dashed var(--border);border-radius:var(--radius-md);text-align:center}
+.catalog-parent-card.is-inactive strong{color:var(--text-secondary)}
+.editor-dialog form>.operation-feedback{margin:0 0 4px}
+.lookup button{justify-content:stretch}
+.lookup button:hover,.lookup button:focus-visible{background:var(--brand-primary-soft);border-color:var(--border);color:var(--text-primary)}
+.lookup button:hover small,.lookup button:focus-visible small{color:var(--text-secondary)}
+.panel>.catalog-search{margin:0 0 12px}
+
+@media(max-width:899px){
+  .catalog-manager .catalog-title{flex-direction:row;align-items:flex-start;gap:12px}
+  .catalog-manager .catalog-title .catalog-products-link{width:auto;flex:0 0 auto;min-height:44px;padding:0 14px}
+  .catalog-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-secondary)}
+  .catalog-tabs .catalog-tab{min-height:44px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text-secondary);font-weight:700}
+  .catalog-tabs .catalog-tab:hover{background:transparent;color:var(--text-primary)}
+  .catalog-tabs .catalog-tab[aria-selected="true"]{background:var(--surface);color:var(--text-primary);box-shadow:var(--shadow-sm)}
+  .catalog-manager-layout{grid-template-columns:1fr;gap:0}
+  .catalog-panel.is-inactive{display:none}
+  /* A aba já diz se é Itens ou Marcas: o título fica só para leitores de tela e o botão ocupa a largura. */
+  .catalog-panel>.section-heading{display:block}
+  .catalog-panel>.section-heading h2{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  .catalog-panel>.section-heading button{width:100%;min-height:48px}
+  /* Cada aba é uma tela: o botão de criar é a ação principal dela (no computador, com as duas listas visíveis, Nova marca fica secundária). */
+  .catalog-panel #masterNewBrand:not(:disabled){background:var(--brand-primary);color:#fff;border-color:var(--brand-primary)}
+  .catalog-panel #masterNewBrand:not(:disabled):hover{background:var(--brand-primary-hover);border-color:var(--brand-primary-hover)}
+  .catalog-search{margin:0}
+  .catalog-parent-list{max-height:none;overflow:hidden;gap:0;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface)}
+  .catalog-parent-list:has(> .catalog-empty-hint){border:0;background:transparent}
+  .catalog-parent-list .catalog-parent-card{min-height:56px;margin:0;padding:10px 14px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent;box-shadow:none;gap:2px}
+  .catalog-parent-list .catalog-parent-card:last-child{border-bottom:0}
+  .catalog-parent-list .catalog-parent-card.selected{background:var(--brand-primary-soft)}
+  .catalog-parent-list .catalog-parent-card strong{font-weight:700;line-height:1.3}
+  .catalog-parent-list .catalog-parent-card small{font-size:13px;line-height:1.35}
+  .editor-dialog{inset:auto 0 0 0;height:auto;max-height:100dvh;margin:0;border-radius:var(--radius-md) var(--radius-md) 0 0}
+  .editor-dialog form{padding:14px 14px 0}
+}

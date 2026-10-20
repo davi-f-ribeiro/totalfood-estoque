@@ -247,7 +247,9 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 	for _, want := range []string{
 		`id="productStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
 		`function msg(type,text){setFeedback(status,type,text)}`,
-		`msg('loading',(editing?'Atualizando ':'Criando ')+label+'…')`,
+		`formMsg('loading',(editing?'Atualizando ':'Criando ')+label+'…')`,
+		`id="productFormStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
+		`function formMsg(type,text){setFeedback(formStatus,type,text)}`,
 		`msg('success',label+(wasEditing?' atualizado.':' criado.'))`,
 	} {
 		if !strings.Contains(combined,want) { t.Fatalf("Product/Item feedback missing %q",want) }
@@ -741,9 +743,16 @@ func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 	if savePos < 0 || sendPos < 0 || savePos > sendPos {
 		t.Fatal("movement must persist operation_id before first mutation request")
 	}
+	// Busca o reenvio dentro de retryPending: outros fluxos (cadastros) também reenviam por p.url.
+	retryFn := strings.Index(js, "async function retryPending()")
 	verifyPos := strings.Index(js, "let state=await verifyPending()")
-	retryPos := strings.Index(js, "await api(p.url,{method:'POST'")
-	if verifyPos < 0 || retryPos < 0 || verifyPos > retryPos {
+	retryPos := -1
+	if retryFn >= 0 {
+		if i := strings.Index(js[retryFn:], "await api(p.url,{method:'POST'"); i >= 0 {
+			retryPos = retryFn + i
+		}
+	}
+	if verifyPos < 0 || retryPos < 0 || verifyPos < retryFn || verifyPos > retryPos {
 		t.Fatal("pending movement must be verified before explicit resend")
 	}
 	validatePos := strings.Index(js, "if(!validateMovement())return;submit.dataset.busy='1'")
@@ -980,6 +989,67 @@ func TestMovementBatchViewContract(t *testing.T) {
 		if !strings.Contains(js, want) {
 			t.Fatalf("batch.js missing %q", want)
 		}
+	}
+}
+
+func TestCatalogCreateRecoveryUIContract(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil { t.Fatal(err) }
+		return string(b)
+	}
+	app := read(filepath.Join("static", "app.js"))
+	masters := read(filepath.Join("static", "catalog_masters.js"))
+	products := read(filepath.Join("static", "products.js"))
+	catalog := read(filepath.Join("templates", "catalog.html"))
+	productHTML := read(filepath.Join("templates", "products.html"))
+
+	// Fluxo compartilhado: guarda o envio antes do POST e só limpa com resposta do servidor.
+	for _, want := range []string{
+		"function catalogPendingFlow(",
+		"async function saveCatalogPending(kind,p)",
+		"store.claimPending(kind,p.body.operation_id,p.url,p)",
+		"if(uncertainWriteError(err)||err.status===401)return{state:'unknown',err}",
+		"if(current||!await saveCatalogPending(kind,p))",
+		"ficou sem confirmação",
+	} {
+		if !strings.Contains(app, want) { t.Fatalf("catalog recovery flow missing %q", want) }
+	}
+	savePos := strings.Index(app, "if(current||!await saveCatalogPending(kind,p))")
+	sendPos := strings.Index(app[savePos:], "sendCatalogCreate(p)")
+	if savePos < 0 || sendPos < 0 {
+		t.Fatal("catalog create must persist the operation before sending it")
+	}
+	// Cada cadastro gera o identificador uma vez e usa o fluxo compartilhado.
+	for name, js := range map[string]string{"catalog_masters.js": masters, "products.js": products} {
+		if !strings.Contains(js, "body.operation_id=newOperationID()") || !strings.Contains(js, "catalogPendingFlow({kind:'catalog-") {
+			t.Fatalf("%s must create through the shared recovery flow", name)
+		}
+		if strings.Contains(js, "api('/api/catalog/items',{method:'POST'") || strings.Contains(js, "api('/api/catalog/brands',{method:'POST'") || strings.Contains(js, "api('/api/catalog/skus',{method:'POST'") {
+			t.Fatalf("%s reintroduced a create request outside the recovery flow", name)
+		}
+	}
+	for _, kind := range []string{"kind:'catalog-item'", "kind:'catalog-brand'"} {
+		if !strings.Contains(masters, kind) { t.Fatalf("catalog missing recovery kind %q", kind) }
+	}
+	if !strings.Contains(products, "kind:'catalog-sku'") { t.Fatal("products missing recovery kind") }
+	for name, html := range map[string]string{"catalog.html": catalog, "products.html": productHTML} {
+		storePos := strings.Index(html, `/static/utils/offline-store.js`)
+		appPos := strings.Index(html, `/static/app.js`)
+		if storePos < 0 || appPos < 0 || storePos > appPos || !strings.Contains(html, `name="current-user-id"`) {
+			t.Fatalf("%s must load OfflineStore with the current user before app.js", name)
+		}
+		if !strings.Contains(html, "Cadastro sem confirmação") || !strings.Contains(html, ">Enviar de novo<") {
+			t.Fatalf("%s must show the unconfirmed create with an explicit resend", name)
+		}
+	}
+	// Celular: abas Itens/Marcas e paginação pelo fim da lista também na rolagem da página.
+	for _, want := range []string{`role="tablist"`, `id="masterTabItems"`, `id="masterTabBrands"`, `id="masterItemFeedback"`, `id="masterBrandFeedback"`} {
+		if !strings.Contains(catalog, want) { t.Fatalf("catalog mobile layout missing %q", want) }
+	}
+	if !strings.Contains(masters, "new IntersectionObserver(") {
+		t.Fatal("catalog pagination must also follow page scroll on mobile")
 	}
 }
 

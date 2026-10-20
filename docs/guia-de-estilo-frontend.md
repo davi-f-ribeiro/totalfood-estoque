@@ -57,6 +57,8 @@ Ação destrutiva usa o secundário em vermelho e pede confirmação.
 
 **Avisos.** Um bloco (`.operation-feedback`) com quatro estados: neutro, carregando, sucesso, erro. Frase curta, dizendo o que aconteceu e o que fazer.
 
+**Cadastros no celular (Catálogo e Produtos).** Abaixo de 900 px o Catálogo mostra uma lista por vez, com abas Itens e Marcas; a próxima página carrega quando o fim da lista aparece. O formulário abre como folha presa à base da tela, com as ações fixas embaixo. O aviso de validação fica dentro do formulário; o de sucesso, acima da lista.
+
 **Lançamento em lote (desktop, a partir de 1000 px).** Entrada, Saída e Transferência usam a tela de lote do mockup "Operar em lote": seletor de tipo no alto, depósito(s), campo de leitura em destaque, tabela de produtos (estoque atual, quantidade, preço da embalagem na entrada, estoque após) e resumo fixo à direita com o botão principal. O servidor grava o lote inteiro ou nada (`/api/movements/{entry,exit,transfer}/batch`). No celular continua o assistente de 3 passos, um produto por vez.
 
 ## 5. Navegação
@@ -83,7 +85,7 @@ O texto da interface é o cartão de visita do sistema, e quem lê está trabalh
 5. **Erro diz o que houve e o que fazer, nessa ordem.** "Não foi possível salvar. Confira a conexão e tente de novo." Quando só o usuário pode resolver, diga como; quando é falha do sistema, diga só "Tente de novo".
 6. **"Não foi possível", nunca "Não deu para".** Tom formal sem ser burocrático. Evite "realizar", "efetuar", "possui", "permanece", "informado", "o mesmo" (como em "a mesma operação").
 7. **Sem termos técnicos ou em inglês.** O usuário não vê SKU, warehouse, JSON, operation_id, offset nem "erro interno" solto.
-8. **Quando não se sabe se algo foi gravado, diga isso com clareza.** Use "sem confirmação" e ofereça "Conferir" e "Enviar de novo". Nunca "pendente" nem "pendência local".
+8. **Quando não se sabe se algo foi gravado, diga isso com clareza.** Use "sem confirmação" e ofereça "Conferir" e "Enviar de novo". Nunca "pendente" nem "pendência local". Nos cadastros (item, marca, produto), "Enviar de novo" já confere: o servidor devolve o cadastro original se ele já estiver gravado. Por isso o aviso oferece "Enviar de novo" e "Descartar".
 9. **Sem ponto de exclamação**, sem maiúsculas corridas. Títulos e rótulos sem ponto final; frases com ponto final.
 10. **Números e datas no padrão brasileiro:** `1.250,50`; `11/10/2026`.
 11. **Título de tela: substantivo curto** ("Estoque", "Entrada"). Subtítulo: uma frase que diz para que serve a tela.
@@ -97,6 +99,7 @@ O texto da interface é o cartão de visita do sistema, e quem lê está trabalh
 | Item pai | Item (o nome geral, ex.: “Leite”) |
 | Produto/Item | Produto (item + marca + embalagem + código de barras) |
 | Pendência local, operação pendente, aguardando envio | Lançamento sem confirmação |
+| Cadastro pendente (item, marca, produto) | Cadastro sem confirmação |
 | Conflito de identificação da operação | Este lançamento já foi enviado com outros dados |
 | Reenviar operação | Enviar de novo |
 | Verificar resultado | Conferir |
