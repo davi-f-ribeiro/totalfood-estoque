@@ -13,7 +13,7 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 
 	t.Run("catalog item", func(t *testing.T) {
 		catID := lookupID(t, a, `SELECT id FROM categories WHERE name='Alimentos'`)
-		create := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{
+		create := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), 
 			"name": "CRUD Version Item", "category_id": catID, "unit_code": "KG", "minimum_stock": "0",
 		}, director, "")
 		if create.Code != http.StatusCreated {
@@ -47,12 +47,12 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 
 	t.Run("sku", func(t *testing.T) {
 		catID := lookupID(t, a, `SELECT id FROM categories WHERE name='Alimentos'`)
-		parent := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{
+		parent := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), 
 			"name": "CRUD Version SKU Parent", "category_id": catID, "unit_code": "UN", "minimum_stock": "0",
 		}, director, "")
 		parentID := jsonID(t, parent.Body.Bytes())
 		brandID := createTestBrand(t,a,"CRUD Version Brand")
-		create := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{
+		create := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), 
 			"item_id": parentID, "brand_id":brandID, "content_quantity":"1", "barcode": "7899999000001",
 		}, director, "")
 		if create.Code != http.StatusCreated {

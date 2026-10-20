@@ -9,9 +9,10 @@ import (
 )
 
 type brandRequest struct {
-	Name    string `json:"name"`
-	Active  *bool  `json:"active"`
-	Version int64  `json:"version,omitempty"`
+	Name        string `json:"name"`
+	Active      *bool  `json:"active"`
+	Version     int64  `json:"version,omitempty"`
+	OperationID string `json:"operation_id,omitempty"`
 }
 
 func (a *app) handleCatalogBrands(w http.ResponseWriter, r *http.Request) {
@@ -118,17 +119,27 @@ func (a *app) handleCreateCatalogBrand(w http.ResponseWriter, r *http.Request) {
 	var req brandRequest
 	if !decodeJSON(w,r,&req) { return }
 	req.Name=strings.TrimSpace(req.Name)
+	req.OperationID=catalogOperationID(req.OperationID)
 	if req.Name=="" {
 		writeJSONError(w,http.StatusBadRequest,"Digite o nome da marca.")
 		return
 	}
+	if req.OperationID=="" {
+		writeJSONError(w,http.StatusBadRequest,catalogOperationMissingMessage)
+		return
+	}
 	active:=true
 	if req.Active!=nil { active=*req.Active }
-	var id int64
-	err:=a.db.QueryRowContext(r.Context(),`
-INSERT INTO brands(name,active) VALUES ($1,$2)
-RETURNING id`,req.Name,active).Scan(&id)
+	hash:=catalogRequestHash(userFromContext(r.Context()).ID,"brands",req)
+	res,err:=a.createCatalogRecord(r.Context(),"brands",req.OperationID,hash,func(tx *sql.Tx) (int64, error) {
+		var id int64
+		err:=tx.QueryRowContext(r.Context(),`
+INSERT INTO brands(name,active,operation_id,request_hash) VALUES ($1,$2,$3,$4)
+RETURNING id`,req.Name,active,req.OperationID,hash).Scan(&id)
+		return id,err
+	})
 	if err!=nil {
+		if writeCatalogCreateError(w,err) { return }
 		if strings.Contains(err.Error(),"idx_brands_normalized_name_unique") {
 			writeJSONError(w,http.StatusConflict,req.Name+" já existe.")
 			return
@@ -136,7 +147,7 @@ RETURNING id`,req.Name,active).Scan(&id)
 		writeJSONError(w,http.StatusBadRequest,"Não foi possível salvar a marca.")
 		return
 	}
-	writeJSON(w,http.StatusCreated,map[string]any{"id":id,"version":int64(1)})
+	writeCatalogCreateResult(w,res)
 }
 
 func (a *app) handleUpdateCatalogBrand(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +156,7 @@ func (a *app) handleUpdateCatalogBrand(w http.ResponseWriter, r *http.Request) {
 	var req brandRequest
 	if !decodeJSON(w,r,&req) { return }
 	req.Name=strings.TrimSpace(req.Name)
-	if req.Name=="" || req.Version<=0 {
+	if req.Name=="" || req.Version<=0 || req.OperationID!="" {
 		writeJSONError(w,http.StatusBadRequest,"Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}

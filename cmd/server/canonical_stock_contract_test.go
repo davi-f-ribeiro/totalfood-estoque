@@ -448,7 +448,7 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 	director := doLogin(t, a, "director-content-quantity", "secret")
 	catID := lookupID(t, a, `SELECT id FROM categories ORDER BY id LIMIT 1`)
 
-	itemResp := authReq(a, "POST", "/api/catalog/items", map[string]any{
+	itemResp := authReq(a, "POST", "/api/catalog/items", map[string]any{"operation_id": testOperationID(), 
 		"name": "Apresentacao Teste", "category_id": catID, "unit_code": "KG", "minimum_stock": "0",
 	}, director, "")
 	if itemResp.Code != 201 {
@@ -457,7 +457,7 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 	itemID := jsonID(t, itemResp.Body.Bytes())
 	brandID := createTestBrand(t,a,"Marca Apresentacao Teste")
 
-	skuResp := authReq(a, "POST", "/api/catalog/skus", map[string]any{
+	skuResp := authReq(a, "POST", "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), 
 		"item_id": itemID, "brand_id":brandID, "content_quantity":"1", "barcode": t.Name()+"-ean",
 	}, director, "")
 	if skuResp.Code != 201 {
