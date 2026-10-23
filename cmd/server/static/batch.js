@@ -19,7 +19,7 @@ const wh=$('batchWarehouse'),to=$('batchWarehouseTo'),search=$('batchSearch'),lo
   submit=$('batchSubmit'),clearBtn=$('batchClear'),addBtn=$('batchAdd'),recentBox=$('batchRecentBox'),recent=$('batchRecent'),
   pendingBox=$('batchPending'),pendingText=$('batchPendingText'),checkBtn=$('batchCheck'),retryBtn=$('batchRetry'),discardBtn=$('batchDiscard');
 
-let lines=[],warehouses=[],seq=0,pending=null,launches=[];
+let lines=[],warehouses=[],seq=0,pending=null,pendingState='',launches=[];
 
 view.hidden=false;
 $('batchOriginLabel').textContent=isTransfer?'Origem':'Depósito';
@@ -205,11 +205,11 @@ async function claim(p){
 async function dropPending(){
   const id=pending?.body?.operation_id;
   if(id&&store()){try{await store().clearPending('movement',id)}catch(e){}}
-  pending=null;pendingBox.hidden=true;retryBtn.hidden=true;discardBtn.hidden=true;lock(false);renderFacts();
+  pending=null;pendingState='';pendingBox.hidden=true;retryBtn.hidden=true;discardBtn.hidden=true;lock(false);renderFacts();
 }
 function lock(on){[wh,to,search,addBtn,doc,notes].forEach(el=>{el.disabled=on});table.querySelectorAll('input,button').forEach(el=>{el.disabled=on})}
 function showPending(retryable,discardable){
-  pendingBox.hidden=false;
+  disarmDiscard(discardBtn);pendingBox.hidden=false;
   const name=pending.url.includes('/entry')?'Entrada':pending.url.includes('/exit')?'Saída':'Transferência';
   const n=Array.isArray(pending.body.lines)?pending.body.lines.length:1;
   pendingText.textContent=name+' sem confirmação · '+plural(n,'produto','produtos')+'. Confira se foi registrada antes de fazer outro lançamento.';
@@ -236,11 +236,12 @@ async function confirmed(text){
 async function verify(){
   if(!pending)return'none';
   note('loading','Conferindo o lançamento…');
-  try{await api('/api/operations/'+encodeURIComponent(pending.body.operation_id));await confirmed('O lançamento já estava registrado.');return'confirmed'}
-  catch(err){
-    if(err.status===404){showPending(true,true);note('error','O lançamento não chegou ao sistema. Envie de novo ou descarte.');return'missing'}
-    showPending(false,false);note('error',uiErrorMessage(err,'Não foi possível conferir agora. Tente de novo antes de fazer outro lançamento.'));return'unknown';
-  }
+  /* checkOperation (app.js): só consulta, com prazo e poucas tentativas; nunca reenvia. */
+  const res=await checkOperation(pending.body.operation_id);
+  if(res.state==='confirmed'){await confirmed('O lançamento já estava registrado.');return'confirmed'}
+  pendingState=res.state;
+  if(res.state==='missing'){showPending(true,true);note('error','O lançamento não chegou ao sistema. Envie de novo ou descarte.');return'missing'}
+  showPending(false,true);note('error',uncheckedPendingMessage(res.err));return'unknown';
 }
 function markLineFromMessage(msg){
   const m=/^Item (\d+)/.exec(msg||'');if(!m)return;
@@ -249,12 +250,12 @@ function markLineFromMessage(msg){
 async function send(p,again){
   note('loading',again?'Enviando de novo…':'Enviando…');
   try{
-    await api(p.url,{method:'POST',body:JSON.stringify(p.body)});
+    await api(p.url,{method:'POST',body:JSON.stringify(p.body),timeoutMs:movementSendTimeoutMs});
     await confirmed(verb+' de '+plural(p.body.lines?p.body.lines.length:1,'produto','produtos')+' registrada.');
   }catch(err){
-    if(err.status===409&&String(err.message||'').toLowerCase().includes('operation_id conflict')){showPending(false,false);note('error','Este lançamento já foi enviado antes com outros dados. Confira o que foi registrado antes de continuar.');return}
+    if(err.status===409&&String(err.message||'').toLowerCase().includes('operation_id conflict')){pendingState='conflict';showPending(false,true);note('error',operationConflictMessage);return}
     if(err.status>=400&&err.status<500){await dropPending();note('error',uiErrorMessage(err,'Não foi possível concluir o lançamento.'));markLineFromMessage(err.message);refreshAvailability();return}
-    showPending(true,false);note('error','Não foi possível saber se o lançamento foi registrado. Toque em “Conferir” antes de fazer outro.');
+    pendingState='';showPending(true,false);note('error','Não foi possível saber se o lançamento foi registrado. Toque em “Conferir” antes de fazer outro.');
   }
 }
 async function refreshAvailability(){
@@ -272,7 +273,7 @@ submit.addEventListener('click',async()=>{
 });
 checkBtn.addEventListener('click',()=>runLocked(checkBtn,verify));
 retryBtn.addEventListener('click',()=>runLocked(retryBtn,async()=>{const s=await verify();if(s!=='missing'||!pending)return;await send(pending,true)}));
-discardBtn.addEventListener('click',async()=>{await dropPending();note('success','Lançamento descartado. Você já pode fazer outro.')});
+discardBtn.addEventListener('click',async()=>{if(pendingState!=='missing'&&!armDiscard(discardBtn)){note('error',uncheckedDiscardWarning);return}disarmDiscard(discardBtn);await dropPending();note('success','Lançamento descartado. Você já pode fazer outro.')});
 clearBtn.addEventListener('click',()=>{reset();note('','')});
 
 /* ---------- Início ---------- */
