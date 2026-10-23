@@ -681,7 +681,7 @@ func TestMovementPendingUsesDurableStoreWithoutAutomaticReplay(t *testing.T) {
 		"await store.claimPending('movement',p.body.operation_id,p.url,p.body)",
 		"await new OfflineStore().clearPending('movement',operationId)",
 		"if(!await savePending(payload))",
-		"await api('/api/operations/'+encodeURIComponent(p.body.operation_id))",
+		"await checkOperation(p.body.operation_id)",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable movement pending contract missing %q", want) }
 	}
@@ -726,8 +726,8 @@ func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 		"O lançamento já estava registrado.",
 		"sessionStorage.getItem('pendingOp')",
 		"sessionStorage.removeItem('pendingOp')",
-		"await api('/api/operations/'+encodeURIComponent(p.body.operation_id))",
-		"await api(p.url,{method:'POST',body:JSON.stringify(p.body)})",
+		"await checkOperation(p.body.operation_id)",
+		"await api(p.url,{method:'POST',body:JSON.stringify(p.body),timeoutMs:movementSendTimeoutMs})",
 		"if(readPending()){showPending(readPending(),false)",
 		"document.getElementById('skuId').value=''",
 		"history.replaceState(null,'',location.pathname)",
@@ -985,7 +985,7 @@ func TestMovementBatchViewContract(t *testing.T) {
 		}
 	}
 	js := read("static/batch.js")
-	for _, want := range []string{"/api/movements/'+kind+'/batch", "crypto.randomUUID()", "claimPending('movement'", "/api/operations/"} {
+	for _, want := range []string{"/api/movements/'+kind+'/batch", "crypto.randomUUID()", "claimPending('movement'", "await checkOperation(pending.body.operation_id)"} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("batch.js missing %q", want)
 		}
@@ -1067,5 +1067,61 @@ func TestMovementConfirmedHidesConfirmUntilNextLaunch(t *testing.T) {
 	}
 	if !strings.Contains(css, `.movement-form[data-done="1"] .step-submit`) {
 		t.Fatal("confirm button must leave the screen after the launch is recorded")
+	}
+}
+
+// Incidente de 23/10: um lançamento sem confirmação podia prender o operador no ciclo
+// "Conferir" sem saída. A conferência precisa terminar sempre num estado definido e
+// oferecer descarte (com aviso) quando não dá para confirmar; nada é reenviado sozinho.
+func TestMovementPendingAlwaysHasAWayOut(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	app, batch := read(filepath.Join("static", "app.js")), read(filepath.Join("static", "batch.js"))
+	for _, want := range []string{
+		// Consulta com prazo e número fixo de tentativas, só em falhas passageiras.
+		"operationCheckDelays=[0,1500,4000]",
+		"for(let delay of operationCheckDelays)",
+		"api('/api/operations/'+encodeURIComponent(operationId),{timeoutMs:operationCheckTimeoutMs})",
+		"if(err.status===404)return{state:'missing',err};if(!transientCheckError(err))break",
+		"if(e&&e.name==='AbortError')throw Object.assign(new Error('Tempo de resposta esgotado.'),{status:0,timeout:true})",
+		// Envio com prazo: sem resposta vira "sem confirmação", nunca espera infinita.
+		"await api(payload.url,{method:'POST',body:JSON.stringify(payload.body),timeoutMs:movementSendTimeoutMs})",
+		// Conferência sem resposta e conflito oferecem descarte.
+		"showPending(p,false,true);movementMsg('error',uncheckedPendingMessage(res.err))",
+		"pendingState='conflict';showPending(p,false,true);movementMsg('error',operationConflictMessage)",
+		"pendingState='conflict';showPending(payload,false,true);movementMsg('error',operationConflictMessage)",
+		"if(pendingState!=='missing'&&!armDiscard(pendingDiscard)){movementMsg('error',uncheckedDiscardWarning);return}",
+		"function showPending(p,retryable,discardable=false){disarmDiscard(pendingDiscard);",
+		// O produto escolhido é variável do assistente; antes era global implícita e,
+		// com a página reaberta, a confirmação do servidor quebrava em ReferenceError.
+		"manualSeq=0,selected=null;",
+	} {
+		if !strings.Contains(app, want) {
+			t.Fatalf("app.js pending recovery contract missing %q", want)
+		}
+	}
+	for _, want := range []string{
+		"const res=await checkOperation(pending.body.operation_id)",
+		"showPending(false,true);note('error',uncheckedPendingMessage(res.err))",
+		"pendingState='conflict';showPending(false,true);note('error',operationConflictMessage)",
+		"await api(p.url,{method:'POST',body:JSON.stringify(p.body),timeoutMs:movementSendTimeoutMs})",
+		"if(pendingState!=='missing'&&!armDiscard(discardBtn)){note('error',uncheckedDiscardWarning);return}",
+		"disarmDiscard(discardBtn);pendingBox.hidden=false;",
+	} {
+		if !strings.Contains(batch, want) {
+			t.Fatalf("batch.js pending recovery contract missing %q", want)
+		}
+	}
+	// A conferência só lê: a função de consulta não pode reenviar o lançamento.
+	start := strings.Index(app, "async function checkOperation(")
+	end := strings.Index(app[start:], "\n")
+	if start < 0 || end < 0 || strings.Contains(app[start:start+end], "method:'POST'") {
+		t.Fatal("checkOperation must only read the operation state")
 	}
 }
