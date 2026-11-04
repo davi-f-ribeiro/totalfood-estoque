@@ -63,7 +63,7 @@ func (a *app) handleAssetGPSCapture(w http.ResponseWriter,r *http.Request) {
 
 func (a *app) handleAssetGPSHistory(w http.ResponseWriter,r *http.Request) {
  tag:=cleanBarcode(r.PathValue("tag"))
- rows,err:=a.db.QueryContext(r.Context(),`SELECT g.latitude,g.longitude,g.accuracy_m,g.captured_at,g.recorded_at,g.source,u.username
+ rows,err:=a.db.QueryContext(r.Context(),`SELECT g.latitude,g.longitude,g.accuracy_m,g.captured_at,g.recorded_at,g.source,u.login
  FROM asset_gps_history g JOIN assets a ON a.id=g.asset_id JOIN users u ON u.id=g.user_id
  WHERE a.tag=$1 ORDER BY g.recorded_at DESC,g.id DESC LIMIT 100`,tag)
  if err!=nil {writeJSONError(w,http.StatusInternalServerError,"Não foi possível consultar o histórico.");return}
