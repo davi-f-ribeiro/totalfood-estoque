@@ -1135,3 +1135,17 @@ func TestMovementPendingAlwaysHasAWayOut(t *testing.T) {
 		t.Fatal("checkOperation must only read the operation state")
 	}
 }
+
+func TestAssetWarehouseOptionsUseSharedLoader(t *testing.T) {
+    jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+    if err != nil {
+        t.Fatal(err)
+    }
+    js := string(jsb)
+    if !strings.Contains(js, "#fiscalWarehouse,#assetMoveWarehouse,#assetUnitWarehouse") {
+        t.Fatal("shared warehouse loader must populate both asset operation and registration selectors")
+    }
+    if strings.Contains(js, "['assetMoveWarehouse','assetUnitWarehouse'].forEach") {
+        t.Fatal("asset form must reuse shared warehouse loader rather than duplicate population")
+    }
+}
