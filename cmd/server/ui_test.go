@@ -626,6 +626,8 @@ func TestAssetPendingUsesDurableStore(t *testing.T) {
 		"submitAssetChange(e,'move')",
 		"submitAssetChange(e,'status')",
 		"body.gps=await window.AssetGPS?.capture()||null",
+        "const priorCreate=readPendingWrite(assetCreatePendingKey)",
+        "assetCreateDiscard.addEventListener('click'",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable asset pending contract missing %q", want) }
 	}
@@ -811,6 +813,7 @@ func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
         "status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
         "savePendingWrite(assetCreatePendingKey",
         "Estado e local não mudaram.",
+        "id=\"assetCreateDiscard\"",
 		"id=\"assetUnitOperationalHint\"",
 		"O histórico de estado e de local é mantido.",
 		"Para mudar um deles, use",

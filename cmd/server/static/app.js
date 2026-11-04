@@ -200,6 +200,25 @@ document.getElementById('assetStatusForm').addEventListener('submit',e=>submitAs
 await loadAssetPending();assetPendingMessage();let initialAssetPending=assetPending(),initialPendingTag=assetPendingTag(initialAssetPending);if(initialPendingTag){tagInput.value=initialPendingTag;await loadAsset(initialPendingTag)}
 let typeForm=document.getElementById('assetTypeForm'),typeList=document.getElementById('assetTypesList'),unitType=document.getElementById('assetUnitType'),typeStatus=document.getElementById('assetTypeStatus');async function loadTypes(){let rows=await api('/api/assets/types');typeList.textContent='';unitType.textContent='';rows.forEach(r=>{let o=document.createElement('option');o.value=r.id;o.textContent=r.name;unitType.append(o);let d=document.createElement('button');d.type='button';d.className='row list-action';let a=document.createElement('div');a.textContent=r.name;let b=document.createElement('strong');b.textContent=r.active?'Ativo':'Inativo';d.append(a,b);d.onclick=()=>{assetTypeId.value=r.id;assetTypeName.value=r.name;assetTypeActive.checked=!!r.active;setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')};typeList.append(d)})}typeForm.addEventListener('submit',async e=>{e.preventDefault();let submit=e.submitter||typeForm.querySelector('button[type="submit"]');if(submit?.dataset.busy==='1')return;await runLocked(submit,async()=>{let id=assetTypeId.value;let body={name:assetTypeName.value,active:assetTypeActive.checked};try{await api(id?'/api/assets/types/'+id:'/api/assets/types',{method:id?'PATCH':'POST',body:JSON.stringify(body)});setFeedback(typeStatus,'success',body.name+(id?' atualizado.':' criado.'));typeForm.reset();assetTypeId.value='';assetTypeActive.checked=true;setCrudMode(typeForm,false,'Criar tipo','Atualizar tipo');await loadTypes()}catch(err){setFeedback(typeStatus,'error',uncertainWriteError(err)?uncertainWriteMessage('o tipo de patrimônio'):uiErrorMessage(err,'Não foi possível salvar o tipo de patrimônio.'))}})});try{await loadTypes()}catch(err){setFeedback(typeStatus,'error',uiErrorMessage(err,'Não foi possível carregar os tipos de patrimônio.'))}
 let unitForm=document.getElementById('assetUnitForm'),assetsList=document.getElementById('assetsList'),unitMsg=document.getElementById('assetUnitStatusMsg'),unitStatus=document.getElementById('assetUnitStatus'),unitWarehouse=document.getElementById('assetUnitWarehouse'),unitOperationalHint=document.getElementById('assetUnitOperationalHint'),editingAssetVersion=0;function setAssetUnitEditMode(editing){if(!editing)editingAssetVersion=0;unitStatus.disabled=editing;unitWarehouse.disabled=editing;unitOperationalHint.hidden=!editing;setCrudMode(unitForm,editing,'Criar patrimônio','Atualizar patrimônio')}async function loadAssetsList(){let rows=await api('/api/assets?q=');assetsList.textContent='';rows.forEach(r=>{let d=document.createElement('button');d.type='button';d.className='row list-action';let a=document.createElement('div');a.textContent=r.tag+' · '+r.type;let sm=document.createElement('small');sm.textContent=stateLabel(r.status)+(r.warehouse?' · '+r.warehouse:'');a.append(sm);let b=document.createElement('strong');b.textContent=r.tag;d.append(a,b);d.onclick=()=>{editingAssetVersion=Number(r.version||0);assetUnitId.value=r.id;assetUnitTag.value=r.tag;assetUnitType.value=r.asset_type_id;unitStatus.value=r.status;unitWarehouse.value=r.warehouse_id||'';tagInput.value=r.tag;document.querySelectorAll('#assetsList .list-action').forEach(x=>x.classList.toggle('selected',x===d));setAssetUnitEditMode(true);renderAsset(r,true)};assetsList.append(d)})}assetUnitTag.addEventListener('change',e=>{e.target.value=normalizeBarcode(e.target.value)});const assetCreatePendingKey='pendingAssetCreate';
+const assetCreateDiscard=document.getElementById('assetCreateDiscard');
+function syncAssetCreatePending(){
+ const hasPending=!!readPendingWrite(assetCreatePendingKey);
+ assetCreateDiscard.hidden=!hasPending;
+ assetCreateDiscard.textContent='Descartar cadastro pendente';
+ delete assetCreateDiscard.dataset.confirm;
+}
+assetCreateDiscard.addEventListener('click',()=>{
+ if(!readPendingWrite(assetCreatePendingKey)){syncAssetCreatePending();return;}
+ if(assetCreateDiscard.dataset.confirm!=='1'){
+  assetCreateDiscard.dataset.confirm='1';
+  assetCreateDiscard.textContent='Descartar mesmo assim';
+  setFeedback(unitMsg,'error','Confira antes se o patrimônio já foi cadastrado. Toque novamente para descartar a pendência.');
+  return;
+ }
+ clearPendingWrite(assetCreatePendingKey);
+ syncAssetCreatePending();unitForm.reset();assetUnitId.value='';setAssetUnitEditMode(false);
+ setFeedback(unitMsg,'','Pendência descartada. Confira a lista antes de cadastrar a plaqueta novamente.');
+});
 unitForm.addEventListener('submit',async e=>{
  e.preventDefault();
  let submit=e.submitter||unitForm.querySelector('button[type="submit"]');
@@ -221,28 +240,38 @@ unitForm.addEventListener('submit',async e=>{
     }
    }else{
     body={...expected,operation_id:newOperationID(),gps:await window.AssetGPS?.capture()||null};
-    savePendingWrite(assetCreatePendingKey,{url:'/api/assets',body});
+    savePendingWrite(assetCreatePendingKey,{url:'/api/assets',body});syncAssetCreatePending();
    }
   }
   try{
    await api(id?'/api/assets/'+id:'/api/assets',{method:id?'PATCH':'POST',
      body:JSON.stringify(body),timeoutMs:30000});
-   if(!id)clearPendingWrite(assetCreatePendingKey);
+   if(!id){clearPendingWrite(assetCreatePendingKey);syncAssetCreatePending();}
    setFeedback(unitMsg,'success',body.tag+(id?' atualizado.':' criado.')+
      (!id?(body.gps?' GPS registrado.':' GPS indisponível; cadastro preservado.'):' Estado e local não mudaram.'));
    unitForm.reset();assetUnitId.value='';unitStatus.value='ATIVO';
    setAssetUnitEditMode(false);window.AssetGPS?.setTag('');
    currentAsset=null;current.hidden=true;ops.hidden=true;lookupForm.after(current,ops);
-   await loadAssetsList();
+   try{await loadAssetsList()}catch(e){setFeedback(unitMsg,'error','Patrimônio salvo, mas não foi possível atualizar a lista. Atualize a página.');}
   }catch(err){
-   if(!id&&definitiveWriteError(err))clearPendingWrite(assetCreatePendingKey);
+   if(!id&&definitiveWriteError(err)){clearPendingWrite(assetCreatePendingKey);syncAssetCreatePending();}
    const fallback='Não foi possível confirmar o cadastro. Toque novamente em Criar patrimônio para reenviar sem duplicar.';
    setFeedback(unitMsg,'error',!id&&uncertainWriteError(err)?fallback:
       uiErrorMessage(err,'Não foi possível salvar o patrimônio.'));
   }
  });
 });
-setCrudMode(typeForm,false,'Criar tipo','Atualizar tipo');setCrudMode(unitForm,false,'Criar patrimônio','Atualizar patrimônio');try{await loadAssetsList()}catch(err){setFeedback(unitMsg,'error',uiErrorMessage(err,'Não foi possível carregar os patrimônios.'))}}
+setCrudMode(typeForm,false,'Criar tipo','Atualizar tipo');setCrudMode(unitForm,false,'Criar patrimônio','Atualizar patrimônio');try{await loadAssetsList()}catch(err){setFeedback(unitMsg,'error',uiErrorMessage(err,'Não foi possível carregar os patrimônios.'))}
+const priorCreate=readPendingWrite(assetCreatePendingKey);
+if(priorCreate){
+ const b=priorCreate.body;
+ assetUnitId.value='';assetUnitType.value=b.asset_type_id;assetUnitTag.value=b.tag;
+ unitStatus.value=b.status;unitWarehouse.value=b.warehouse_id||'';
+ setAssetUnitEditMode(false);
+ setFeedback(unitMsg,'error','Há um cadastro sem confirmação. Os dados foram restaurados. Toque em Criar patrimônio para reenviar sem duplicar.');
+}
+syncAssetCreatePending();
+}
 
 
 function initAdmin(){
