@@ -53,6 +53,8 @@ func (a *app) registerAssetHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/assets/lookup", a.requireAuth("assets", "read", a.handleAssetLookup))
 	mux.HandleFunc("POST /api/assets/{tag}/move", a.requireAuth("assets", "write", a.handleMoveAsset))
 	mux.HandleFunc("POST /api/assets/{tag}/status", a.requireAuth("assets", "write", a.handleAssetStatus))
+	mux.HandleFunc("POST /api/assets/{tag}/gps", a.requireAuth("assets", "write", a.handleAssetGPSCapture))
+	mux.HandleFunc("GET /api/assets/{tag}/gps", a.requireAuth("assets", "read", a.handleAssetGPSHistory))
 }
 
 func (a *app) handleAssetTypes(w http.ResponseWriter, r *http.Request) {
