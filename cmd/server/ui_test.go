@@ -147,16 +147,27 @@ func TestOperationalUIScannerAccordionAndContext(t *testing.T) {
 }
 
 func TestBetterInterfaceOperationalContracts(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js")); if err != nil { t.Fatal(err) }
-	cssb, err := os.ReadFile(filepath.Join("static", "app.css")); if err != nil { t.Fatal(err) }
-	hb, err := os.ReadFile(filepath.Join("templates", "movement.html")); if err != nil { t.Fatal(err) }
-	combined := string(jsb)+string(cssb)+string(hb)
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb, err := os.ReadFile(filepath.Join("templates", "movement.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(jsb) + string(cssb) + string(hb)
 	for _, want := range []string{
 		`prefers-reduced-motion: no-preference`, `function scrollToContext(`,
 		`Nenhum item com estoque neste depósito.`, `Abaixo do estoque mínimo`, `className='stock-expand'`,
 		`--focus-ring:`, `body{font-size:16px}`,
 	} {
-		if !strings.Contains(combined,want) { t.Fatalf("better-interface contract missing %q",want) }
+		if !strings.Contains(combined, want) {
+			t.Fatalf("better-interface contract missing %q", want)
+		}
 	}
 	for _, forbidden := range []string{
 		`detail.scrollIntoView({block:'nearest',behavior:'smooth'})`,
@@ -164,15 +175,21 @@ func TestBetterInterfaceOperationalContracts(t *testing.T) {
 		`body{font-size:15px}`,
 		`role="combobox"`, `role="listbox"`, `b.setAttribute('role','option')`,
 	} {
-		if strings.Contains(combined,forbidden) { t.Fatalf("better-interface regression %q",forbidden) }
+		if strings.Contains(combined, forbidden) {
+			t.Fatalf("better-interface regression %q", forbidden)
+		}
 	}
 }
 
 func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	js, css := string(jsb), string(cssb)
 	for _, want := range []string{
 		`let openItem=0,detailSeq=0`,
@@ -184,22 +201,35 @@ func TestStockDetailFollowsSelectedItemContext(t *testing.T) {
 		`scrollToContext(detail)`,
 		`.stock-shell #stockDetail{grid-column:1/-1}`,
 	} {
-		if !strings.Contains(js+css,want) { t.Fatalf("parent-first stock contextual detail missing %q",want) }
+		if !strings.Contains(js+css, want) {
+			t.Fatalf("parent-first stock contextual detail missing %q", want)
+		}
 	}
 	for _, forbidden := range []string{
 		`row.item_id+':'+row.brand_id`,
 		`r.name+' - '+r.brand`,
 		"Composição do saldo",
 	} {
-		if strings.Contains(js,forbidden) { t.Fatalf("stock UI flattened or duplicated parent hierarchy with %q",forbidden) }
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("stock UI flattened or duplicated parent hierarchy with %q", forbidden)
+		}
 	}
 }
 
 func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T) {
-	appb, err := os.ReadFile(filepath.Join("static","app.js")); if err != nil { t.Fatal(err) }
-	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
-	htmlb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
-	combined:=string(appb)+string(pb)+string(htmlb)
+	appb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, err := os.ReadFile(filepath.Join("static", "products.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlb, err := os.ReadFile(filepath.Join("templates", "products.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(appb) + string(pb) + string(htmlb)
 	for _, want := range []string{
 		`Cadastrar este produto`,
 		`(barcode?'barcode=':'q=')`,
@@ -210,40 +240,63 @@ func TestUnknownEntryBarcodeContinuesThroughExistingCatalogSKUFlow(t *testing.T)
 		`location.href='/entry?'`,
 		`id="productBarcode"`,
 	} {
-		if !strings.Contains(combined,want) { t.Fatalf("Product/Item continuation missing %q",want) }
+		if !strings.Contains(combined, want) {
+			t.Fatalf("Product/Item continuation missing %q", want)
+		}
 	}
-	if strings.Contains(combined,"/api/catalog/skus/from-entry") { t.Fatal("entry handoff must reuse Product/Item endpoint") }
+	if strings.Contains(combined, "/api/catalog/skus/from-entry") {
+		t.Fatal("entry handoff must reuse Product/Item endpoint")
+	}
 }
 
 func TestCatalogSKUCreateLocksSelectedParent(t *testing.T) {
-	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
-	hb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
-	combined:=string(pb)+string(hb)
+	pb, err := os.ReadFile(filepath.Join("static", "products.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb, err := os.ReadFile(filepath.Join("templates", "products.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(pb) + string(hb)
 	for _, want := range []string{
-		`id="productParent"`,`id="productBrand"`,`id="productName"`,`id="productContent"`,`id="productBarcode"`,
-		`parentSelect.setDisabled(!!x.has_history)`,`brandSelect.setDisabled(!!x.has_history)`,
+		`id="productParent"`, `id="productBrand"`, `id="productName"`, `id="productContent"`, `id="productBarcode"`,
+		`parentSelect.setDisabled(!!x.has_history)`, `brandSelect.setDisabled(!!x.has_history)`,
 		`Como o produto é conhecido, por exemplo Original, Branco ou Integral.`,
 		`name:name.value.trim()`,
 	} {
-		if !strings.Contains(combined,want) { t.Fatalf("Product/Item identity UI missing %q",want) }
+		if !strings.Contains(combined, want) {
+			t.Fatalf("Product/Item identity UI missing %q", want)
+		}
 	}
-	if strings.Contains(combined,`O nome é gerado automaticamente.`) {
+	if strings.Contains(combined, `O nome é gerado automaticamente.`) {
 		t.Fatal("Product/Item identity must not be overwritten by an automatically generated name")
 	}
 }
 
 func TestCatalogIgnoresStaleParentAndSKUResponses(t *testing.T) {
-	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
-	js:=string(pb)
-	for _, want := range []string{`editing=x`,`body.version=editing.version`,`await load()`,`form.hidden=true`} {
-		if !strings.Contains(js,want) { t.Fatalf("Product/Item edit safety missing %q",want) }
+	pb, err := os.ReadFile(filepath.Join("static", "products.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(pb)
+	for _, want := range []string{`editing=x`, `body.version=editing.version`, `await load()`, `form.hidden=true`} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("Product/Item edit safety missing %q", want)
+		}
 	}
 }
 
 func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
-	pb, err := os.ReadFile(filepath.Join("static","products.js")); if err != nil { t.Fatal(err) }
-	hb, err := os.ReadFile(filepath.Join("templates","products.html")); if err != nil { t.Fatal(err) }
-	combined:=string(pb)+string(hb)
+	pb, err := os.ReadFile(filepath.Join("static", "products.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb, err := os.ReadFile(filepath.Join("templates", "products.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(pb) + string(hb)
 	for _, want := range []string{
 		`id="productStatus" class="operation-feedback" role="status" aria-live="polite" hidden`,
 		`function msg(type,text){setFeedback(status,type,text)}`,
@@ -252,15 +305,21 @@ func TestCatalogSKUFeedbackStaysInLocalContext(t *testing.T) {
 		`function formMsg(type,text){setFeedback(formStatus,type,text)}`,
 		`msg('success',label+(wasEditing?' atualizado.':' criado.'))`,
 	} {
-		if !strings.Contains(combined,want) { t.Fatalf("Product/Item feedback missing %q",want) }
+		if !strings.Contains(combined, want) {
+			t.Fatalf("Product/Item feedback missing %q", want)
+		}
 	}
 }
 
 func TestOfflineStoreIsDurableStorageOnly(t *testing.T) {
 	storeb, err := os.ReadFile(filepath.Join("static", "utils", "offline-store.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	baseb, err := os.ReadFile(filepath.Join("templates", "base.html"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	store, base := string(storeb), string(baseb)
 
 	for _, want := range []string{
@@ -271,7 +330,9 @@ func TestOfflineStoreIsDurableStorageOnly(t *testing.T) {
 		"async claimPending(kind,operationId,endpoint,payload)",
 		"async clearPending(kind,operationId)",
 	} {
-		if !strings.Contains(store, want) { t.Fatalf("offline store contract missing %q", want) }
+		if !strings.Contains(store, want) {
+			t.Fatalf("offline store contract missing %q", want)
+		}
 	}
 	for _, forbidden := range []string{
 		"addEventListener('online'",
@@ -279,7 +340,9 @@ func TestOfflineStoreIsDurableStorageOnly(t *testing.T) {
 		"setInterval(",
 		"syncAll(",
 	} {
-		if strings.Contains(store, forbidden) { t.Fatalf("offline store must not auto-replay operations: %q", forbidden) }
+		if strings.Contains(store, forbidden) {
+			t.Fatalf("offline store must not auto-replay operations: %q", forbidden)
+		}
 	}
 	storePos := strings.Index(base, `/static/utils/offline-store.js`)
 	appPos := strings.Index(base, `/static/app.js`)
@@ -290,9 +353,11 @@ func TestOfflineStoreIsDurableStorageOnly(t *testing.T) {
 
 func TestFiscalWarehouseUsesCanonicalWarehouseLoader(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	js := string(jsb)
-	if !strings.Contains(js, `document.querySelectorAll('select[id^="warehouse"],#fiscalWarehouse')`) {
+	if !strings.Contains(js, `document.querySelectorAll('select[id^="warehouse"],#fiscalWarehouse`) {
 		t.Fatal("canonical warehouse loader must include fiscalWarehouse")
 	}
 	if strings.Contains(js, "loadWarehouses().then(ws=>{if(warehouse&&ws)") {
@@ -322,11 +387,17 @@ func TestFrontendCleanupKeepsSingleCanonicalHelpers(t *testing.T) {
 
 func TestWarehouseAdminUIContracts(t *testing.T) {
 	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	cssb, err := os.ReadFile(filepath.Join("static", "app.css"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	combined := string(htmlb) + string(jsb) + string(cssb)
 	for _, want := range []string{
 		"Depósitos cadastrados",
@@ -336,7 +407,9 @@ func TestWarehouseAdminUIContracts(t *testing.T) {
 		"Não foi possível carregar os depósitos.",
 		".admin-master-detail{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
 	} {
-		if !strings.Contains(combined, want) { t.Fatalf("warehouse admin UI missing %q", want) }
+		if !strings.Contains(combined, want) {
+			t.Fatalf("warehouse admin UI missing %q", want)
+		}
 	}
 	if strings.Contains(combined, "warehouse_not_empty") || strings.Contains(combined, "warehouse name already exists") {
 		t.Fatal("warehouse admin must not expose technical domain codes")
@@ -448,7 +521,6 @@ func TestProjectWideResponsiveUXAndFeedbackContracts(t *testing.T) {
 	}
 }
 
-
 func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
 	if err != nil {
@@ -499,10 +571,11 @@ func TestOperationalGuardrailsAgainstHumanError(t *testing.T) {
 	}
 }
 
-
 func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 	baseb, err := os.ReadFile(filepath.Join("templates", "base.html"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	base := string(baseb)
 	if strings.Count(base, `{{define "nav"}}`) != 1 {
 		t.Fatal("navigation must have one canonical template")
@@ -518,17 +591,29 @@ func TestCatalogResponsiveGestaltAndAuditNavigation(t *testing.T) {
 		`{{if .CanInventory}}<a href="/inventory">Contagem de estoque</a>{{end}}`,
 		`{{if .CanAdmin}}<a href="/admin">Administração</a>{{end}}`,
 	} {
-		if !strings.Contains(base, want) { t.Fatalf("canonical navigation missing %q", want) }
+		if !strings.Contains(base, want) {
+			t.Fatalf("canonical navigation missing %q", want)
+		}
 	}
-	for _, name := range []string{"stock.html","movement.html","catalog.html","products.html","fiscal.html","assets.html","inventory.html","admin.html","reports.html"} {
-		b, err := os.ReadFile(filepath.Join("templates", name)); if err != nil { t.Fatal(err) }
+	for _, name := range []string{"stock.html", "movement.html", "catalog.html", "products.html", "fiscal.html", "assets.html", "inventory.html", "admin.html", "reports.html"} {
+		b, err := os.ReadFile(filepath.Join("templates", name))
+		if err != nil {
+			t.Fatal(err)
+		}
 		html := string(b)
-		if !strings.Contains(html, `{{template "nav" .}}`) { t.Fatalf("%s must use canonical navigation", name) }
-		if strings.Contains(html, `<nav class="nav">`) { t.Fatalf("%s reintroduced a competing navigation", name) }
+		if !strings.Contains(html, `{{template "nav" .}}`) {
+			t.Fatalf("%s must use canonical navigation", name)
+		}
+		if strings.Contains(html, `<nav class="nav">`) {
+			t.Fatalf("%s reintroduced a competing navigation", name)
+		}
 	}
-	catalogb, err := os.ReadFile(filepath.Join("templates", "catalog.html")); if err != nil { t.Fatal(err) }
+	catalogb, err := os.ReadFile(filepath.Join("templates", "catalog.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	catalog := string(catalogb)
-	if !strings.Contains(catalog,"“Item” é o nome geral, como Leite. “Produto” é esse item numa marca e embalagem, com código de barras.") || strings.Contains(catalog,"Produtos/SKUs vinculados") {
+	if !strings.Contains(catalog, "“Item” é o nome geral, como Leite. “Produto” é esse item numa marca e embalagem, com código de barras.") || strings.Contains(catalog, "Produtos/SKUs vinculados") {
 		t.Fatal("catalog must contain only item and brand masters")
 	}
 }
@@ -537,51 +622,65 @@ func TestCRUDFormsExposeCreateUpdateStateAndResetAfterSave(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		b, err := os.ReadFile(path)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		return string(b)
 	}
-	app := read(filepath.Join("static","app.js"))
-	masters := read(filepath.Join("static","catalog_masters.js"))
-	products := read(filepath.Join("static","products.js"))
-	catalog := read(filepath.Join("templates","catalog.html"))
-	productHTML := read(filepath.Join("templates","products.html"))
-	assets := read(filepath.Join("templates","assets.html"))
-	admin := read(filepath.Join("templates","admin.html"))
+	app := read(filepath.Join("static", "app.js"))
+	masters := read(filepath.Join("static", "catalog_masters.js"))
+	products := read(filepath.Join("static", "products.js"))
+	catalog := read(filepath.Join("templates", "catalog.html"))
+	productHTML := read(filepath.Join("templates", "products.html"))
+	assets := read(filepath.Join("templates", "assets.html"))
+	admin := read(filepath.Join("templates", "admin.html"))
 
 	for _, want := range []string{
 		"function setCrudMode(form,editing,createLabel,updateLabel)",
-		"itemForm.reset()","brandForm.reset()","form.reset()",
-		"body.version=itemVersion","body.version=brandVersion","body.version=editing.version",
+		"itemForm.reset()", "brandForm.reset()", "form.reset()",
+		"body.version=itemVersion", "body.version=brandVersion", "body.version=editing.version",
 		"msg('success',label+(wasEditing?' atualizado.':' criado.'))",
 		"setCrudMode(typeForm,true,'Criar tipo','Atualizar tipo')",
 		"function setAssetUnitEditMode(editing)",
 		"setCrudMode(userForm,true,'Criar usuário','Atualizar usuário')",
 	} {
-		if !strings.Contains(app+masters+products,want) {
-			t.Fatalf("CRUD safety state missing %q",want)
+		if !strings.Contains(app+masters+products, want) {
+			t.Fatalf("CRUD safety state missing %q", want)
 		}
 	}
-	for _, want := range []string{"Novo item","Nova marca"} {
-		if !strings.Contains(catalog,want) { t.Fatalf("catalog create mode missing %q",want) }
+	for _, want := range []string{"Novo item", "Nova marca"} {
+		if !strings.Contains(catalog, want) {
+			t.Fatalf("catalog create mode missing %q", want)
+		}
 	}
-	if !strings.Contains(productHTML,"Novo produto") { t.Fatal("Product/Item create mode missing") }
-	for _, want := range []string{"Criar tipo","Criar patrimônio"} {
-		if !strings.Contains(assets,want) { t.Fatalf("assets initial create mode missing %q",want) }
+	if !strings.Contains(productHTML, "Novo produto") {
+		t.Fatal("Product/Item create mode missing")
 	}
-	for _, want := range []string{"Criar usuário","Criar perfil"} {
-		if !strings.Contains(admin,want) { t.Fatalf("admin initial create mode missing %q",want) }
+	for _, want := range []string{"Criar tipo", "Criar patrimônio"} {
+		if !strings.Contains(assets, want) {
+			t.Fatalf("assets initial create mode missing %q", want)
+		}
+	}
+	for _, want := range []string{"Criar usuário", "Criar perfil"} {
+		if !strings.Contains(admin, want) {
+			t.Fatalf("admin initial create mode missing %q", want)
+		}
 	}
 }
 
 func TestLogoutPreservesDurablePendingOperations(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	js := string(jsb)
 	for _, want := range []string{
 		"api('/api/logout',{method:'POST',body:'{}'})",
 		"location.href='/login'",
 	} {
-		if !strings.Contains(js, want) { t.Fatalf("logout contract missing %q", want) }
+		if !strings.Contains(js, want) {
+			t.Fatalf("logout contract missing %q", want)
+		}
 	}
 	if strings.Contains(js, "removeOwnerPending") {
 		t.Fatal("logout must not delete durable pending operations")
@@ -590,12 +689,16 @@ func TestLogoutPreservesDurablePendingOperations(t *testing.T) {
 
 func TestOfflineStoreUsesOneAtomicSlotPerUserAndDomain(t *testing.T) {
 	baseb, err := os.ReadFile(filepath.Join("templates", "base.html"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(string(baseb), `<meta name="current-user-id" content="{{.User.ID}}">`) {
 		t.Fatal("base template must expose stable authenticated user id for offline namespace")
 	}
 	storeb, err := os.ReadFile(filepath.Join("static", "utils", "offline-store.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	store := string(storeb)
 	for _, want := range []string{
 		"pendingId(kind)",
@@ -606,16 +709,22 @@ func TestOfflineStoreUsesOneAtomicSlotPerUserAndDomain(t *testing.T) {
 		"async clearPending(kind,operationId)",
 		"current.operation_id!==operationId",
 	} {
-		if !strings.Contains(store, want) { t.Fatalf("offline slot contract missing %q", want) }
+		if !strings.Contains(store, want) {
+			t.Fatalf("offline slot contract missing %q", want)
+		}
 	}
 	for _, forbidden := range []string{"listPending(", "getAll(", "removeOwnerPending", "':'+kind+':'+operationId"} {
-		if strings.Contains(store, forbidden) { t.Fatalf("obsolete offline queue contract remains %q", forbidden) }
+		if strings.Contains(store, forbidden) {
+			t.Fatalf("obsolete offline queue contract remains %q", forbidden)
+		}
 	}
 }
 
 func TestAssetPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	js := string(jsb)
 	for _, want := range []string{
 		"await store.getPending('asset-mutation')",
@@ -626,22 +735,28 @@ func TestAssetPendingUsesDurableStore(t *testing.T) {
 		"submitAssetChange(e,'move')",
 		"submitAssetChange(e,'status')",
 		"body.gps=await window.AssetGPS?.capture()||null",
-        "const priorCreate=readPendingWrite(assetCreatePendingKey)",
-        "assetCreateDiscard.addEventListener('click'",
+		"const priorCreate=readPendingWrite(assetCreatePendingKey)",
+		"assetCreateDiscard.addEventListener('click'",
 	} {
-		if !strings.Contains(js, want) { t.Fatalf("durable asset pending contract missing %q", want) }
+		if !strings.Contains(js, want) {
+			t.Fatalf("durable asset pending contract missing %q", want)
+		}
 	}
 	if strings.Count(js, "if(!await saveAssetPending(pending)){assetPendingMessage();return}") != 1 {
-        t.Fatal("asset move and status must share one durable transaction submission path")
-    }
+		t.Fatal("asset move and status must share one durable transaction submission path")
+	}
 	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
-		if strings.Contains(js, forbidden) { t.Fatalf("asset pending must not auto-replay operations: %q", forbidden) }
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("asset pending must not auto-replay operations: %q", forbidden)
+		}
 	}
 }
 
 func TestFiscalPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	js := string(jsb)
 	for _, want := range []string{
 		"await store.getPending('fiscal-confirm')",
@@ -649,38 +764,52 @@ func TestFiscalPendingUsesDurableStore(t *testing.T) {
 		"await new OfflineStore().clearPending('fiscal-confirm',operationId)",
 		"if(!await saveFiscalPending(pending)){showFiscalPending();return}",
 	} {
-		if !strings.Contains(js, want) { t.Fatalf("durable fiscal pending contract missing %q", want) }
+		if !strings.Contains(js, want) {
+			t.Fatalf("durable fiscal pending contract missing %q", want)
+		}
 	}
 	savePos := strings.Index(js, "if(!await saveFiscalPending(pending))")
 	sendPos := strings.Index(js, "await api(pending.url,{method:'POST',body:JSON.stringify(pending.body)})")
-	if savePos < 0 || sendPos < 0 || savePos > sendPos { t.Fatal("fiscal confirmation must claim durable slot before request") }
+	if savePos < 0 || sendPos < 0 || savePos > sendPos {
+		t.Fatal("fiscal confirmation must claim durable slot before request")
+	}
 	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
-		if strings.Contains(js, forbidden) { t.Fatalf("fiscal pending must not auto-replay operations: %q", forbidden) }
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("fiscal pending must not auto-replay operations: %q", forbidden)
+		}
 	}
 }
 
 func TestInventoryCreationPendingUsesDurableStore(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	js := string(jsb)
 	for _, want := range []string{
 		"await store.getPending('inventory-create')",
 		"await store.claimPending('inventory-create',p.operation_id",
 		"await new OfflineStore().clearPending('inventory-create',operationId)",
 	} {
-		if !strings.Contains(js, want) { t.Fatalf("durable inventory pending contract missing %q", want) }
+		if !strings.Contains(js, want) {
+			t.Fatalf("durable inventory pending contract missing %q", want)
+		}
 	}
 	if strings.Count(js, "if(!await saveInventoryCreatePending(pending))") != 2 {
 		t.Fatal("total and blind inventory creation must claim one durable slot before request")
 	}
 	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
-		if strings.Contains(js, forbidden) { t.Fatalf("inventory pending must not auto-replay operations: %q", forbidden) }
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("inventory pending must not auto-replay operations: %q", forbidden)
+		}
 	}
 }
 
 func TestMovementPendingUsesDurableStoreWithoutAutomaticReplay(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	js := string(jsb)
 	for _, want := range []string{
 		"await store.getPending('movement')",
@@ -689,13 +818,19 @@ func TestMovementPendingUsesDurableStoreWithoutAutomaticReplay(t *testing.T) {
 		"if(!await savePending(payload))",
 		"await checkOperation(p.body.operation_id)",
 	} {
-		if !strings.Contains(js, want) { t.Fatalf("durable movement pending contract missing %q", want) }
+		if !strings.Contains(js, want) {
+			t.Fatalf("durable movement pending contract missing %q", want)
+		}
 	}
 	savePos := strings.Index(js, "if(!await savePending(payload))")
 	sendPos := strings.Index(js, "await api(payload.url,{method:'POST'")
-	if savePos < 0 || sendPos < 0 || savePos > sendPos { t.Fatal("movement must claim durable slot before mutation request") }
+	if savePos < 0 || sendPos < 0 || savePos > sendPos {
+		t.Fatal("movement must claim durable slot before mutation request")
+	}
 	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
-		if strings.Contains(js, forbidden) { t.Fatalf("movement must not auto-replay pending operations: %q", forbidden) }
+		if strings.Contains(js, forbidden) {
+			t.Fatalf("movement must not auto-replay pending operations: %q", forbidden)
+		}
 	}
 }
 
@@ -768,15 +903,23 @@ func TestMovementSafetyAgainstPhantomReplayAndResidualState(t *testing.T) {
 }
 
 func TestAdminSafetyAtomicUserUpdateAndExplicitPermissionTarget(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js")); if err != nil { t.Fatal(err) }
-	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html")); if err != nil { t.Fatal(err) }
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlb, err := os.ReadFile(filepath.Join("templates", "admin.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	js, html := string(jsb), string(htmlb)
 	for _, forbidden := range []string{
 		"if(pass)await api('/api/admin/users/'+id+'/password'",
 		"if(!selectedProfile&&profiles[0])selectedProfile=profiles[0].id",
 		"marque somente permissões reais existentes no banco",
 	} {
-		if strings.Contains(js+html, forbidden) { t.Fatalf("admin safety reintroduced unsafe flow %q", forbidden) }
+		if strings.Contains(js+html, forbidden) {
+			t.Fatalf("admin safety reintroduced unsafe flow %q", forbidden)
+		}
 	}
 	for _, want := range []string{
 		"if(pass)body.password=pass",
@@ -791,15 +934,21 @@ func TestAdminSafetyAtomicUserUpdateAndExplicitPermissionTarget(t *testing.T) {
 		"function permissionActionLabel(resource,action)",
 		"Perfis e acessos",
 	} {
-		if !strings.Contains(js+html, want) { t.Fatalf("admin safety contract missing %q", want) }
+		if !strings.Contains(js+html, want) {
+			t.Fatalf("admin safety contract missing %q", want)
+		}
 	}
 }
 
 func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	htmlb, err := os.ReadFile(filepath.Join("templates", "assets.html"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	js, html := string(jsb), string(htmlb)
 
 	checks := []string{
@@ -809,11 +958,11 @@ func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
 		"setAssetUnitEditMode(true)",
 		"setAssetUnitEditMode(false)",
 		"body={asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,version:editingAssetVersion}",
-        "let expected={asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,",
-        "status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
-        "savePendingWrite(assetCreatePendingKey",
-        "Estado e local não mudaram.",
-        "id=\"assetCreateDiscard\"",
+		"let expected={asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,",
+		"status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
+		"savePendingWrite(assetCreatePendingKey",
+		"Estado e local não mudaram.",
+		"id=\"assetCreateDiscard\"",
 		"id=\"assetUnitOperationalHint\"",
 		"O histórico de estado e de local é mantido.",
 		"Para mudar um deles, use",
@@ -832,7 +981,9 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		b, err := os.ReadFile(path)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		return string(b)
 	}
 	js := read(filepath.Join("static", "app.js"))
@@ -873,12 +1024,18 @@ func TestFiscalAndInventoryCreationSafetyContracts(t *testing.T) {
 
 func TestCRUDOptimisticConcurrencyUIContracts(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	mb, err := os.ReadFile(filepath.Join("static", "catalog_masters.js"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	pb, err := os.ReadFile(filepath.Join("static", "products.js"))
-	if err != nil { t.Fatal(err) }
-	js := string(jsb)+string(mb)+string(pb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb) + string(mb) + string(pb)
 	for _, want := range []string{
 		"Outra pessoa alterou este registro",
 		"body.version=itemVersion",
@@ -893,7 +1050,6 @@ func TestCRUDOptimisticConcurrencyUIContracts(t *testing.T) {
 		}
 	}
 }
-
 
 func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
 	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
@@ -933,10 +1089,11 @@ func TestReportsWTDMTDAndWarehouseAccessContracts(t *testing.T) {
 	}
 }
 
-
 func TestReportsNavigationIsPermissionAwareAcrossPages(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("templates", "base.html"))
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	html := string(b)
 	if strings.Count(html, `{{if .CanReports}}<a href="/reports">Relatórios</a>{{end}}`) != 1 {
 		t.Fatal("Reports must be exposed exactly once by the canonical permission-aware navigation")
@@ -947,7 +1104,9 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		b, err := os.ReadFile(path)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		return string(b)
 	}
 	js := read(filepath.Join("static", "app.js"))
@@ -971,7 +1130,7 @@ func TestCrossModuleSelectedObjectContextContracts(t *testing.T) {
 		".asset-unit-layout{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr)",
 		".fiscal-line-feedback{grid-column:1/-1",
 	} {
-		if !strings.Contains(js+css+assets+fiscal+inventory+catalog+read(filepath.Join("templates","products.html")), want) {
+		if !strings.Contains(js+css+assets+fiscal+inventory+catalog+read(filepath.Join("templates", "products.html")), want) {
 			t.Fatalf("selected-object context contract missing %q", want)
 		}
 	}
@@ -1006,7 +1165,9 @@ func TestCatalogCreateRecoveryUIContract(t *testing.T) {
 	read := func(path string) string {
 		t.Helper()
 		b, err := os.ReadFile(path)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		return string(b)
 	}
 	app := read(filepath.Join("static", "app.js"))
@@ -1024,7 +1185,9 @@ func TestCatalogCreateRecoveryUIContract(t *testing.T) {
 		"if(current||!await saveCatalogPending(kind,p))",
 		"ficou sem confirmação",
 	} {
-		if !strings.Contains(app, want) { t.Fatalf("catalog recovery flow missing %q", want) }
+		if !strings.Contains(app, want) {
+			t.Fatalf("catalog recovery flow missing %q", want)
+		}
 	}
 	savePos := strings.Index(app, "if(current||!await saveCatalogPending(kind,p))")
 	sendPos := strings.Index(app[savePos:], "sendCatalogCreate(p)")
@@ -1041,9 +1204,13 @@ func TestCatalogCreateRecoveryUIContract(t *testing.T) {
 		}
 	}
 	for _, kind := range []string{"kind:'catalog-item'", "kind:'catalog-brand'"} {
-		if !strings.Contains(masters, kind) { t.Fatalf("catalog missing recovery kind %q", kind) }
+		if !strings.Contains(masters, kind) {
+			t.Fatalf("catalog missing recovery kind %q", kind)
+		}
 	}
-	if !strings.Contains(products, "kind:'catalog-sku'") { t.Fatal("products missing recovery kind") }
+	if !strings.Contains(products, "kind:'catalog-sku'") {
+		t.Fatal("products missing recovery kind")
+	}
 	for name, html := range map[string]string{"catalog.html": catalog, "products.html": productHTML} {
 		storePos := strings.Index(html, `/static/utils/offline-store.js`)
 		appPos := strings.Index(html, `/static/app.js`)
@@ -1056,7 +1223,9 @@ func TestCatalogCreateRecoveryUIContract(t *testing.T) {
 	}
 	// Celular: abas Itens/Marcas e paginação pelo fim da lista também na rolagem da página.
 	for _, want := range []string{`role="tablist"`, `id="masterTabItems"`, `id="masterTabBrands"`, `id="masterItemFeedback"`, `id="masterBrandFeedback"`} {
-		if !strings.Contains(catalog, want) { t.Fatalf("catalog mobile layout missing %q", want) }
+		if !strings.Contains(catalog, want) {
+			t.Fatalf("catalog mobile layout missing %q", want)
+		}
 	}
 	if !strings.Contains(masters, "new IntersectionObserver(") {
 		t.Fatal("catalog pagination must also follow page scroll on mobile")
@@ -1064,8 +1233,14 @@ func TestCatalogCreateRecoveryUIContract(t *testing.T) {
 }
 
 func TestMovementConfirmedHidesConfirmUntilNextLaunch(t *testing.T) {
-	jsb, err := os.ReadFile(filepath.Join("static", "app.js")); if err != nil { t.Fatal(err) }
-	cssb, err := os.ReadFile(filepath.Join("static", "movement.css")); if err != nil { t.Fatal(err) }
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cssb, err := os.ReadFile(filepath.Join("static", "movement.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	js, css := string(jsb), string(cssb)
 	for _, want := range []string{
 		"resetMovementForm();setMovementDone(true);movementMsg('success',msg+balance)",
@@ -1073,7 +1248,9 @@ func TestMovementConfirmedHidesConfirmUntilNextLaunch(t *testing.T) {
 		"async function pick(r){setMovementDone(false);",
 		"another?.addEventListener('click',()=>{setMovementDone(false);",
 	} {
-		if !strings.Contains(js, want) { t.Fatalf("movement done state missing %q", want) }
+		if !strings.Contains(js, want) {
+			t.Fatalf("movement done state missing %q", want)
+		}
 	}
 	if !strings.Contains(css, `.movement-form[data-done="1"] .step-submit`) {
 		t.Fatal("confirm button must leave the screen after the launch is recorded")
@@ -1137,15 +1314,15 @@ func TestMovementPendingAlwaysHasAWayOut(t *testing.T) {
 }
 
 func TestAssetWarehouseOptionsUseSharedLoader(t *testing.T) {
-    jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
-    if err != nil {
-        t.Fatal(err)
-    }
-    js := string(jsb)
-    if !strings.Contains(js, "#fiscalWarehouse,#assetMoveWarehouse,#assetUnitWarehouse") {
-        t.Fatal("shared warehouse loader must populate both asset operation and registration selectors")
-    }
-    if strings.Contains(js, "['assetMoveWarehouse','assetUnitWarehouse'].forEach") {
-        t.Fatal("asset form must reuse shared warehouse loader rather than duplicate population")
-    }
+	jsb, err := os.ReadFile(filepath.Join("static", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(jsb)
+	if !strings.Contains(js, "#fiscalWarehouse,#assetMoveWarehouse,#assetUnitWarehouse") {
+		t.Fatal("shared warehouse loader must populate both asset operation and registration selectors")
+	}
+	if strings.Contains(js, "['assetMoveWarehouse','assetUnitWarehouse'].forEach") {
+		t.Fatal("asset form must reuse shared warehouse loader rather than duplicate population")
+	}
 }
