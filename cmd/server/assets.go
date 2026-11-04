@@ -20,10 +20,12 @@ type assetTypeRequest struct {
 }
 
 type assetRequest struct {
-	AssetTypeID int64  `json:"asset_type_id"`
-	Tag         string `json:"tag"`
-	Status      string `json:"status"`
-	WarehouseID int64  `json:"warehouse_id"`
+	AssetTypeID int64          `json:"asset_type_id"`
+	Tag         string         `json:"tag"`
+	Status      string         `json:"status"`
+	WarehouseID int64          `json:"warehouse_id"`
+	OperationID string         `json:"operation_id,omitempty"`
+	GPS         *assetGPSPoint `json:"gps,omitempty"`
 }
 
 type assetUpdateRequest struct {
@@ -33,13 +35,15 @@ type assetUpdateRequest struct {
 }
 
 type assetMoveRequest struct {
-	OperationID string `json:"operation_id"`
-	WarehouseID int64  `json:"warehouse_id"`
+	OperationID string         `json:"operation_id"`
+	WarehouseID int64          `json:"warehouse_id"`
+	GPS         *assetGPSPoint `json:"gps,omitempty"`
 }
 
 type assetStatusRequest struct {
-	OperationID string `json:"operation_id"`
-	Status      string `json:"status"`
+	OperationID string         `json:"operation_id"`
+	Status      string         `json:"status"`
+	GPS         *assetGPSPoint `json:"gps,omitempty"`
 }
 
 func (a *app) registerAssetHandlers(mux *http.ServeMux) {
@@ -171,30 +175,81 @@ func (a *app) handleAssetLookup(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleCreateAsset(w http.ResponseWriter, r *http.Request) {
 	var req assetRequest
-	if !decodeJSON(w, r, &req) || !validAssetReq(req) {
+	if !decodeJSON(w, r, &req) || !validAssetReq(req) ||
+		(req.GPS != nil && (strings.TrimSpace(req.OperationID) == "" || !validGPSPoint(*req.GPS))) {
 		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
 	var wh any = req.WarehouseID
 	if req.Status == "BAIXADO" {
 		wh = nil
-	} else {
+	} else if strings.TrimSpace(req.OperationID) == "" {
 		active, err := a.activeWarehouseExists(r.Context(), req.WarehouseID)
 		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "internal error")
+			writeJSONError(w, 500, "Falha ao validar depósito.")
 			return
 		}
 		if !active {
-			writeJSONError(w, http.StatusConflict, "Depósito desativado ou inexistente.")
+			writeJSONError(w, 409, "Depósito desativado ou inexistente.")
 			return
 		}
 	}
 	var id int64
-	if err := a.db.QueryRowContext(r.Context(), `INSERT INTO assets (asset_type_id,tag,status,current_warehouse_id) VALUES ($1,$2,$3,$4) RETURNING id`, req.AssetTypeID, cleanBarcode(req.Tag), req.Status, wh).Scan(&id); err != nil {
+	if strings.TrimSpace(req.OperationID) != "" {
+		// Same operation_id is retried without duplicating either the asset or GPS.
+		err := a.writeAssetEvent(r.Context(), req.OperationID, requestHash(req),
+			func(ctx context.Context, tx *sql.Tx) error {
+				if req.Status != "BAIXADO" {
+					var active bool
+					err := tx.QueryRowContext(ctx, "SELECT active FROM warehouses WHERE id=$1 FOR UPDATE", req.WarehouseID).Scan(&active)
+					if errors.Is(err, sql.ErrNoRows) {
+						return errAssetWarehouseNotFound
+					}
+					if err != nil {
+						return err
+					}
+					if !active {
+						return errWarehouseInactive
+					}
+				}
+				if err := tx.QueryRowContext(ctx,
+					"INSERT INTO assets (asset_type_id,tag,status,current_warehouse_id) VALUES ($1,$2,$3,$4) RETURNING id",
+					req.AssetTypeID, cleanBarcode(req.Tag), req.Status, wh).Scan(&id); err != nil {
+					return err
+				}
+				if _, err := tx.ExecContext(ctx,
+					"INSERT INTO asset_events (operation_id,request_hash,asset_id,event_type,destination_warehouse_id,new_status,user_id) VALUES ($1,$2,$3,'CREATE',$4,$5,$6)",
+					req.OperationID, requestHash(req), id, wh, req.Status, userFromContext(ctx).ID); err != nil {
+					return err
+				}
+				return insertAssetGPS(ctx, tx, req.OperationID, requestHash(req), id,
+					userFromContext(ctx).ID, "CREATE", req.GPS)
+			})
+		if err != nil {
+			if errors.Is(err, errOperationConflict) || errors.Is(err, errWarehouseInactive) || errors.Is(err, errAssetWarehouseNotFound) {
+				writeAssetMutationError(w, err)
+			} else {
+				writeAssetError(w, err, "asset create failed")
+			}
+			return
+		}
+		if err := a.db.QueryRowContext(r.Context(),
+			"SELECT asset_id FROM asset_events WHERE operation_id=$1 AND event_type='CREATE'",
+			req.OperationID).Scan(&id); err != nil {
+			writeJSONError(w, 500, "Não foi possível confirmar o cadastro.")
+			return
+		}
+		writeJSON(w, 201, map[string]any{"id": id, "status": "confirmed"})
+		return
+	}
+	// Legacy clients can continue creating without GPS or operation_id.
+	if err := a.db.QueryRowContext(r.Context(),
+		"INSERT INTO assets (asset_type_id,tag,status,current_warehouse_id) VALUES ($1,$2,$3,$4) RETURNING id",
+		req.AssetTypeID, cleanBarcode(req.Tag), req.Status, wh).Scan(&id); err != nil {
 		writeAssetError(w, err, "asset create failed")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "version": int64(1)})
+	writeJSON(w, 201, map[string]any{"id": id, "version": int64(1)})
 }
 
 func (a *app) handleUpdateAsset(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +310,7 @@ func writeAssetError(w http.ResponseWriter, err error, prefix string) {
 
 func (a *app) handleMoveAsset(w http.ResponseWriter, r *http.Request) {
 	var req assetMoveRequest
-	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.OperationID) == "" || req.WarehouseID <= 0 {
+	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.OperationID) == "" || req.WarehouseID <= 0 || (req.GPS != nil && !validGPSPoint(*req.GPS)) {
 		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
@@ -268,7 +323,7 @@ func (a *app) handleMoveAsset(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleAssetStatus(w http.ResponseWriter, r *http.Request) {
 	var req assetStatusRequest
-	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.OperationID) == "" || !validAssetStatus(req.Status) {
+	if !decodeJSON(w, r, &req) || strings.TrimSpace(req.OperationID) == "" || !validAssetStatus(req.Status) || (req.GPS != nil && !validGPSPoint(*req.GPS)) {
 		writeJSONError(w, 400, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
@@ -340,7 +395,10 @@ func (a *app) changeAssetLocation(ctx context.Context, tag string, req assetMove
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `INSERT INTO asset_events (operation_id,request_hash,asset_id,event_type,origin_warehouse_id,destination_warehouse_id,old_status,new_status,user_id) VALUES ($1,$2,$3,'MOVE',$4,$5,$6,$6,$7)`, req.OperationID, hash, assetID, nullInt(origin), req.WarehouseID, status, userID)
-		return err
+		if err != nil {
+			return err
+		}
+		return insertAssetGPS(ctx, tx, req.OperationID, hash, assetID, userID, "MOVE", req.GPS)
 	})
 }
 
@@ -369,7 +427,10 @@ func (a *app) changeAssetStatus(ctx context.Context, tag string, req assetStatus
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `INSERT INTO asset_events (operation_id,request_hash,asset_id,event_type,origin_warehouse_id,destination_warehouse_id,old_status,new_status,user_id) VALUES ($1,$2,$3,'STATUS',$4,$4,$5,$6,$7)`, req.OperationID, hash, assetID, nullInt(wh), old, req.Status, userID)
-		return err
+		if err != nil {
+			return err
+		}
+		return insertAssetGPS(ctx, tx, req.OperationID, hash, assetID, userID, "STATUS", req.GPS)
 	})
 }
 
@@ -394,6 +455,10 @@ func (a *app) writeAssetEvent(ctx context.Context, op, hash string, fn func(cont
 		return err
 	}
 	defer tx.Rollback()
+	// Serializa reenvios simultâneos do mesmo ID antes de consultar o histórico.
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "asset-event:"+op); err != nil {
+		return err
+	}
 	var existingHash string
 	err = tx.QueryRowContext(ctx, `SELECT request_hash FROM asset_events WHERE operation_id=$1`, op).Scan(&existingHash)
 	if err == nil {
@@ -410,7 +475,6 @@ func (a *app) writeAssetEvent(ctx context.Context, op, hash string, fn func(cont
 	}
 	return tx.Commit()
 }
-
 
 func (a *app) activeWarehouseExists(ctx context.Context, warehouseID int64) (bool, error) {
 	if warehouseID <= 0 {

@@ -622,12 +622,16 @@ func TestAssetPendingUsesDurableStore(t *testing.T) {
 		"await store.claimPending('asset-mutation',p.body.operation_id,p.url,p.body)",
 		"await new OfflineStore().clearPending('asset-mutation',operationId)",
 		"if(!await saveAssetPending(pending)){assetPendingMessage();return}",
+		"async function submitAssetChange(e,kind)",
+		"submitAssetChange(e,'move')",
+		"submitAssetChange(e,'status')",
+		"body.gps=await window.AssetGPS?.capture()||null",
 	} {
 		if !strings.Contains(js, want) { t.Fatalf("durable asset pending contract missing %q", want) }
 	}
-	if strings.Count(js, "if(!await saveAssetPending(pending)){assetPendingMessage();return}") != 2 {
-		t.Fatal("asset move and status must claim one durable slot before request")
-	}
+	if strings.Count(js, "if(!await saveAssetPending(pending)){assetPendingMessage();return}") != 1 {
+        t.Fatal("asset move and status must share one durable transaction submission path")
+    }
 	for _, forbidden := range []string{"addEventListener('online'", "beforeunload", "setInterval("} {
 		if strings.Contains(js, forbidden) { t.Fatalf("asset pending must not auto-replay operations: %q", forbidden) }
 	}
@@ -802,8 +806,11 @@ func TestAssetEditUsesAuditedOperationalFlowsOnly(t *testing.T) {
 		"unitWarehouse.disabled=editing",
 		"setAssetUnitEditMode(true)",
 		"setAssetUnitEditMode(false)",
-		"let body=id?{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,version:editingAssetVersion}:{asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
-		"body.tag+(id?' atualizado. O estado e o local não mudaram.':' criado.')" ,
+		"body={asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,version:editingAssetVersion}",
+        "let expected={asset_type_id:+assetUnitType.value,tag:assetUnitTag.value,",
+        "status:unitStatus.value,warehouse_id:+unitWarehouse.value}",
+        "savePendingWrite(assetCreatePendingKey",
+        "Estado e local não mudaram.",
 		"id=\"assetUnitOperationalHint\"",
 		"O histórico de estado e de local é mantido.",
 		"Para mudar um deles, use",
