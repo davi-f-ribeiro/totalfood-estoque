@@ -26,7 +26,7 @@ A senha é cifrada com AES-256-GCM e nonce aleatório por alteração; nunca é 
 - Consulta: `POST /home/api/monitoramento/` com autenticação por token, exclusivamente para ler posições e frota.
 - **Não** utiliza `POST /api/comando/` ou operações `block`/`unblock`.
 - Origem HTTPS é fixa no backend; a UI não aceita URLs arbitrárias.
-- Sincronização é **manual nesta versão**; ainda não habilita geofence ou liberação de Cargo Plan.
+- A Administração mantém a sincronização manual; o worker opcional coleta periodicamente para geofencing. Nenhuma coleta automática libera Cargo Plan ou comandos físicos.
 - A interface HTTP foi identificada em código público do painel, mas não constitui contrato oficial de API. Mudanças no portal podem exigir ajuste do adaptador; confirmar com o fornecedor se há endpoint oficial/token de integração dedicado.
 - Registros sem placa válida ou identificador remoto são ignorados com contagem e amostra dos motivos apresentados na Administração. Colisões de placa ↔ identificador suspendem a transação inteira com diagnóstico específico (HTTP 409); nenhum vínculo é substituído automaticamente.
 
@@ -50,7 +50,7 @@ O teste de integração do provedor usa um servidor HTTP de simulação e verifi
 - A chegada exige duas leituras com horários GPS distintos dentro do raio do cliente (margem interna de 15 m). São gravados eventos separados de GPS, sem forçar transição no fluxo manual de comprovação do motorista.
 - Raio configurável por local de 30 a 1000 m (padrões 150 m depósito, 100 m cliente), sem PostGIS.
 - O monitor da Expedição mostra prazo, saída real, última posição confirmável e chegadas por cliente. Quando o GPS fica antigo, mostra **GPS indisponível**, nunca um registro inventado.
-- Histórico: `geofence_positions` (pontos GPS), `geofence_progress` (cursor e confirmações), `geofence_events` (eventos gravados uma única vez com evidência do ponto, centro e raio vigentes), `routes.actual_departure_at`, `route_stops.arrived_at`.
+- Histórico: `geofence_positions` (pontos GPS), `geofence_progress` (cursor e confirmações), `geofence_events` (eventos gravados uma única vez com evidências dos pontos inicial e confirmatório, centro e raio vigentes), `routes.actual_departure_at`, `route_stops.arrived_at`.
 - A coleta não executa comandos de bloqueio/desbloqueio físico, e não promove automaticamente entrega concluída. A prova de entrega permanece independente.
 
 ### Implantação no Docker / futura VPS

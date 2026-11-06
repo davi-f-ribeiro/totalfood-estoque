@@ -179,7 +179,8 @@ func (a *app) processGeofenceTarget(ctx context.Context, t geofenceTarget) error
 	var insideSeen bool
 	var count int
 	var candidate sql.NullTime
-	err = tx.QueryRowContext(ctx, `SELECT last_position_id,last_gps_at,inside_seen,confirmation_count,candidate_at FROM geofence_progress WHERE route_id=$1 AND stop_order_id=$2 FOR UPDATE`, t.RouteID, t.StopID).Scan(&cursor, &lastGPSTime, &insideSeen, &count, &candidate)
+	var firstPositionID sql.NullInt64
+	err = tx.QueryRowContext(ctx, `SELECT last_position_id,last_gps_at,inside_seen,confirmation_count,candidate_at,candidate_position_id FROM geofence_progress WHERE route_id=$1 AND stop_order_id=$2 FOR UPDATE`, t.RouteID, t.StopID).Scan(&cursor, &lastGPSTime, &insideSeen, &count, &candidate, &firstPositionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		// An origin observed shortly before release anchors the exit check.
 		if t.StopID == 0 {
@@ -242,14 +243,21 @@ ORDER BY id LIMIT 300`, t.VehicleID, nullableCursor(cursor), release)
 		}
 		var done bool
 		var at time.Time
+		previousAt := st.CandidateAt
 		st, done, at = st.advance(inside, t.StopID == 0, p.At)
+		if st.Count == 0 {
+			firstPositionID = sql.NullInt64{}
+		}
+		if st.Count == 1 && !st.CandidateAt.Equal(previousAt) {
+			firstPositionID = sql.NullInt64{Int64: p.ID, Valid: true}
+		}
 		if done {
 			kind := "chegada_cliente"
 			if t.StopID == 0 {
 				kind = "saida_deposito"
 			}
-			_, err = tx.ExecContext(ctx, `INSERT INTO geofence_events(route_id,stop_order_id,vehicle_id,position_id,center_latitude,center_longitude,radius_m,kind,occurred_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(route_id,kind,stop_order_id) DO NOTHING`, t.RouteID, t.StopID, t.VehicleID, p.ID, t.Lat, t.Lng, int(t.Radius), kind, at)
+			_, err = tx.ExecContext(ctx, `INSERT INTO geofence_events(route_id,stop_order_id,vehicle_id,position_id,first_position_id,center_latitude,center_longitude,radius_m,kind,occurred_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(route_id,kind,stop_order_id) DO NOTHING`, t.RouteID, t.StopID, t.VehicleID, p.ID, nullableCursor(firstPositionID), t.Lat, t.Lng, int(t.Radius), kind, at)
 			if err != nil {
 				return err
 			}
@@ -267,16 +275,22 @@ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(route_id,kind,stop_order_id) DO N
 			break
 		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO geofence_progress(route_id,stop_order_id,last_position_id,last_gps_at,inside_seen,confirmation_count,candidate_at)
-VALUES($1,$2,$3,$4,$5,$6,$7)
+	_, err = tx.ExecContext(ctx, `INSERT INTO geofence_progress(route_id,stop_order_id,last_position_id,last_gps_at,inside_seen,confirmation_count,candidate_at,candidate_position_id)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8)
 ON CONFLICT(route_id,stop_order_id) DO UPDATE
 SET last_position_id=EXCLUDED.last_position_id,last_gps_at=EXCLUDED.last_gps_at,inside_seen=EXCLUDED.inside_seen,
-confirmation_count=EXCLUDED.confirmation_count,candidate_at=EXCLUDED.candidate_at`,
-		t.RouteID, t.StopID, nullableCursor(cursor), nullTime(lastGPSTime), st.InsideSeen, st.Count, geofenceOptionalTime(st.CandidateAt))
+confirmation_count=EXCLUDED.confirmation_count,candidate_at=EXCLUDED.candidate_at,candidate_position_id=EXCLUDED.candidate_position_id`,
+		t.RouteID, t.StopID, nullableCursor(cursor), nullTime(lastGPSTime), st.InsideSeen, st.Count, geofenceOptionalTime(st.CandidateAt), optionalPositionID(firstPositionID))
 	if err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+func optionalPositionID(v sql.NullInt64) any {
+	if v.Valid {
+		return v.Int64
+	}
+	return nil
 }
 func nullableCursor(v sql.NullInt64) any {
 	if v.Valid {

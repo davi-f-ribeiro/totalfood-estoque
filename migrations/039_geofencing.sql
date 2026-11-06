@@ -36,6 +36,7 @@ CREATE TABLE geofence_progress (
     inside_seen boolean NOT NULL DEFAULT false,
     confirmation_count smallint NOT NULL DEFAULT 0 CHECK (confirmation_count >= 0),
     candidate_at timestamptz,
+    candidate_position_id bigint REFERENCES geofence_positions(id),
     PRIMARY KEY (route_id, stop_order_id)
 );
 
@@ -45,6 +46,7 @@ CREATE TABLE geofence_events (
     stop_order_id bigint NOT NULL DEFAULT 0 CHECK (stop_order_id >= 0),
     vehicle_id bigint NOT NULL REFERENCES vehicles(id),
     position_id bigint NOT NULL REFERENCES geofence_positions(id),
+    first_position_id bigint NOT NULL REFERENCES geofence_positions(id),
     center_latitude numeric(9,6) NOT NULL,
     center_longitude numeric(9,6) NOT NULL,
     radius_m integer NOT NULL,
