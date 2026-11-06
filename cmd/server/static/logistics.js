@@ -5,7 +5,7 @@ const status=$('logisticsStatus'),coverage=$('coverageNotice'),placeSearch=$('pl
 const kindLabel={cliente:'Cliente',fornecedor:'Fornecedor',deposito:'Depósito',outro:'Outro'};
 const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
 const inputDec=v=>v==null?'':String(v).replace('.',',');
-let places=[],vehicles=[],drivers=[],options=null;
+let places=[],vehicles=[],drivers=[],options=null,telemetry=[];
 function el(tag,cls,text){let e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
 function card(title,detail,inactive,onOpen){
  let b=el('button','catalog-parent-card');b.type='button';b.append(el('strong',null,title));
@@ -23,7 +23,7 @@ function renderPlaces(){
 function renderVehicles(){
  let list=$('vehicleList');list.textContent='';
  if(!vehicles.length){list.append(el('p','hint','Nenhum veículo cadastrado.'));return}
- vehicles.forEach(v=>list.append(card(v.plate+' · '+v.description,[nf.format(Number(v.capacity_kg))+' kg',v.capacity_boxes?v.capacity_boxes+' caixas térmicas':null,v.ownership==='alugada'?'Alugado':null,v.refrigerated?'Refrigerado':null,v.asset_tag?'Patrimônio '+v.asset_tag:null],!v.active,()=>openVehicle(v))))}
+ vehicles.forEach(v=>{const gps=telemetry.find(t=>t.vehicle_id===v.id);list.append(card(v.plate+' · '+v.description,[v.capacity_kg?nf.format(Number(v.capacity_kg))+' kg':'Capacidade pendente',gps?'GPS informado: '+(gps.source_time||'horário desconhecido'):null,gps?'Consultado em: '+new Date(gps.synced_at).toLocaleString('pt-BR'):null,gps&&!gps.source_time?'Posição não verificada':null,gps&&gps.speed_kmh!=null?'Velocidade informada: '+nf.format(Number(gps.speed_kmh))+' km/h':null,v.capacity_boxes?v.capacity_boxes+' caixas térmicas':null,v.ownership==='alugada'?'Alugado':null,v.refrigerated?'Refrigerado':null,v.asset_tag?'Patrimônio '+v.asset_tag:null],!v.active,()=>openVehicle(v)))})}
 function renderDrivers(){
  let list=$('driverList');list.textContent='';
  if(!drivers.length){list.append(el('p','hint','Nenhum motorista cadastrado.'));return}
@@ -34,7 +34,7 @@ function renderCoverage(missing){
  setFeedback(coverage,'',missing.length+(missing.length===1?' cliente ativo está':' clientes ativos estão')+' sem local com coordenada: '+names+'.')}
 async function loadAll(){
  setFeedback(status,'loading','Carregando locais e frota…');
- try{let cov;[places,vehicles,drivers,cov]=await Promise.all([api('/api/places'),api('/api/vehicles'),api('/api/drivers'),api('/api/places/coverage')]);renderCoverage(cov.customers_without_place||[])}
+ try{let cov;[places,vehicles,drivers,cov,telemetry]=await Promise.all([api('/api/places'),api('/api/vehicles'),api('/api/drivers'),api('/api/places/coverage'),api('/api/vehicles/telemetry')]);renderCoverage(cov.customers_without_place||[]);const notice=$('rastroFleetNotice');if(notice)notice.textContent=telemetry.length?'Rastro Connect: '+telemetry.length+' veículo(s) vinculado(s). Últimas posições informadas pelo provedor; consulte o horário GPS de cada veículo.':''}
  catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível carregar locais e frota. Atualize a página.'));return false}
  setFeedback(status,'','');renderPlaces();renderVehicles();renderDrivers();return true}
 async function loadOptions(){if(!options)options=await api('/api/logistics/options');return options}
@@ -59,7 +59,7 @@ function openPlace(p){withOptions(()=>{
  showPlace(p,p?'Editar local':'Novo local','Criar local','Atualizar local','placeName');
  fillSelect($('placeCustomer'),options.customers,'Escolha o cliente',p&&p.customer_id);fillSelect($('placeWarehouse'),options.warehouses,'Escolha o depósito',p&&p.warehouse_id);
  $('placeName').value=p?p.name:'';$('placeKind').value=p?p.kind:'cliente';$('placeAddress').value=p?p.address:'';$('placeCity').value=p&&p.city||'';
- $('placeLat').value=p?inputDec(p.latitude):'';$('placeLng').value=p?inputDec(p.longitude):'';$('placeWindowStart').value=p&&p.window_start||'';$('placeWindowEnd').value=p&&p.window_end||'';
+ $('placeGeofenceRadius').value=p&&p.geofence_radius_m||'';$('placeLat').value=p?inputDec(p.latitude):'';$('placeLng').value=p?inputDec(p.longitude):'';$('placeWindowStart').value=p&&p.window_start||'';$('placeWindowEnd').value=p&&p.window_end||'';
  $('placeContact').value=p&&p.contact||'';$('placeAccess').value=p&&p.access_notes||'';$('placeActive').checked=p?p.active:true;syncPlaceKind()})}
 function openVehicle(v){withOptions(()=>{
  showVehicle(v,v?'Editar veículo':'Novo veículo','Criar veículo','Atualizar veículo','vehiclePlate');
@@ -74,7 +74,7 @@ function openDriver(d){withOptions(()=>{
  $('driverExpires').value=d&&d.license_expires_at||'';$('driverActive').checked=d?d.active:true})}
 if(canWrite){
  const num=v=>Number(v)||0;
- showPlace=wireDialog('place','local',()=>({name:$('placeName').value.trim(),kind:$('placeKind').value,customer_id:num($('placeCustomer').value),warehouse_id:num($('placeWarehouse').value),address:$('placeAddress').value.trim(),city:$('placeCity').value.trim(),latitude:$('placeLat').value.trim(),longitude:$('placeLng').value.trim(),window_start:$('placeWindowStart').value,window_end:$('placeWindowEnd').value,contact:$('placeContact').value.trim(),access_notes:$('placeAccess').value.trim(),active:$('placeActive').checked}),'/api/places',(b,upd)=>'Local '+b.name+(upd?' atualizado.':' criado.'));
+ showPlace=wireDialog('place','local',()=>({name:$('placeName').value.trim(),kind:$('placeKind').value,customer_id:num($('placeCustomer').value),warehouse_id:num($('placeWarehouse').value),address:$('placeAddress').value.trim(),city:$('placeCity').value.trim(),latitude:$('placeLat').value.trim(),longitude:$('placeLng').value.trim(),window_start:$('placeWindowStart').value,window_end:$('placeWindowEnd').value,contact:$('placeContact').value.trim(),access_notes:$('placeAccess').value.trim(),geofence_radius_m:$('placeGeofenceRadius').value?Number($('placeGeofenceRadius').value):null,active:$('placeActive').checked}),'/api/places',(b,upd)=>'Local '+b.name+(upd?' atualizado.':' criado.'));
  showVehicle=wireDialog('vehicle','veículo',()=>({plate:$('vehiclePlate').value.trim(),description:$('vehicleDescription').value.trim(),asset_id:num($('vehicleAsset').value),capacity_kg:$('vehicleCapacityKg').value.trim(),capacity_boxes:num($('vehicleBoxes').value),refrigerated:$('vehicleRefrigerated').checked,ownership:$('vehicleOwnership').value,active:$('vehicleActive').checked}),'/api/vehicles',(b,upd)=>'Veículo '+b.plate.toUpperCase()+(upd?' atualizado.':' criado.'));
  showDriver=wireDialog('driver','motorista',()=>({name:$('driverName').value.trim(),phone:$('driverPhone').value.trim(),license_number:$('driverLicense').value.trim(),license_category:$('driverCategory').value,license_expires_at:$('driverExpires').value,default_vehicle_id:num($('driverVehicle').value),user_id:num($('driverUser').value),active:$('driverActive').checked}),'/api/drivers',(b,upd)=>'Motorista '+b.name+(upd?' atualizado.':' criado.'));
  $('placeKind').addEventListener('change',syncPlaceKind);

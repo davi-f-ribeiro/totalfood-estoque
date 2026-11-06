@@ -177,14 +177,15 @@ func (a *app) handleRoute(w http.ResponseWriter, r *http.Request) {
 	var refrigerated bool
 	var distance, duration sql.NullInt64
 	var version int64
+	var deadline sql.NullTime
 	err := a.db.QueryRowContext(ctx, `
 SELECT r.day::text,r.status,v.plate,v.description,v.ownership,v.capacity_kg::text,v.refrigerated,d.name,d.phone,
-       r.total_distance_m,r.total_duration_s,r.version
+       r.total_distance_m,r.total_duration_s,r.version,r.departure_deadline
 FROM routes r
 JOIN vehicles v ON v.id=r.vehicle_id
 JOIN drivers d ON d.id=r.driver_id
 WHERE r.id=$1`, id).Scan(&dayText, &status, &plate, &description, &ownership, &capacityKg, &refrigerated, &driver, &driverPhone,
-		&distance, &duration, &version)
+		&distance, &duration, &version, &deadline)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "Rota não encontrada.")
 		return
@@ -203,7 +204,7 @@ WHERE r.id=$1`, id).Scan(&dayText, &status, &plate, &description, &ownership, &c
 		"vehicle_ownership": ownership, "vehicle_capacity_kg": capacityKg, "vehicle_refrigerated": refrigerated,
 		"driver_name": driver, "driver_phone": nullText(driverPhone),
 		"total_distance_m": nullInt(distance), "total_duration_s": nullInt(duration), "version": version,
-		"stops": stops, "next_statuses": routeNext[status],
+		"stops": stops, "next_statuses": routeNext[status], "departure_deadline": nullTime(deadline),
 	})
 }
 
@@ -496,6 +497,7 @@ WHERE s.route_id=$1 ORDER BY o.id FOR UPDATE OF o`, id)
 	var version int64
 	err = tx.QueryRowContext(ctx, `
 UPDATE routes SET status=$1,version=version+1,
+       released_at=CASE WHEN $1='liberado' THEN now() ELSE released_at END,
        started_at=CASE WHEN $1='em_andamento' THEN now() ELSE started_at END,
        completed_at=CASE WHEN $1 IN ('concluido','cancelado') THEN now() ELSE completed_at END
 WHERE id=$2 RETURNING version`, req.Status, id).Scan(&version)

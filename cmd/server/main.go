@@ -64,6 +64,9 @@ func run() error {
 	}
 
 	a := &app{db: db}
+	if os.Getenv("GEOFENCE_WORKER") == "true" {
+		return a.runGeofenceWorker(ctx)
+	}
 	if err := a.bootstrapDirector(ctx); err != nil {
 		log.Printf("bootstrap director failed: %v", err)
 		return fmt.Errorf("bootstrap failed")
@@ -140,8 +143,10 @@ func newHTTPServer(addr string, a *app) *http.Server {
 	a.registerRecipeHandlers(mux)
 	a.registerPlannerHandlers(mux)
 	a.registerLogisticsHandlers(mux)
+	a.registerRastroHandlers(mux)
 	a.registerDispatchHandlers(mux)
 	a.registerRouteHandlers(mux)
+	a.registerGeofenceHandlers(mux)
 	a.registerProofHandlers(mux)
 	a.registerDriverHandlers(mux)
 	a.registerAssetHandlers(mux)
