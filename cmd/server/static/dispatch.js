@@ -46,6 +46,7 @@ async function openOrder(id){const body=$('orderDetailBody');body.textContent=''
  const o=detail;$('orderDetailTitle').textContent='Entrega #'+o.id+' · '+o.place_name;
  body.append(el('p',null,[orderLabel[o.status],o.meal?mealLabel[o.meal]:null,'Combinado '+o.due_at,'Sai de '+o.origin_warehouse,o.pod_required?'Exige comprovante':null].filter(Boolean).join(' · ')));
  if(o.notes)body.append(el('p','hint',o.notes));
+ if(o.public_tracking_token){const link=el('a','secondary','Abrir acompanhamento do cliente');link.href='/tracking/'+encodeURIComponent(o.public_tracking_token);link.target='_blank';link.rel='noopener noreferrer';body.append(link)}
  body.append(el('h3',null,'O que vai'));const ul=el('ul');
  o.lines.forEach(l=>ul.append(el('li',null,l.recipe_id?l.recipe_name+' · '+l.portions+' porções':l.item_name+' · '+displayDecimal(l.quantity)+(l.unit?' '+l.unit:''))));body.append(ul);
  body.append(el('h3',null,'Histórico'));const ev=el('ul');
