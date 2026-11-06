@@ -3,6 +3,7 @@
 <div class="catalog-title"><div><h1>Locais e frota</h1><p class="hint">Onde entregamos e coletamos, com que veículo e com qual motorista. Cliente sem local com coordenada não entra na rota de entrega.</p></div></div>
 <div id="coverageNotice" class="operation-feedback" role="status" aria-live="polite" hidden></div>
 <div id="logisticsStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+<div id="rastroFleetNotice" class="hint" aria-live="polite"></div>
 <div class="logistics-sections">
 <section aria-labelledby="placesHeading"><div class="section-heading"><h2 id="placesHeading">Locais</h2>{{if .CanLogisticsWrite}}<button id="placeNew" type="button">+ Novo local</button>{{end}}</div><label class="catalog-search">Buscar local<input id="placeSearch" autocomplete="off" placeholder="Nome, cliente ou cidade"></label><div id="placeList" class="catalog-parent-list" aria-live="polite"></div></section>
 <section aria-labelledby="vehiclesHeading"><div class="section-heading"><h2 id="vehiclesHeading">Veículos</h2>{{if .CanLogisticsWrite}}<button id="vehicleNew" class="secondary" type="button">+ Novo veículo</button>{{end}}</div><div id="vehicleList" class="catalog-parent-list" aria-live="polite"></div></section>
