@@ -9,7 +9,7 @@ const mealLabel={cafe:'Café',almoco:'Almoço',lanche:'Lanche',jantar:'Jantar'};
 const proofLabel={foto:'Foto',assinatura:'Assinatura',codigo:'Código'};
 const routable=s=>s==='criado'||s==='programado'||s==='falhou';
 const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1});
-let orders=[],routes=[],options=null,route=null,stops=[],dirty=false,warnings=[];
+let orders=[],routes=[],geofences=[],options=null,route=null,stops=[],dirty=false,warnings=[];
 const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 $('dispatchDay').value=today;
 // Os painéis usam <form> só pelo estilo do diálogo; Enter não envia nada.
@@ -26,9 +26,9 @@ function minutes(s){if(s==null)return null;const h=Math.floor(s/3600),m=Math.rou
 
 async function loadAll(){
  setFeedback(status,'loading','Carregando a expedição…');
- try{[orders,routes]=await Promise.all([api('/api/delivery-orders?day='+day()),api('/api/routes?day='+day())])}
+ try{[orders,routes,geofences]=await Promise.all([api('/api/delivery-orders?day='+day()),api('/api/routes?day='+day()),api('/api/geofencing/overview?day='+day())])}
  catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível carregar a expedição. Atualize a página.'));return}
- setFeedback(status,'','');renderOrders();renderRoutes()}
+ setFeedback(status,'','');renderOrders();renderRoutes();renderGeofences()}
 function renderOrders(){const list=$('orderList');list.textContent='';
  if(!orders.length){list.append(el('p','hint','Nenhuma entrega neste dia.'));return}
  orders.forEach(o=>list.append(card(o.place_name,chip(o.status,orderLabel[o.status]||o.status),
@@ -37,7 +37,25 @@ function renderRoutes(){const list=$('routeList');list.textContent='';
  if(!routes.length){list.append(el('p','hint','Nenhuma rota neste dia.'));return}
  routes.forEach(r=>list.append(card('Rota #'+r.id+' · '+r.vehicle_plate,chip(r.status,routeLabel[r.status]||r.status),
   [r.driver_name,r.vehicle_ownership==='alugada'?'Veículo alugado':null,r.stops+(r.stops===1?' entrega':' entregas'),km(r.total_distance_m),minutes(r.total_duration_s)],()=>openRoute(r.id))))}
+const geoLabel={sem_prazo:'Sem horário-limite',no_prazo:'Saiu no prazo',saida_atrasada:'Saída atrasada',
+ em_planejamento:'Em planejamento',gps_indisponivel:'GPS indisponível',prazo_vencido:'Prazo vencido',aguardando_saida:'Aguardando saída'};
+function clock(t){return t?new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Fortaleza'}):'—'}
+function renderGeofences(){
+ const list=$('geofenceList');if(!list)return;list.textContent='';
+ if(!geofences.length){list.append(el('p','hint','Nenhuma rota neste dia.'));return}
+ geofences.forEach(g=>{
+  const arrivals=g.stops.filter(s=>s.arrived_at).length;
+  const summary=['Limite: '+clock(g.departure_deadline),'Saída GPS: '+clock(g.actual_departure_at),
+   'Último GPS: '+clock(g.gps_at),arrivals+'/'+g.stops.length+' chegadas confirmadas'];
+  const b=card('Rota #'+g.route_id+' · '+g.plate,chip(g.status==='no_prazo'?'entregue':g.status==='saida_atrasada'||g.status==='prazo_vencido'?'falhou':'programado',geoLabel[g.status]||g.status),summary,()=>openRoute(g.route_id));
+  const arrivalInfo=g.stops.filter(s=>s.arrived_at).map(s=>s.place_name+': '+clock(s.arrived_at));
+  if(arrivalInfo.length)b.append(el('small',null,arrivalInfo.join(' · ')));
+  if(g.status==='gps_indisponivel')b.append(el('small',null,'A posição não foi validada como recente. Nenhuma saída foi presumida.'));
+  list.append(b);
+ });
+}
 $('dispatchDay').addEventListener('change',loadAll);
+setInterval(()=>{if(document.visibilityState==='visible'&&!$('routeDialog').open&&!$('orderDialog').open)loadAll()},60000);
 
 // --- detalhe da entrega -----------------------------------------------------------
 let detail=null;
@@ -65,6 +83,7 @@ if($('orderCancel'))$('orderCancel').onclick=()=>runLocked($('orderCancel'),asyn
 // --- rota ----------------------------------------------------------------------
 async function openRoute(id,message){
  try{route=await api('/api/routes/'+id)}catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível abrir a rota.'));return}
+ if($('routeDeadline')){$('routeDeadline').value=route.departure_deadline?clock(route.departure_deadline):'';$('routeDeadlineField').hidden=route.status!=='rascunho'}
  stops=route.stops.map(s=>({order_id:s.order_id,place_name:s.place_name,address:s.address,status:s.status,eta:s.eta,window:s.window_start?s.window_start+'–'+s.window_end:null}));dirty=false;
  renderRoute();setFeedback($('routeWarnings'),warnings.length?'error':'',warnings.join(' '));warnings=[];setFeedback($('routeStatus'),message?'success':'',message||'');
  if(!$('routeDialog').open)$('routeDialog').showModal()}
@@ -103,6 +122,7 @@ async function optimize(keep){if(dirty||document.querySelector('#routeAddList in
  warnings=warn;
  return 'Rota calculada: '+km(res.total_distance_m)+', '+minutes(res.total_duration_s)+' rodando.'}
 if(canWrite){
+ if($('routeDeadlineSave'))$('routeDeadlineSave').onclick=routeAction($('routeDeadlineSave'),async()=>{const result=await api('/api/routes/'+route.id+'/departure-deadline',{method:'PUT',body:JSON.stringify({deadline:$('routeDeadline').value,version:route.version})});route.version=result.version;return 'Horário-limite salvo.'},'Não foi possível salvar o horário-limite.');
  $('routeSave').onclick=routeAction($('routeSave'),async()=>{await saveStops();return 'Entregas da rota salvas.'},'Não foi possível salvar as entregas da rota.');
  $('routeOptimize').onclick=routeAction($('routeOptimize'),()=>optimize(false),'Não foi possível calcular a rota.');
  $('routeKeep').onclick=routeAction($('routeKeep'),()=>optimize(true),'Não foi possível calcular a rota.');

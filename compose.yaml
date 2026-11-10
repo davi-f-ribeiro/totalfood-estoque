@@ -16,6 +16,7 @@ services:
 
   app:
     build: .
+    image: totalfood-estoque:local
     restart: unless-stopped
     depends_on:
       db:
@@ -27,6 +28,7 @@ services:
       MIGRATIONS_DIR: /app/migrations
       DATABASE_URL: "postgres://${POSTGRES_USER:-estoque}:${POSTGRES_PASSWORD:-estoque_dev_change_me}@db:5432/${POSTGRES_DB:-estoque}?sslmode=disable"
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      RASTROCONNECT_KEY: ${RASTROCONNECT_KEY:-}
       BOOTSTRAP_DIRECTOR_LOGIN: ${BOOTSTRAP_DIRECTOR_LOGIN:-diretor}
       BOOTSTRAP_DIRECTOR_PASSWORD: ${BOOTSTRAP_DIRECTOR_PASSWORD:-troque-esta-senha}
     healthcheck:
@@ -34,6 +36,26 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  geofence-worker:
+    profiles: ["geofencing"]
+    image: totalfood-estoque:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started
+    environment:
+      GEOFENCE_WORKER: "true"
+      RUN_MIGRATIONS: "false"
+      DATABASE_URL: "postgres://${POSTGRES_USER:-estoque}:${POSTGRES_PASSWORD:-estoque_dev_change_me}@db:5432/${POSTGRES_DB:-estoque}?sslmode=disable"
+      RASTROCONNECT_KEY: ${RASTROCONNECT_KEY:-}
+      RASTROCONNECT_DEVICE_TZ: ${RASTROCONNECT_DEVICE_TZ:-}
+      GEOFENCE_POLL_SECONDS: ${GEOFENCE_POLL_SECONDS:-60}
+      DB_MAX_OPEN_CONNS: "3"
+      DB_MAX_IDLE_CONNS: "1"
+    # The worker has no inbound ports. One instance owns a PostgreSQL advisory lock.
 
 volumes:
   estoque_pgdata:

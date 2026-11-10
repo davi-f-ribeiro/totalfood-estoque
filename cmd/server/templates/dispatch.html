@@ -2,6 +2,10 @@
 <main class="main"><section class="panel catalog-manager dispatch" id="dispatchRoot" data-can-write="{{if .CanDispatchWrite}}1{{else}}0{{end}}">
 <div class="catalog-title"><div><h1>Expedição</h1><p class="hint">Entregas de insumos e refeições prontas do dia, montadas em rotas por veículo e motorista.</p></div><label class="dispatch-day">Dia<input id="dispatchDay" type="date" required></label></div>
 <div id="dispatchStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+<section aria-labelledby="geofenceHeading" class="panel">
+<div class="section-heading"><h2 id="geofenceHeading">Saídas e chegadas por GPS</h2><p class="hint">Geofencing automático · atualização aproximada a cada minuto</p></div>
+<div id="geofenceList" class="catalog-parent-list" aria-live="polite"></div>
+</section>
 <div class="dispatch-columns">
 <section aria-labelledby="ordersHeading"><div class="section-heading"><h2 id="ordersHeading">Entregas</h2>{{if .CanDispatchWrite}}<button id="orderNew" type="button">+ Nova entrega</button>{{end}}</div><div id="orderList" class="catalog-parent-list" aria-live="polite"></div></section>
 <section aria-labelledby="routesHeading"><div class="section-heading"><h2 id="routesHeading">Rotas</h2>{{if .CanDispatchWrite}}<button id="routeNew" class="secondary" type="button">+ Nova rota</button>{{end}}</div><div id="routeList" class="catalog-parent-list" aria-live="polite"></div></section>
@@ -15,6 +19,7 @@
 <ol id="routeStops" class="dispatch-stops"></ol>
 {{if .CanDispatchWrite}}<fieldset id="routeAddBox" class="logistics-group"><legend>Entregas sem rota</legend><div id="routeAddList" class="dispatch-addlist"></div></fieldset>
 <label id="routeDepartureField">Saída do depósito<input id="routeDeparture" type="time" value="07:00"></label>{{end}}
+{{if .CanDispatchWrite}}<div id="routeDeadlineField"><label>Horário-limite de saída<input id="routeDeadline" type="time"></label><button id="routeDeadlineSave" type="button" class="secondary">Salvar limite</button><small class="hint">Prazo contratual para sair do depósito, independente de iniciar a rota no celular.</small></div>{{end}}
 <div class="actions">{{if .CanDispatchWrite}}<button id="routeSave" type="button">Salvar entregas</button><button id="routeOptimize" class="secondary" type="button">Calcular melhor ordem</button><button id="routeKeep" class="secondary" type="button">Calcular na ordem atual</button><button id="routeRelease" type="button">Liberar para o motorista</button><button id="routeCancel" class="danger" type="button">Cancelar rota</button>{{end}}<button id="routePrint" class="secondary" type="button">Imprimir romaneio</button><button id="routeClose" class="secondary" type="button">Fechar</button></div>
 <div id="routeStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div></form></dialog>
 

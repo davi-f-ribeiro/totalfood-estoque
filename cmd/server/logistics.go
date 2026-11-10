@@ -26,20 +26,21 @@ var (
 )
 
 type placeRequest struct {
-	Name        string `json:"name"`
-	Kind        string `json:"kind"`
-	CustomerID  int64  `json:"customer_id,omitempty"`
-	WarehouseID int64  `json:"warehouse_id,omitempty"`
-	Address     string `json:"address"`
-	City        string `json:"city"`
-	Latitude    string `json:"latitude"`
-	Longitude   string `json:"longitude"`
-	WindowStart string `json:"window_start"`
-	WindowEnd   string `json:"window_end"`
-	Contact     string `json:"contact"`
-	AccessNotes string `json:"access_notes"`
-	Active      *bool  `json:"active"`
-	Version     int64  `json:"version,omitempty"`
+	Name            string `json:"name"`
+	Kind            string `json:"kind"`
+	CustomerID      int64  `json:"customer_id,omitempty"`
+	WarehouseID     int64  `json:"warehouse_id,omitempty"`
+	Address         string `json:"address"`
+	City            string `json:"city"`
+	Latitude        string `json:"latitude"`
+	Longitude       string `json:"longitude"`
+	WindowStart     string `json:"window_start"`
+	WindowEnd       string `json:"window_end"`
+	Contact         string `json:"contact"`
+	AccessNotes     string `json:"access_notes"`
+	GeofenceRadiusM *int   `json:"geofence_radius_m,omitempty"`
+	Active          *bool  `json:"active"`
+	Version         int64  `json:"version,omitempty"`
 }
 
 type vehicleRequest struct {
@@ -139,6 +140,9 @@ func normalizePlaceRequest(req *placeRequest) string {
 	case req.Address == "":
 		return "Digite o endereço do local."
 	}
+	if req.GeofenceRadiusM != nil && (*req.GeofenceRadiusM < 30 || *req.GeofenceRadiusM > 1000) {
+		return "O raio da cerca deve estar entre 30 e 1000 metros."
+	}
 	if req.Kind != "cliente" {
 		req.CustomerID = 0
 	}
@@ -189,7 +193,7 @@ func writePlaceError(w http.ResponseWriter, err error, logPrefix string) {
 const placeSelect = `
 SELECT p.id,p.name,p.kind,p.customer_id,c.name,p.warehouse_id,wh.name,p.address,p.city,
        p.latitude::text,p.longitude::text,to_char(p.window_start,'HH24:MI'),to_char(p.window_end,'HH24:MI'),
-       p.contact,p.access_notes,p.active,p.version
+       p.contact,p.access_notes,p.active,p.version,p.geofence_radius_m
 FROM places p
 LEFT JOIN customers c ON c.id=p.customer_id
 LEFT JOIN warehouses wh ON wh.id=p.warehouse_id
@@ -205,12 +209,13 @@ func (a *app) handlePlaces(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, version int64
+		var radius int
 		var name, kind, address string
 		var customerID, warehouseID sql.NullInt64
 		var customerName, warehouseName, city, lat, lng, ws, we, contact, notes sql.NullString
 		var active bool
 		if err := rows.Scan(&id, &name, &kind, &customerID, &customerName, &warehouseID, &warehouseName, &address, &city,
-			&lat, &lng, &ws, &we, &contact, &notes, &active, &version); err != nil {
+			&lat, &lng, &ws, &we, &contact, &notes, &active, &version, &radius); err != nil {
 			logisticsFail(w, http.StatusInternalServerError, "Não foi possível carregar os locais.", "places scan failed", err)
 			return
 		}
@@ -222,7 +227,7 @@ func (a *app) handlePlaces(w http.ResponseWriter, r *http.Request) {
 			"latitude": nullText(lat), "longitude": nullText(lng),
 			"window_start": nullText(ws), "window_end": nullText(we),
 			"contact": nullText(contact), "access_notes": nullText(notes),
-			"active": active, "version": version,
+			"active": active, "version": version, "geofence_radius_m": radius,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -321,21 +326,21 @@ func (a *app) handleSavePlace(w http.ResponseWriter, r *http.Request) {
 	}
 	args := []any{req.Name, req.Kind, optionalID(req.CustomerID), optionalID(req.WarehouseID), req.Address, optionalText(req.City),
 		optionalText(req.Latitude), optionalText(req.Longitude), optionalText(req.WindowStart), optionalText(req.WindowEnd),
-		optionalText(req.Contact), optionalText(req.AccessNotes), activeOrDefault(req.Active)}
+		optionalText(req.Contact), optionalText(req.AccessNotes), activeOrDefault(req.Active), req.GeofenceRadiusM}
 	a.saveVersioned(w, r, "places", "Local não encontrado.", req.Version,
 		func(ctx context.Context) (int64, error) {
 			var id int64
 			err := a.db.QueryRowContext(ctx, `
-INSERT INTO places (name,kind,customer_id,warehouse_id,address,city,latitude,longitude,window_start,window_end,contact,access_notes,active)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`, args...).Scan(&id)
+INSERT INTO places (name,kind,customer_id,warehouse_id,address,city,latitude,longitude,window_start,window_end,contact,access_notes,active,geofence_radius_m)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,COALESCE($14,CASE WHEN $2='deposito' THEN 150 ELSE 100 END)) RETURNING id`, args...).Scan(&id)
 			return id, err
 		},
 		func(ctx context.Context, id int64) (int64, error) {
 			var version int64
 			err := a.db.QueryRowContext(ctx, `
 UPDATE places SET name=$1,kind=$2,customer_id=$3,warehouse_id=$4,address=$5,city=$6,latitude=$7,longitude=$8,
-       window_start=$9,window_end=$10,contact=$11,access_notes=$12,active=$13,version=version+1
-WHERE id=$14 AND version=$15 RETURNING version`, append(args, id, req.Version)...).Scan(&version)
+       window_start=$9,window_end=$10,contact=$11,access_notes=$12,active=$13,geofence_radius_m=COALESCE($14,geofence_radius_m),version=version+1
+WHERE id=$15 AND version=$16 RETURNING version`, append(args, id, req.Version)...).Scan(&version)
 			return version, err
 		},
 		writePlaceError)
@@ -393,7 +398,8 @@ ORDER BY v.active DESC,v.plate,v.id`)
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, version int64
-		var plate, description, capacity, ownership string
+		var plate, description, ownership string
+		var capacity sql.NullString
 		var assetID, boxes sql.NullInt64
 		var assetTag sql.NullString
 		var refrigerated, active bool
@@ -404,7 +410,7 @@ ORDER BY v.active DESC,v.plate,v.id`)
 		out = append(out, map[string]any{
 			"id": id, "plate": plate, "description": description,
 			"asset_id": nullInt(assetID), "asset_tag": nullText(assetTag),
-			"capacity_kg": capacity, "capacity_boxes": nullInt(boxes),
+			"capacity_kg": nullText(capacity), "capacity_boxes": nullInt(boxes),
 			"refrigerated": refrigerated, "ownership": ownership, "active": active, "version": version,
 		})
 	}

@@ -3,6 +3,7 @@
 <div class="catalog-title"><div><h1>Locais e frota</h1><p class="hint">Onde entregamos e coletamos, com que veículo e com qual motorista. Cliente sem local com coordenada não entra na rota de entrega.</p></div></div>
 <div id="coverageNotice" class="operation-feedback" role="status" aria-live="polite" hidden></div>
 <div id="logisticsStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+<div id="rastroFleetNotice" class="hint" aria-live="polite"></div>
 <div class="logistics-sections">
 <section aria-labelledby="placesHeading"><div class="section-heading"><h2 id="placesHeading">Locais</h2>{{if .CanLogisticsWrite}}<button id="placeNew" type="button">+ Novo local</button>{{end}}</div><label class="catalog-search">Buscar local<input id="placeSearch" autocomplete="off" placeholder="Nome, cliente ou cidade"></label><div id="placeList" class="catalog-parent-list" aria-live="polite"></div></section>
 <section aria-labelledby="vehiclesHeading"><div class="section-heading"><h2 id="vehiclesHeading">Veículos</h2>{{if .CanLogisticsWrite}}<button id="vehicleNew" class="secondary" type="button">+ Novo veículo</button>{{end}}</div><div id="vehicleList" class="catalog-parent-list" aria-live="polite"></div></section>
@@ -15,6 +16,7 @@
 <label id="placeWarehouseField" hidden>Depósito<select id="placeWarehouse"></select></label>
 <div class="grid"><label>Endereço<input id="placeAddress" autocomplete="off" required></label><label>Cidade<input id="placeCity" autocomplete="off"></label></div>
 <fieldset class="logistics-group"><legend>Coordenada</legend><p class="hint">Copie do mapa (ex.: -3.543210 e -38.812345). Sem coordenada o local não entra na rota.</p><div class="grid"><label>Latitude<input id="placeLat" inputmode="decimal" autocomplete="off"></label><label>Longitude<input id="placeLng" inputmode="decimal" autocomplete="off"></label></div></fieldset>
+<label>Raio do geofencing (metros)<input id="placeGeofenceRadius" type="number" min="30" max="1000" step="10"><small>Área de confirmação de saída ou chegada GPS. Padrão: 150 m depósito, 100 m cliente.</small></label>
 <fieldset class="logistics-group"><legend>Janela de recebimento</legend><div class="grid"><label>De<input id="placeWindowStart" type="time"></label><label>Até<input id="placeWindowEnd" type="time"></label></div></fieldset>
 <div class="grid"><label>Contato no local<input id="placeContact" autocomplete="off" placeholder="Nome e telefone"></label><label>Como chegar e entrar<input id="placeAccess" autocomplete="off" placeholder="Portão 2, falar com a nutricionista"></label></div>
 <label class="check"><input id="placeActive" type="checkbox" checked> Local ativo</label>
