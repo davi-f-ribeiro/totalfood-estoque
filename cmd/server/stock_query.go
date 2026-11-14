@@ -97,6 +97,8 @@ func (a *app) writeOperationResponse(w http.ResponseWriter, typ, operationID str
 		status, msg = http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo."
 	case errors.Is(err, errNotFound):
 		status, msg = http.StatusNotFound, "resource not found"
+	case errors.Is(err, errCrateTrackedStock):
+		status, msg = http.StatusConflict, "Este estoque tem caixas identificadas. Registre o consumo pela caixa."
 	case errors.Is(err, errInsufficientStock):
 		status, msg = http.StatusConflict, "Estoque insuficiente."
 		var e insufficientStockError

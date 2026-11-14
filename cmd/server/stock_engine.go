@@ -361,6 +361,7 @@ lot_balances AS (
     FROM stock_lots l
     JOIN target t ON t.item_id=l.item_id AND t.brand_id=l.brand_id AND t.warehouse_id=l.warehouse_id
     LEFT JOIN stock_lot_allocations a ON a.stock_lot_id=l.id
+    WHERE NOT EXISTS (SELECT 1 FROM stock_crates c WHERE c.stock_lot_id=l.id)
     GROUP BY l.id,l.received_at,l.expires_at,l.initial_quantity
     HAVING l.initial_quantity-COALESCE(sum(a.quantity),0) > 0
 ),
@@ -402,6 +403,20 @@ GROUP BY ml.id`, movementLineID).Scan(&requested, &allocated); err != nil {
 		return err
 	}
 	if !complete {
+		var tracked bool
+		if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+ SELECT 1 FROM stock_crates c
+ JOIN stock_lots l ON l.id=c.stock_lot_id
+ JOIN movement_lines ml ON ml.id=$1
+ JOIN product_skus s ON s.id=ml.sku_id
+ WHERE l.item_id=ml.item_id AND l.brand_id=s.brand_id AND l.warehouse_id=ml.warehouse_id
+)`, movementLineID).Scan(&tracked); err != nil {
+			return err
+		}
+		if tracked {
+			return errCrateTrackedStock
+		}
 		return errors.New("lot allocation does not cover movement quantity")
 	}
 	return nil

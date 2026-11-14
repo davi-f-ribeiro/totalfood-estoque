@@ -320,11 +320,11 @@ func (a *app) handleLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
-SELECT s.id,i.name,b.name,COALESCE(s.barcode,''),i.unit_code,s.content_quantity::text
+SELECT s.id,i.name,CASE WHEN b.id=0 THEN '' ELSE b.name END,COALESCE(s.barcode,''),i.unit_code,s.content_quantity::text
 FROM product_skus s
 JOIN inventory_items i ON i.id=s.item_id
 JOIN brands b ON b.id=s.brand_id
-WHERE s.active=true AND i.active=true AND b.active=true
+WHERE s.active=true AND i.active=true AND (b.active=true OR b.id=0)
   AND (s.barcode=$1 OR lower(i.name) LIKE lower($2) OR lower(b.name) LIKE lower($2)
        OR lower(COALESCE(s.name,'')) LIKE lower($2))
 ORDER BY i.name,b.name,s.content_quantity,s.id
