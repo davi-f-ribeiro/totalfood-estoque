@@ -180,8 +180,20 @@ func createExitTx(ctx context.Context, tx *sql.Tx, req movementRequest, hash str
 		if err != nil {
 			return 0, err
 		}
-		if !quantityAtLeast(ctx, tx, s.Quantity, quantity) {
-			return 0, insufficientStockError{Available: s.Quantity, Unit: s.Unit}
+		held, err := matReserved(ctx, tx, req.SKUID, req.WarehouseID)
+		if err != nil {
+			return 0, err
+		}
+		enough, err := matEnough(ctx, tx, s.Quantity, held, quantity)
+		if err != nil {
+			return 0, err
+		}
+		if !enough {
+			free, err := matFreeStock(ctx, tx, s.Quantity, held)
+			if err != nil {
+				return 0, err
+			}
+			return 0, insufficientStockError{Available: free, Unit: s.Unit}
 		}
 		m, err := insertMovement(ctx, tx, "SAIDA", req, hash)
 		if err != nil {
@@ -245,8 +257,20 @@ func createTransferTx(ctx context.Context, tx *sql.Tx, req movementRequest, hash
 		if err != nil {
 			return 0, err
 		}
-		if !quantityAtLeast(ctx, tx, s.Quantity, quantity) {
-			return 0, insufficientStockError{Available: s.Quantity, Unit: s.Unit}
+		held, err := matReserved(ctx, tx, req.SKUID, req.FromWarehouseID)
+		if err != nil {
+			return 0, err
+		}
+		enough, err := matEnough(ctx, tx, s.Quantity, held, quantity)
+		if err != nil {
+			return 0, err
+		}
+		if !enough {
+			free, err := matFreeStock(ctx, tx, s.Quantity, held)
+			if err != nil {
+				return 0, err
+			}
+			return 0, insufficientStockError{Available: free, Unit: s.Unit}
 		}
 		req.WarehouseID = req.FromWarehouseID
 		m, err := insertMovement(ctx, tx, "TRANSFERENCIA", req, hash)
