@@ -13,6 +13,9 @@ func (a *app) createEntry(ctx context.Context, req movementRequest, hash string)
 }
 
 func createEntryTx(ctx context.Context, tx *sql.Tx, req movementRequest, hash string) (operationResult, error) {
+	if req.ProductionDate != "" {
+		return operationResult{}, errMovementProductionDateInvalid
+	}
 	if req.WarehouseID <= 0 {
 		return operationResult{}, errMovementWarehouseRequired
 	}
@@ -99,18 +102,20 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 				return 0, err
 			}
 			var itemID, brandID int64
-			if err := tx.QueryRowContext(ctx, `SELECT item_id,brand_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID,&brandID); err != nil {
+			if err := tx.QueryRowContext(ctx, `SELECT item_id,brand_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID, &brandID); err != nil {
 				return 0, err
 			}
-			key := [2]int64{itemID,brandID}
+			key := [2]int64{itemID, brandID}
 			if _, exists := seenIdentities[key]; !exists {
 				seenIdentities[key] = struct{}{}
-				identities = append(identities, stockIdentity{ItemID:itemID,BrandID:brandID,SKUID:skuID})
+				identities = append(identities, stockIdentity{ItemID: itemID, BrandID: brandID, SKUID: skuID})
 			}
 		}
-		sort.Slice(identities, func(i,j int) bool {
-			if identities[i].ItemID==identities[j].ItemID { return identities[i].BrandID<identities[j].BrandID }
-			return identities[i].ItemID<identities[j].ItemID
+		sort.Slice(identities, func(i, j int) bool {
+			if identities[i].ItemID == identities[j].ItemID {
+				return identities[i].BrandID < identities[j].BrandID
+			}
+			return identities[i].ItemID < identities[j].ItemID
 		})
 		for _, identity := range identities {
 			if err := lockStock(ctx, tx, identity.SKUID, req.WarehouseID); err != nil {
@@ -151,6 +156,9 @@ func (a *app) createExit(ctx context.Context, req movementRequest, hash string) 
 }
 
 func createExitTx(ctx context.Context, tx *sql.Tx, req movementRequest, hash string) (operationResult, error) {
+	if !validProductionDate(req.ProductionDate) {
+		return operationResult{}, errMovementProductionDateInvalid
+	}
 	if req.WarehouseID <= 0 {
 		return operationResult{}, errMovementWarehouseRequired
 	}
@@ -195,6 +203,9 @@ func (a *app) createTransfer(ctx context.Context, req movementRequest, hash stri
 }
 
 func createTransferTx(ctx context.Context, tx *sql.Tx, req movementRequest, hash string) (operationResult, error) {
+	if req.ProductionDate != "" {
+		return operationResult{}, errMovementProductionDateInvalid
+	}
 	if req.FromWarehouseID <= 0 || req.ToWarehouseID <= 0 {
 		return operationResult{}, errTransferWarehousesRequired
 	}
@@ -298,7 +309,7 @@ func writeMovementTx(ctx context.Context, tx *sql.Tx, typ string, req movementRe
 
 func insertMovement(ctx context.Context, tx *sql.Tx, typ string, req movementRequest, hash string) (int64, error) {
 	var id int64
-	err := tx.QueryRowContext(ctx, `INSERT INTO movements (operation_id, request_hash, movement_type, document_number, supplier_name, user_id, notes) VALUES ($1,$2,$3,NULLIF($4,''),NULLIF($5,''),NULLIF($6,0),NULLIF($7,'')) RETURNING id`, req.OperationID, hash, typ, req.DocumentNumber, req.SupplierName, req.UserID, req.Notes).Scan(&id)
+	err := tx.QueryRowContext(ctx, `INSERT INTO movements (operation_id, request_hash, movement_type, document_number, supplier_name, user_id, notes, production_date) VALUES ($1,$2,$3,NULLIF($4,''),NULLIF($5,''),NULLIF($6,0),NULLIF($7,''),NULLIF($8,'')::date) RETURNING id`, req.OperationID, hash, typ, req.DocumentNumber, req.SupplierName, req.UserID, req.Notes, req.ProductionDate).Scan(&id)
 	return id, err
 }
 
@@ -425,17 +436,17 @@ WHERE id=$1`, skuID, quantity).Scan(&canonicalQuantity)
 
 func lockStock(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error {
 	var itemID, brandID int64
-	if err := tx.QueryRowContext(ctx, `SELECT item_id,brand_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID,&brandID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT item_id,brand_id FROM product_skus WHERE id=$1`, skuID).Scan(&itemID, &brandID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return errNotFound
 		}
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO stock_locks (item_id,brand_id,warehouse_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, itemID,brandID,warehouseID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO stock_locks (item_id,brand_id,warehouse_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, itemID, brandID, warehouseID); err != nil {
 		return err
 	}
 	var x int
-	return tx.QueryRowContext(ctx, `SELECT 1 FROM stock_locks WHERE item_id=$1 AND brand_id=$2 AND warehouse_id=$3 FOR UPDATE`, itemID,brandID,warehouseID).Scan(&x)
+	return tx.QueryRowContext(ctx, `SELECT 1 FROM stock_locks WHERE item_id=$1 AND brand_id=$2 AND warehouse_id=$3 FOR UPDATE`, itemID, brandID, warehouseID).Scan(&x)
 }
 
 func ensureRefs(ctx context.Context, tx *sql.Tx, skuID, warehouseID int64) error {

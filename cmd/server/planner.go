@@ -1585,7 +1585,7 @@ ORDER BY s.day,s.group_id,array_position(ARRAY['cafe','almoco','lanche','jantar'
     SELECT ml.item_id,sum(ml.quantity)::float8 AS qty,sum(ml.quantity*COALESCE(ml.unit_cost,0))::float8 AS value
     FROM movement_lines ml JOIN movements m ON m.id=ml.movement_id
     WHERE m.movement_type='SAIDA' AND ml.direction='OUT'
-      AND (m.occurred_at AT TIME ZONE 'America/Fortaleza')::date BETWEEN $2::date AND $3::date
+      AND COALESCE(m.production_date, (m.occurred_at AT TIME ZONE 'America/Fortaleza')::date) BETWEEN $2::date AND $3::date
     GROUP BY ml.item_id
 )
 SELECT i.id,i.name,i.unit_code,COALESCE(p.qty,0),COALESCE(p.value,0),COALESCE(a.qty,0),COALESCE(a.value,0)

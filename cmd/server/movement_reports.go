@@ -10,6 +10,7 @@ import (
 
 type movementReportRow struct {
 	OccurredAt     time.Time `json:"occurred_at"`
+	ProductionDate string    `json:"production_date"`
 	MovementID     int64     `json:"movement_id"`
 	Type           string    `json:"type"`
 	Item           string    `json:"item"`
@@ -27,7 +28,7 @@ type movementReportRow struct {
 
 func (a *app) listMovementReport(ctx context.Context, typ string, start, end time.Time, warehouseID int64) ([]movementReportRow, error) {
 	rows, err := a.db.QueryContext(ctx, `
-SELECT m.occurred_at,m.id,m.movement_type,i.name,
+SELECT m.occurred_at,CASE WHEN m.movement_type='SAIDA' THEN COALESCE(m.production_date::text, (m.occurred_at AT TIME ZONE 'America/Fortaleza')::date::text) ELSE '' END,m.id,m.movement_type,i.name,
        COALESCE(NULLIF(s.name,''),NULLIF(s.brand,''),''),
        COALESCE(s.barcode,''),w.id,w.name,ml.quantity::text,i.unit_code,
        ml.unit_cost::numeric(14,4)::text,
@@ -51,7 +52,7 @@ ORDER BY m.occurred_at,m.id,ml.id`, typ, start, end, warehouseID)
 	out := []movementReportRow{}
 	for rows.Next() {
 		var x movementReportRow
-		if err := rows.Scan(&x.OccurredAt, &x.MovementID, &x.Type, &x.Item, &x.SKU, &x.Barcode, &x.WarehouseID, &x.Warehouse, &x.Quantity, &x.Unit, &x.UnitCost, &x.DocumentNumber, &x.SupplierName, &x.Responsible); err != nil {
+		if err := rows.Scan(&x.OccurredAt, &x.ProductionDate, &x.MovementID, &x.Type, &x.Item, &x.SKU, &x.Barcode, &x.WarehouseID, &x.Warehouse, &x.Quantity, &x.Unit, &x.UnitCost, &x.DocumentNumber, &x.SupplierName, &x.Responsible); err != nil {
 			return nil, err
 		}
 		out = append(out, x)
@@ -87,8 +88,6 @@ func (a *app) handleMovementReport(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
-
-
 
 type balanceReportRow struct {
 	Item        string `json:"item"`
@@ -127,32 +126,32 @@ ORDER BY i.name,b.name,w.name`, before, warehouseID)
 	out := []balanceReportRow{}
 	for rows.Next() {
 		var x balanceReportRow
-		if err := rows.Scan(&x.Item,&x.Brand,&x.WarehouseID,&x.Warehouse,&x.Quantity,&x.Unit,&x.AvgCost); err != nil {
+		if err := rows.Scan(&x.Item, &x.Brand, &x.WarehouseID, &x.Warehouse, &x.Quantity, &x.Unit, &x.AvgCost); err != nil {
 			return nil, err
 		}
-		out=append(out,x)
+		out = append(out, x)
 	}
-	return out,rows.Err()
+	return out, rows.Err()
 }
 
 func (a *app) handleBalanceReport(w http.ResponseWriter, r *http.Request) {
 	before, err := time.Parse(time.RFC3339, r.URL.Query().Get("before"))
 	if err != nil {
-		writeJSONError(w,http.StatusBadRequest,"Data do saldo inválida.")
+		writeJSONError(w, http.StatusBadRequest, "Data do saldo inválida.")
 		return
 	}
 	var warehouseID int64
-	if raw:=strings.TrimSpace(r.URL.Query().Get("warehouse_id")); raw!="" {
-		warehouseID,err=strconv.ParseInt(raw,10,64)
-		if err!=nil || warehouseID<=0 {
-			writeJSONError(w,http.StatusBadRequest,"Depósito inválido.")
+	if raw := strings.TrimSpace(r.URL.Query().Get("warehouse_id")); raw != "" {
+		warehouseID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || warehouseID <= 0 {
+			writeJSONError(w, http.StatusBadRequest, "Depósito inválido.")
 			return
 		}
 	}
-	out,err:=a.listBalanceReport(r.Context(),before,warehouseID)
-	if err!=nil {
-		writeJSONError(w,http.StatusInternalServerError,"Não foi possível consultar o saldo.")
+	out, err := a.listBalanceReport(r.Context(), before, warehouseID)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "Não foi possível consultar o saldo.")
 		return
 	}
-	writeJSON(w,http.StatusOK,out)
+	writeJSON(w, http.StatusOK, out)
 }

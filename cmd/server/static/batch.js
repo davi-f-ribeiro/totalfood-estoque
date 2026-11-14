@@ -15,13 +15,14 @@ const verb={entry:'Entrada',exit:'Saída',transfer:'Transferência'}[kind];
 const endpoint='/api/movements/'+kind+'/batch';
 const $=id=>document.getElementById(id);
 const wh=$('batchWarehouse'),to=$('batchWarehouseTo'),search=$('batchSearch'),lookup=$('batchLookup'),feedback=$('batchFeedback'),
-  table=$('batchTable'),facts=$('batchFacts'),doc=$('batchDocument'),notes=$('batchNotes'),status=$('batchStatus'),
+  table=$('batchTable'),facts=$('batchFacts'),doc=$('batchDocument'),notes=$('batchNotes'),productionDate=$('batchProductionDate'),status=$('batchStatus'),
   submit=$('batchSubmit'),clearBtn=$('batchClear'),addBtn=$('batchAdd'),recentBox=$('batchRecentBox'),recent=$('batchRecent'),
   pendingBox=$('batchPending'),pendingText=$('batchPendingText'),checkBtn=$('batchCheck'),retryBtn=$('batchRetry'),discardBtn=$('batchDiscard');
 
 let lines=[],warehouses=[],seq=0,pending=null,pendingState='',launches=[];
 
 view.hidden=false;
+$('batchProductionDateWrap').hidden=isEntry||isTransfer;productionDate.required=!isEntry&&!isTransfer;productionDate.value=todayProductionDate();
 $('batchOriginLabel').textContent=isTransfer?'Origem':'Depósito';
 $('batchDestWrap').hidden=!isTransfer;
 
@@ -102,7 +103,7 @@ function routeText(){
 }
 function renderFacts(){
   const total=lines.reduce((n,l)=>n+num(l.qty),0);
-  const rows=[['Operação',verb],['Produtos',String(lines.length)],['Embalagens',fmt(total,4)],[isTransfer?'Rota':'Depósito',routeText()]];
+  const rows=[['Operação',verb],['Produtos',String(lines.length)],['Embalagens',fmt(total,4)],[isTransfer?'Rota':'Depósito',routeText()]];if(!isEntry&&!isTransfer)rows.push(['Produção em',productionDate.value||'Não informada']);
   facts.textContent='';
   rows.forEach(([k,v])=>{const d=document.createElement('div');const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;d.append(dt,dd);facts.append(d)});
   const n=lines.length;
@@ -160,7 +161,7 @@ function syncDestination(){
   if(keep&&String(keep)!==String(wh.value))to.value=keep;
 }
 wh.addEventListener('change',()=>{syncDestination();refreshComputed()});
-to.addEventListener('change',renderFacts);
+to.addEventListener('change',renderFacts);productionDate.addEventListener('change',renderFacts);
 async function loadWarehousesForBatch(){
   try{warehouses=await api('/api/warehouses')}catch(err){note('error',uiErrorMessage(err,'Não foi possível carregar os depósitos.'));return}
   fillSelect(wh,warehouses,isTransfer?'Escolha a origem':'Escolha o depósito');
@@ -174,6 +175,7 @@ function validate(){
   if(pending){note('error','Há um lançamento sem confirmação. Toque em “Conferir” antes de fazer outro.');return false}
   if(!wh.value){note('error',isTransfer?'Escolha o depósito de origem.':'Escolha o depósito.');wh.focus();return false}
   if(isTransfer){if(!to.value){note('error','Escolha o depósito de destino.');to.focus();return false}if(to.value===wh.value){note('error','O destino precisa ser diferente da origem.');return false}}
+  if(!isEntry&&!isTransfer&&!productionDate.value){note('error','Informe a data de produção.');productionDate.focus();return false}
   if(!lines.length){note('error','Adicione ao menos um produto ao lote.');search.focus();return false}
   for(let i=0;i<lines.length;i++){
     const l=lines[i],row=table.querySelector('[data-key="'+l.key+'"]'),label=skuLabel(l).item;
@@ -187,6 +189,7 @@ function validate(){
 function buildBody(){
   const body={operation_id:newOperationID(),quantity_semantics:'presentation',document_number:doc.value,notes:notes.value,
     lines:lines.map(l=>{const o={sku_id:l.sku_id,quantity:requestDecimal(l.qty)};if(isEntry)o.unit_cost=requestDecimal(l.price);return o})};
+  if(!isEntry&&!isTransfer)body.production_date=productionDate.value;
   if(isTransfer){body.warehouse_from_id=+wh.value;body.warehouse_to_id=+to.value}else body.warehouse_id=+wh.value;
   return body;
 }
@@ -207,7 +210,7 @@ async function dropPending(){
   if(id&&store()){try{await store().clearPending('movement',id)}catch(e){}}
   pending=null;pendingState='';pendingBox.hidden=true;retryBtn.hidden=true;discardBtn.hidden=true;lock(false);renderFacts();
 }
-function lock(on){[wh,to,search,addBtn,doc,notes].forEach(el=>{el.disabled=on});table.querySelectorAll('input,button').forEach(el=>{el.disabled=on})}
+function lock(on){[wh,to,search,addBtn,doc,notes,productionDate].forEach(el=>{el.disabled=on});table.querySelectorAll('input,button').forEach(el=>{el.disabled=on})}
 function showPending(retryable,discardable){
   disarmDiscard(discardBtn);pendingBox.hidden=false;
   const name=pending.url.includes('/entry')?'Entrada':pending.url.includes('/exit')?'Saída':'Transferência';
@@ -227,7 +230,7 @@ function renderRecent(){
     recent.append(r);
   });
 }
-function reset(){lines=[];doc.value='';notes.value='';search.value='';hideLookup();lookupNote('','');renderTable()}
+function reset(){lines=[];doc.value='';notes.value='';productionDate.value=todayProductionDate();search.value='';hideLookup();lookupNote('','');renderTable()}
 async function confirmed(text){
   launches.unshift(summaryOfLaunch());
   await dropPending();
