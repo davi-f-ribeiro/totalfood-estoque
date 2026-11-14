@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="csrf-token" content="{{.CSRF}}">
+<meta name="current-user-id" content="{{.User.ID}}">
+<title>Requisições · Gestão de Estoque</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/material_requests.css">
+</head>
+<body>{{template "header" .}}{{template "nav" .}}
+<main class="main materials-main" id="materialsRoot" data-can-write="{{if .CanMaterialWrite}}1{{else}}0{{end}}" data-can-fulfill="{{if .CanMaterialFulfill}}1{{else}}0{{end}}" data-can-receive="{{if .CanMaterialReceive}}1{{else}}0{{end}}">
+  <h1>Requisições de material</h1>
+  <p class="hint">Solicite por material. O estoque escolhe a apresentação e confirma a saída física na entrega.</p>
+  <div id="materialPending" class="impact-warning" role="status" hidden>
+    <strong>Operação sem confirmação</strong><p>Confira a conexão e reenvie o mesmo lançamento sem duplicar.</p>
+    <button type="button" id="materialRetry">Enviar de novo</button>
+  </div>
+  <div id="materialStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+  {{if .CanMaterialWrite}}
+  <section class="panel material-create" aria-labelledby="materialCreateTitle">
+    <h2 id="materialCreateTitle">Nova requisição</h2>
+    <form id="materialCreateForm" novalidate>
+      <div class="material-fields">
+        <label>Unidade solicitante<input id="materialUnit" maxlength="120" autocomplete="organization" required placeholder="Ex.: Cozinha Central"></label>
+        <label>Entrega desejada<input id="materialDeliveryDate" type="date" required></label>
+        <label>Produção em<input id="materialProductionDate" type="date" required></label>
+        <label>Serviço<select id="materialService" required><option value="cafe">Café da manhã</option><option value="almoco">Almoço</option><option value="jantar">Jantar</option></select></label>
+      </div>
+      <section aria-label="Materiais solicitados" class="material-products">
+        <label for="materialSearch">Adicionar material</label>
+        <input id="materialSearch" type="search" autocomplete="off" placeholder="Digite o nome do material">
+        <div id="materialMatches" class="material-matches" aria-live="polite"></div>
+        <div id="materialDraft" class="material-draft" aria-live="polite"></div>
+      </section>
+      <label>Observação (opcional)<textarea id="materialNotes" rows="2" maxlength="1000" placeholder="Informações para o estoque"></textarea></label>
+      <button type="submit" id="materialCreateSubmit">Enviar requisição</button>
+    </form>
+  </section>
+  {{end}}
+  <section class="panel material-list" aria-labelledby="materialListTitle">
+    <div class="material-toolbar"><h2 id="materialListTitle">Requisições</h2><button class="secondary" id="materialRefresh" type="button">Atualizar</button></div>
+    <div id="materialList" class="material-request-list" aria-live="polite"><p>Carregando requisições…</p></div>
+  </section>
+  <section class="panel material-detail" id="materialDetail" aria-labelledby="materialDetailTitle" hidden>
+    <div class="material-toolbar"><h2 id="materialDetailTitle">Detalhes</h2><button type="button" id="materialClose" class="secondary">Fechar</button></div>
+    <div id="materialDetailContent"></div>
+  </section>
+</main>
+<script src="/static/utils/offline-store.js" defer></script>
+<script src="/static/app.js" defer></script>
+<script src="/static/material_requests.js" defer></script>
+</body></html>

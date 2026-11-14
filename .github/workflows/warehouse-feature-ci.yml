@@ -40,7 +40,7 @@ jobs:
         with:
           node-version: '22'
       - name: JavaScript syntax
-        run: node --check cmd/server/static/app.js && node --check cmd/server/static/batch.js && node --check cmd/server/static/home.js
+        run: node --check cmd/server/static/app.js && node --check cmd/server/static/batch.js && node --check cmd/server/static/home.js && node --check cmd/server/static/material_requests.js
       - name: Go vet
         run: go vet ./...
       - name: Go tests with PostgreSQL 17

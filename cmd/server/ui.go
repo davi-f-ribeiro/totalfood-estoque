@@ -35,6 +35,10 @@ type uiData struct {
 	CanCosts           bool
 	CanCostsWrite      bool
 	CanPlanning        bool
+	CanMaterialRead    bool
+	CanMaterialWrite   bool
+	CanMaterialFulfill bool
+	CanMaterialReceive bool
 	CanPlanningWrite   bool
 	CanLogistics       bool
 	CanLogisticsWrite  bool
@@ -190,6 +194,10 @@ WHERE pp.profile_id=$1`, u.ProfileID)
 		CanCosts:           has("costs", "read"),
 		CanCostsWrite:      has("costs", "write"),
 		CanPlanning:        has("planning", "read"),
+		CanMaterialRead:    has("material_requests", "read"),
+		CanMaterialWrite:   has("material_requests", "write"),
+		CanMaterialFulfill: has("material_fulfillment", "write"),
+		CanMaterialReceive: has("material_receipts", "write"),
 		CanPlanningWrite:   has("planning", "write"),
 		CanLogistics:       has("logistics", "read"),
 		CanLogisticsWrite:  has("logistics", "write"),
@@ -257,6 +265,7 @@ func (a *app) redirectToAuthorizedHome(w http.ResponseWriter, r *http.Request) {
 		{data.CanAssets, "/assets"},
 		{data.CanCosts, "/recipes"},
 		{data.CanPlanning, "/planner"},
+		{data.CanMaterialRead, "/material-requests"},
 		{data.CanLogistics, "/logistics"},
 		{data.CanDispatch, "/dispatch"},
 		{data.CanDelivery, "/driver"},
