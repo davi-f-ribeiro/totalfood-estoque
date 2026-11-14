@@ -173,7 +173,7 @@ async function emitPurchase(e){
    setFeedback(status,'success',r.lines.length?'Solicitação emitida com '+r.lines.length+' item(ns).':'O estoque atual cobre o plano. Solicitação registrada sem itens.');loadPurchases()}
   catch(err){setFeedback(status,'error',uiErrorMessage(err,'Não foi possível emitir a solicitação. Tente de novo; o envio não será duplicado.'))}})}
 async function loadComparison(){
- let sec=$('comparisonSection');if(!sec)return;sec.textContent='';sec.append(el('h3',null,'Previsto x realizado'),el('p','hint','Realizado = saídas do estoque no período, de todos os depósitos. Ajustes de inventário e transferências não entram.'));
+ let sec=$('comparisonSection');if(!sec)return;sec.textContent='';sec.append(el('h3',null,'Previsto x realizado'),el('p','hint','Realizado = consumo pela data de produção informada na saída, de todos os depósitos. Saídas antigas usam a data da movimentação; ajustes e transferências não entram.'));
  try{let c=await api('/api/plans/'+current.plan.id+'/comparison');
   if(c.summary){let k=el('div','recipe-kpis');k.append(kpi('Gasto previsto',money(c.summary.planned_cost)),kpi('Gasto realizado',money(c.summary.actual_cost)),kpi('CMV previsto',pct(c.summary.planned_cmv)),kpi('CMV realizado',c.summary.actual_cmv==null?'Falta lançar':pct(c.summary.actual_cmv)));sec.append(k)}
   if(c.meals_without_actual>0)sec.append(el('p','impact-warning',c.meals_without_actual+' refeição(ões) sem quantidade real. O faturamento e o CMV realizados aparecem quando todas forem lançadas.'));

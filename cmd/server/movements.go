@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 const presentationQuantitySemantics = "presentation"
@@ -21,6 +22,7 @@ var (
 	errMovementOperationIDMissing    = fmt.Errorf("%w: operation id missing", errValidation)
 	errMovementProductRequired       = fmt.Errorf("%w: product required", errValidation)
 	errMovementQuantityInvalid       = fmt.Errorf("%w: invalid quantity", errValidation)
+	errMovementProductionDateInvalid = fmt.Errorf("%w: invalid production date", errValidation)
 	errMovementCostInvalid           = fmt.Errorf("%w: invalid unit cost", errValidation)
 	errMovementWarehouseRequired     = fmt.Errorf("%w: warehouse required", errValidation)
 	errTransferWarehousesRequired    = fmt.Errorf("%w: transfer warehouses required", errValidation)
@@ -41,19 +43,20 @@ func (e insufficientStockError) Error() string { return errInsufficientStock.Err
 func (e insufficientStockError) Unwrap() error { return errInsufficientStock }
 
 type movementRequest struct {
-	OperationID     string `json:"operation_id"`
-	SKUID           int64  `json:"sku_id"`
-	WarehouseID     int64  `json:"warehouse_id"`
-	FromWarehouseID int64  `json:"warehouse_from_id"`
-	ToWarehouseID   int64  `json:"warehouse_to_id"`
-	Quantity        string `json:"quantity"`
+	OperationID       string `json:"operation_id"`
+	SKUID             int64  `json:"sku_id"`
+	WarehouseID       int64  `json:"warehouse_id"`
+	FromWarehouseID   int64  `json:"warehouse_from_id"`
+	ToWarehouseID     int64  `json:"warehouse_to_id"`
+	Quantity          string `json:"quantity"`
 	QuantitySemantics string `json:"quantity_semantics,omitempty"`
-	UnitCost        string `json:"unit_cost"`
-	DocumentNumber  string `json:"document_number"`
-	Responsible     string `json:"responsible"`
-	SupplierName    string `json:"supplier_name"`
-	Notes           string `json:"notes"`
-	UserID          int64  `json:"-"`
+	UnitCost          string `json:"unit_cost"`
+	DocumentNumber    string `json:"document_number"`
+	Responsible       string `json:"responsible"`
+	SupplierName      string `json:"supplier_name"`
+	Notes             string `json:"notes"`
+	ProductionDate    string `json:"production_date,omitempty"`
+	UserID            int64  `json:"-"`
 }
 
 type operationResult struct {
@@ -166,8 +169,13 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 	req.Quantity = normalizeDecimalInput(req.Quantity)
 	req.QuantitySemantics = strings.TrimSpace(req.QuantitySemantics)
 	req.UnitCost = normalizeDecimalInput(req.UnitCost)
+	req.ProductionDate = strings.TrimSpace(req.ProductionDate)
 	if req.QuantitySemantics != "" && req.QuantitySemantics != presentationQuantitySemantics {
 		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
+		return req, "", false
+	}
+	if !validProductionDate(req.ProductionDate) {
+		writeJSONError(w, http.StatusBadRequest, "Informe uma data de produção válida (AAAA-MM-DD).")
 		return req, "", false
 	}
 	body, _ := json.Marshal(req)
@@ -189,6 +197,15 @@ func decodeMovementRequest(w http.ResponseWriter, r *http.Request, requireCost b
 		return req, "", false
 	}
 	return req, hex.EncodeToString(h[:]), true
+}
+
+// Datas futuras são válidas: a saída física pode abastecer produção de outro dia.
+func validProductionDate(value string) bool {
+	if value == "" {
+		return true // compatibilidade: saídas antigas e integrações sem este campo
+	}
+	day, err := time.Parse("2006-01-02", value)
+	return err == nil && day.Year() >= 1 && day.Format("2006-01-02") == value
 }
 
 func positiveDecimal(v string) bool {

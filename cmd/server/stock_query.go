@@ -83,6 +83,8 @@ func (a *app) writeOperationResponse(w http.ResponseWriter, typ, operationID str
 		status, msg = http.StatusBadRequest, "Escolha um produto antes de registrar o lançamento."
 	case errors.Is(err, errMovementQuantityInvalid):
 		status, msg = http.StatusBadRequest, "Digite uma quantidade maior que zero, com até 4 casas decimais."
+	case errors.Is(err, errMovementProductionDateInvalid):
+		status, msg = http.StatusBadRequest, "Informe uma data de produção válida (AAAA-MM-DD), apenas para saídas."
 	case errors.Is(err, errMovementCostInvalid):
 		status, msg = http.StatusBadRequest, "Digite um custo válido, de zero ou mais, com até 4 casas decimais."
 	case errors.Is(err, errMovementWarehouseRequired):

@@ -37,6 +37,7 @@ type batchRequest struct {
 	DocumentNumber    string             `json:"document_number"`
 	SupplierName      string             `json:"supplier_name"`
 	Notes             string             `json:"notes"`
+	ProductionDate    string             `json:"production_date,omitempty"`
 	Lines             []batchLineRequest `json:"lines"`
 }
 
@@ -70,6 +71,7 @@ func (a *app) handleBatch(typ string) http.HandlerFunc {
 		}
 		req.OperationID = strings.TrimSpace(req.OperationID)
 		req.QuantitySemantics = strings.TrimSpace(req.QuantitySemantics)
+		req.ProductionDate = strings.TrimSpace(req.ProductionDate)
 		if req.OperationID == "" || strings.Contains(req.OperationID, ":") {
 			writeJSONError(w, http.StatusBadRequest, "Não foi possível identificar este envio. Atualize a página e tente de novo.")
 			return
@@ -135,6 +137,9 @@ func lineOperationID(batchID string, n int) string { return fmt.Sprintf("%s:%d",
 
 func (a *app) createBatch(ctx context.Context, typ string, req batchRequest, userID int64) (batchResult, error) {
 	movementType := map[string]string{"entry": "ENTRADA", "exit": "SAIDA", "transfer": "TRANSFERENCIA"}[typ]
+	if !validProductionDate(req.ProductionDate) || (typ != "exit" && req.ProductionDate != "") {
+		return batchResult{}, errMovementProductionDateInvalid
+	}
 	seen := make(map[int64]struct{}, len(req.Lines))
 	for i := range req.Lines {
 		l := &req.Lines[i]
@@ -191,6 +196,7 @@ func (a *app) createBatch(ctx context.Context, typ string, req batchRequest, use
 				DocumentNumber:    strings.TrimSpace(req.DocumentNumber),
 				SupplierName:      strings.TrimSpace(req.SupplierName),
 				Notes:             strings.TrimSpace(req.Notes),
+				ProductionDate:    req.ProductionDate,
 				UserID:            userID,
 			}
 			body, _ := json.Marshal(mr)
