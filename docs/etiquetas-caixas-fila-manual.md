@@ -5,6 +5,7 @@
 - O recebimento em **/crates** aproveita o SKU existente de unidade base KG, o movimento ENTRADA, os lotes do WMS e os depósitos; não cria estoque paralelo.
 - Cada caixa recebe um ID imutável `CX-000001` e uma posição X/Y no recebimento. Peso líquido inicial e atual são armazenados com três casas decimais.
 - NF e fornecedor são vinculados ao movimento. O lote interno é o ID original de `stock_lots`; o lote de origem informado pelo vendedor é armazenado separadamente e pode ficar ausente. O ID interno não prova por si só a rastreabilidade de origem.
+- A tela **/crates** lê o QR Code via câmera usando o scanner já disponível no WMS (com fallback manual).
 - A pesagem de retorno com peso inferior realiza SAÍDA vinculada ao lote **específico** da caixa. Aumento de peso exige nova entrada/correção auditável, não está permitido no fluxo de retorno.
 - A transferência da caixa realiza TRANSFERÊNCIA real entre depósitos, conserva o ID e o lote de recebimento, porém aponta a caixa para um lote de estoque no depósito de destino. O consumo posterior considera esse lote.
 - Saídas e transferências genéricas não podem alocar um lote atualmente associado a caixas rastreadas; use a operação individual.
@@ -30,6 +31,7 @@ O token é específico de dispositivo, armazenado como hash no servidor e não v
 | Transferência caixa | `POST /api/crates/{id}/transfer` | sessão, CSRF, movimento transferência |
 | Parear impressora | `POST /api/print/devices` | sessão, CSRF, admin depósitos |
 | Consultar impressoras | `GET /api/print/devices` | sessão, admin depósitos |
+| Revogar impressora | `POST /api/print/devices/{id}/revoke` | sessão, CSRF, admin depósitos |
 | Consultar fila | `GET /api/print/jobs` | sessão, movimento entrada |
 | Reenviar falha/resultado incerto | `POST /api/print/jobs/{id}/retry` | sessão, CSRF, movimento entrada |
 | Reservar trabalho | `POST /api/print/jobs/claim?format=zpl` | Bearer do ESP |

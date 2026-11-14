@@ -102,6 +102,13 @@ async function loadCrate(id){
  $('crateWeighNotes').value='';
  if($('crateTransferWarehouse'))$('crateTransferWarehouse').value='';
 }
+initScanner('scanCrate',async code=>{
+ const id=idFromCode(code);
+ if(!id){note('error','O QR Code não contém um código de caixa válido.');return}
+ $('crateFind').value='CX-'+String(id).padStart(6,'0');
+ try{await loadCrate(id);note('success','Caixa identificada pelo QR Code.');}
+ catch(err){note('error',uiErrorMessage(err,'Não foi possível consultar a caixa.'))}
+},qrFormats);
 $('crateFindForm').addEventListener('submit',async e=>{
  e.preventDefault();const id=idFromCode($('crateFind').value);
  if(!id){note('error','Digite um código no formato CX-000123.');return}

@@ -38,7 +38,15 @@
   <section class="panel" aria-labelledby="weighTitle">
    <h2 id="weighTitle">Retorno da cozinha</h2>
    <form id="crateFindForm">
-    <label>Identificação da caixa<input id="crateFind" placeholder="CX-000123" autocomplete="off" required></label>
+    <div class="product-scan">
+      <label>Identificação da caixa<input id="crateFind" placeholder="CX-000123" autocomplete="off" required></label>
+      <button id="scanCrate" type="button" class="secondary" aria-label="Ler QR Code da caixa">Ler QR Code</button>
+    </div>
+    <section id="scanner" class="scanner" hidden>
+      <video id="scanner-video" autoplay muted playsinline webkit-playsinline></video>
+      <p id="scanStatus" class="msg" aria-live="polite"></p>
+      <button id="scanCancel" class="secondary" type="button">Fechar câmera</button>
+    </section>
     <button type="submit" class="secondary">Localizar caixa</button>
    </form>
    <div id="crateDetail" hidden>
@@ -75,6 +83,7 @@
   </section>
   {{end}}
 </main>
+<script src="/static/vendor/zxing-browser.min.js" defer></script>
 <script src="/static/app.js" defer></script>
 <script src="/static/crates.js" defer></script>
 </body></html>
