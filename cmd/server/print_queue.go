@@ -39,29 +39,46 @@ func printerText(s string, max int) string {
 	}
 	return b.String()
 }
+
+// crateZPL follows the existing 60x60mm TotalFood label visual identity.
+// LOGODP.GRF is provisioned in Zebra volatile memory by the ESP32 firmware.
 func crateZPL(c crateRow) string {
-	name := printerText(strings.ToUpper(c.Product), 34)
+	name := printerText(strings.ToUpper(c.Product), 44)
 	doc := printerText(c.Document, 20)
 	if doc == "" {
 		doc = "NAO INFORMADO"
 	}
+	code := printerText(c.Code, 32)
+	received := printerText(c.Received, 20)
 	return fmt.Sprintf(`^XA
 ^CI28
 ^PW480
 ^LL480
 ^LH0,0
-^FO20,12^A0N,31,25^FB440,2,4,L,0^FD%s^FS
-^FO20,99^A0N,48,45^FD%s KG^FS
-^FO20,163^A0N,26,24^FDCAIXA %d/%d^FS
-^FO20,205^A0N,28,25^FD%s^FS
-^FO20,258^A0N,24,21^FDENTRADA: %s^FS
-^FO20,299^A0N,24,21^FDLOTE: TF-%d^FS
-^FO20,340^A0N,19,15^FDNF: %s^FS
-^FO315,157^BQN,2,5^FDLA,%s^FS
-^FO20,425^A0N,20,20^FDTOTALFOOD - REV %d^FS
+^FX Logo TotalFood centralizado como no modelo Despacho.
+^FO160,10^XGR:LOGODP.GRF,1,1^FS
+^FO16,84^GB448,3,3^FS
+^FO16,94^A0N,28,23^FB448,2,3,L,0^FD%s^FS
+^FO16,154^A0N,23,19^FDCAIXA %d/%d^FS
+^FO16,183^A0N,24,20^FD%s^FS
+^FO16,214^A0N,23,19^FDPESO LIQ.:^FS
+^FO16,242^A0N,28,24^FD%s KG^FS
+^FO16,276^A0N,19,17^FDENTRADA: %s^FS
+^FO16,299^A0N,19,17^FDLOTE: TF-%d^FS
+^FO16,322^A0N,19,17^FDNF: %s^FS
+^FO315,157^BQN,2,4^FDLA,%s^FS
+^FO16,346^GB448,3,3^FS
+^FX Rodape institucional TotalFood.
+^FO16,354^A0N,21,19^FDTOTAL FOOD ALIMENTOS^FS
+^FO16,379^A0N,18,16^FDCNPJ: 17.053.741/0001-33^FS
+^FO16,402^A0N,18,16^FDRUA MARIO GUEDES, 50^FS
+^FO16,425^A0N,18,16^FDCEP 60811-012 - FORTALEZA, CE^FS
+^FO16,451^A0N,15,13^FDREV %d^FS
+^PQ1
 ^XZ
-`, name, strings.ReplaceAll(c.Weight, ".", ","), c.Position, c.Total, c.Code, c.Received, c.OriginLotID, doc, c.Code, c.Revision)
+`, name, c.Position, c.Total, code, strings.ReplaceAll(c.Weight, ".", ","), received, c.OriginLotID, doc, code, c.Revision)
 }
+
 func enqueueCrateLabel(ctx context.Context, tx *sql.Tx, crateID, actorID int64) error {
 	c, err := getCrate(ctx, tx, crateID, false)
 	if err != nil {
