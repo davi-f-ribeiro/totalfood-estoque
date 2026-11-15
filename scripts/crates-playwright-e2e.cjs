@@ -82,6 +82,7 @@ async function main(){
   await page.goto(base+'/crates',{waitUntil:'networkidle'});
   assert.equal(await page.locator('#crateWeights input').count(),1);
   assert.equal(await page.locator('#crateWarehouse option').count(),2);
+  const inViewport=sel=>page.locator(sel).evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=-1&&r.bottom<=innerHeight+1});
   let size=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(size[0]<=size[1],'Mobile horizontal overflow at load '+size);
   // A busca explica por que um produto não aparece, em vez de sumir com a lista.
@@ -92,6 +93,16 @@ async function main(){
   await page.getByText('Nenhum produto ativo encontrado com esse nome.',{exact:false}).waitFor();
   await page.locator('#crateSearch').fill('Lata');
   await page.getByText('Muitos produtos com esse nome e nenhum em KG entre os primeiros. Digite mais do nome.').waitFor();
+  // Aviso do formulário fica ao lado do botão e dentro da tela (antes ficava no
+  // topo da página, fora da vista no celular).
+  await page.locator('#crateCount').fill('2');
+  await page.locator('#crateWeights input').nth(0).fill('20,000');
+  await page.locator('#crateWeights input').nth(1).fill('18,500');
+  await page.locator('#crateReceiveSubmit').click();
+  await page.locator('#crateReceiveStatus',{hasText:'Selecione um produto da lista.'}).waitFor();
+  assert.equal(await page.locator('#crateNotice').isVisible(),false,'Aviso do recebimento não pode ir para o topo');
+  assert(await inViewport('#crateReceiveStatus'),'Aviso do recebimento precisa aparecer na tela');
+  assert.match(await page.locator('#crateSelected').innerText(),/unidade base deve ser KG/);
   await page.locator('#crateSearch').fill('Tomate');
   await page.locator('#crateProductLookup button').first().waitFor();
   await page.locator('#crateProductLookup button').first().click();
@@ -107,7 +118,8 @@ async function main(){
   assert.equal(state.receipts.size,1,'O servidor gravou apesar de resposta 503');
   assert.equal(state.crates.length,2,'Primeira requisição criou só duas caixas');
   await page.locator('#crateReceiveSubmit').click();
-  await page.getByText('Entrada registrada e etiquetas adicionadas à fila.').waitFor();
+  await page.locator('#crateReceiveStatus',{hasText:'Entrada registrada e etiquetas adicionadas à fila.'}).waitFor();
+  assert(await inViewport('#crateReceiveStatus'),'Aviso de entrada registrada precisa aparecer na tela');
   const rec=state.requests.filter(r=>r.pathname==='/api/crates/receive');
   assert.equal(rec.length,2);
   assert.equal(rec[0].body.operation_id,rec[1].body.operation_id,'Idempotent retry');
@@ -123,11 +135,13 @@ async function main(){
   await page.locator('#crateDetail').waitFor({state:'visible'});
   await page.locator('#crateWeighWeight').fill('12,000');
   await page.locator('#crateWeighSubmit').click();
-  await page.getByText('Pesagem registrada. Nova etiqueta adicionada à fila.').waitFor();
+  await page.locator('#crateWeighStatus',{hasText:'Pesagem registrada. Nova etiqueta adicionada à fila.'}).waitFor();
+  assert(await inViewport('#crateWeighStatus'),'Aviso da pesagem precisa aparecer na tela');
   assert.equal(state.weighs.size,1);
   await page.locator('#crateTransferWarehouse').selectOption('2');
   await page.locator('#crateTransferSubmit').click();
-  await page.getByText('Caixa transferida sem alterar sua identificação.').waitFor();
+  await page.locator('#crateTransferStatus',{hasText:'Caixa transferida sem alterar sua identificação.'}).waitFor();
+  assert(await inViewport('#crateTransferStatus'),'Aviso da transferência precisa aparecer na tela');
   assert.equal(state.crates[0].warehouse_id,2);
   await page.locator('#cratePrinterName').fill('Zebra cozinha');
   await page.locator('#cratePrinterForm button[type=submit]').click();

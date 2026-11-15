@@ -17,3 +17,11 @@
 .crate-job{display:flex;justify-content:space-between;align-items:center;gap:.6rem}
 .crate-job button{flex-shrink:0}
 @media(max-width:580px){.crates-main .crates-grid{grid-template-columns:1fr}.crate-job{align-items:flex-start;flex-direction:column}.crate-weights .crate-weight-row label{grid-template-columns:4.8rem 1fr}}
+/* Rótulo fora do campo (busca de produto) com o mesmo espaço dos demais. */
+.crate-field{display:grid;gap:6px}
+.crate-field label{margin:0}
+/* Transferência é outra ação: separada da pesagem acima. */
+#crateTransferForm{margin-top:24px;padding-top:20px;border-top:1px solid var(--border,#d6dce2)}
+#crateTransferForm h3{margin-top:0}
+/* Aviso dentro da lista de busca (nenhum produto, fora de KG): mesmo recuo das opções. */
+.crates-main .lookup .hint{margin:0;padding:10px 12px}
