@@ -13,3 +13,7 @@ coverage.out
 .cache/
 .hermes/
 ui-review-screenshots/
+
+# Firmware CI source contract checks
+__pycache__/
+*.pyc

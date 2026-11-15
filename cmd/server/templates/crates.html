@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="csrf-token" content="{{.CSRF}}">
+<title>Caixas · Gestão de Estoque</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/crates.css">
+</head>
+<body>{{template "header" .}}{{template "nav" .}}
+<main class="main crates-main">
+  <h1>Caixas de hortifruti</h1>
+  <p class="hint">Identifique as caixas no recebimento e mantenha o mesmo código quando voltarem da cozinha.</p>
+  <div id="crateNotice" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+  <section class="panel" aria-labelledby="receiveTitle">
+   <h2 id="receiveTitle">Receber e identificar caixas</h2>
+   <form id="crateReceiveForm">
+    <label for="crateSearch">Produto</label>
+    <input id="crateSearch" type="search" autocomplete="off" required placeholder="Digite tomate, batata, cenoura…">
+    <input type="hidden" id="crateSku">
+    <div class="lookup" id="crateProductLookup" hidden></div>
+    <p id="crateSelected" class="hint">Escolha o produto na lista. Para hortifruti, a unidade base deve ser KG.</p>
+    <div class="crates-grid">
+      <label>Depósito<select id="crateWarehouse" required></select></label>
+      <label>Número de caixas<input id="crateCount" type="number" min="1" max="50" step="1" value="1" required></label>
+      <label>Nota ou documento<input id="crateDocument" maxlength="120" placeholder="Número da NF, quando houver"></label>
+      <label>Fornecedor<input id="crateSupplier" maxlength="200" autocomplete="off" placeholder="Permissionário da CEASA"></label>
+      <label>Lote de origem (quando informado)<input id="crateOriginLot" maxlength="100" placeholder="Não inventar lote do fornecedor"></label>
+      <label>Custo por kg (R$)<input id="crateCost" inputmode="decimal" value="0" required></label>
+    </div>
+    <h3>Pesagem individual</h3>
+    <div id="crateWeights" class="crate-weights"></div>
+    <p class="crate-total" aria-live="polite">Peso total: <strong id="crateTotal">0,000 kg</strong></p>
+    <button type="submit" id="crateReceiveSubmit">Registrar entrada e gerar etiquetas</button>
+   </form>
+   <div id="crateReceiveResult" class="crate-results" aria-live="polite"></div>
+  </section>
+  <section class="panel" aria-labelledby="weighTitle">
+   <h2 id="weighTitle">Retorno da cozinha</h2>
+   <form id="crateFindForm">
+    <div class="product-scan">
+      <label>Identificação da caixa<input id="crateFind" placeholder="CX-000123" autocomplete="off" required></label>
+      <button id="scanCrate" type="button" class="secondary" aria-label="Ler QR Code da caixa">Ler QR Code</button>
+    </div>
+    <section id="scanner" class="scanner" hidden>
+      <video id="scanner-video" autoplay muted playsinline webkit-playsinline></video>
+      <p id="scanStatus" class="msg" aria-live="polite"></p>
+      <button id="scanCancel" class="secondary" type="button">Fechar câmera</button>
+    </section>
+    <button type="submit" class="secondary">Localizar caixa</button>
+   </form>
+   <div id="crateDetail" hidden>
+    <p id="crateCurrent" class="crate-current"></p>
+    <form id="crateWeighForm">
+     <label>Novo peso líquido (kg)<input id="crateWeighWeight" inputmode="decimal" required placeholder="12,000"></label>
+     <label>Observação (opcional)<input id="crateWeighNotes" maxlength="500" placeholder="Retorno da cozinha"></label>
+     <p class="hint">A redução do peso registra o consumo no estoque; o peso não pode aumentar nesta operação.</p>
+     <button type="submit" id="crateWeighSubmit">Salvar pesagem e reetiquetar</button>
+    </form>
+    {{if .CanTransfer}}<form id="crateTransferForm">
+      <h3>Transferir caixa</h3>
+      <label>Depósito de destino<select id="crateTransferWarehouse" required></select></label>
+      <p class="hint">A caixa mantém seu ID e lote de recebimento; o movimento entre depósitos é registrado no estoque.</p>
+      <button type="submit" class="secondary" id="crateTransferSubmit">Confirmar transferência</button>
+    </form>{{end}}
+   </div>
+  </section>
+  <section class="panel" aria-labelledby="queueTitle">
+   <h2 id="queueTitle">Fila de impressão</h2>
+   <p class="hint">As etiquetas aguardam no servidor. No ESP32, pressione <strong>Buscar e imprimir etiquetas</strong>.</p>
+   <button class="secondary" type="button" id="crateQueueRefresh">Atualizar fila</button>
+   <div id="cratePrintJobs" class="crate-jobs" aria-live="polite"></div>
+  </section>
+  {{if .CanWarehouseAdmin}}
+  <section class="panel" aria-labelledby="printerTitle">
+   <h2 id="printerTitle">Parear impressora</h2>
+   <p class="hint">Um código de acesso é criado apenas uma vez. Configure-o na tela local do ESP32; não o compartilhe.</p>
+   <form id="cratePrinterForm">
+     <label>Nome da impressora<input id="cratePrinterName" placeholder="Zebra Câmara Fria" required maxlength="60"></label>
+     <button type="submit" class="secondary">Criar acesso da impressora</button>
+   </form>
+   <div id="cratePrinterResult" class="crate-printer-result" hidden></div>
+  </section>
+  {{end}}
+</main>
+<script src="/static/vendor/zxing-browser.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+<script src="/static/crates.js" defer></script>
+</body></html>

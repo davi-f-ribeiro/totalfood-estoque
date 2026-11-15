@@ -57,6 +57,8 @@ jobs:
           exit $missing
       - name: JavaScript syntax
         run: node --check cmd/server/static/app.js && node --check cmd/server/static/batch.js && node --check cmd/server/static/home.js
+      - name: Firmware manual queue protocol checks (static)
+        run: python3 -m unittest discover -s firmware/tests -p 'test_*.py' -v
       - name: Go vet
         run: go vet ./...
       - name: Go tests with PostgreSQL 17
