@@ -489,3 +489,4 @@ button:disabled{background:var(--surface-secondary);color:var(--text-muted);bord
 .printer-token{margin-top:16px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-secondary);overflow-wrap:anywhere}
 .printer-token p{margin:0 0 8px}
 .printer-token code{display:block;margin:0 0 12px;user-select:all;white-space:normal;font-size:.95rem}
+.printer-actions{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:720px){.printer-actions{width:100%}.printer-actions button{flex:1 1 0}}

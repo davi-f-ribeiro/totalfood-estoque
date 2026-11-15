@@ -20,15 +20,41 @@ async function load(){
  for(const d of rows){
   const row=document.createElement('div');row.className='row warehouse-row';
   const info=document.createElement('div'),name=document.createElement('strong'),meta=document.createElement('small');
-  name.textContent=d.name;meta.textContent=d.active?'Ativa':'Revogada';
+  name.textContent=d.name;meta.textContent=(d.active?'Ativa':'Revogada')+testLabel(d);
   info.append(name,meta);row.append(info);
   if(d.active){
+   const actions=document.createElement('div');actions.className='printer-actions';
+   const test=document.createElement('button');test.type='button';test.className='secondary';test.textContent='Enviar teste';
+   test.addEventListener('click',()=>sendTest(d,test));
    const btn=document.createElement('button');btn.type='button';btn.className='danger';btn.textContent='Revogar';
    btn.addEventListener('click',()=>revoke(d,btn));
-   row.append(btn);
+   actions.append(test,btn);row.append(actions);
   }
   list.append(row);
  }
+}
+
+// Situação do último teste de cada impressora, para conferir se ele saiu.
+const testStates={PENDING:'aguardando o ESP32',CLAIMED:'sendo impresso',SENT:'enviado ao USB',
+ UNCERTAIN:'sem confirmação do ESP32',FAILED:'falhou no ESP32',CANCELLED:'cancelado'};
+function testLabel(d){
+ if(!d.last_test_status)return '';
+ return ' · Último teste '+(d.last_test_at||'')+': '+(testStates[d.last_test_status]||d.last_test_status);
+}
+
+async function sendTest(d,btn){
+ await runLocked(btn,async()=>{
+  setFeedback(listStatus,'loading','Enviando etiqueta de teste para '+d.name+'…');
+  try{
+   await api('/api/print/devices/'+d.id+'/test',{method:'POST',body:'{}'});
+   setFeedback(listStatus,'success','Etiqueta de teste na fila de '+d.name+'. No ESP32, toque em Buscar e imprimir etiquetas.');
+  }catch(err){
+   setFeedback(listStatus,'error',uncertainWriteError(err)
+    ?'Envio do teste sem confirmação. Atualize a página: se a impressora mostrar teste aguardando, ele está na fila.'
+    :uiErrorMessage(err,'Não foi possível enviar o teste para '+d.name+'.'));
+  }
+  try{await load()}catch{}
+ });
 }
 
 // Revogar pede um segundo toque, como as outras ações destrutivas do sistema.
