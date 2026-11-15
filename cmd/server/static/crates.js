@@ -38,7 +38,10 @@ $('crateSearch').addEventListener('input',()=>{
  if(q.length<2){$('crateProductLookup').hidden=true;return}
  searchTimer=setTimeout(async()=>{
   try{
-   const rows=(await productLookup(q)).filter(r=>r.unit==='KG');
+   const found=await productLookup(q);
+   if($('crateSearch').value.trim()!==q)return; // resposta de uma busca anterior
+   const rows=found.filter(r=>r.unit==='KG');
+   if(!rows.length){lookupHint(found);return}
    showLookup(rows,$('crateProductLookup'),r=>{
     selected=r;$('crateSku').value=r.sku_id;
     $('crateSearch').value=r.item;
@@ -47,6 +50,18 @@ $('crateSearch').addEventListener('input',()=>{
   }catch(e){note('error',uiErrorMessage(e,'Falha na busca de produtos.'))}
  },250);
 });
+// Caixas só aceitam produto com unidade base KG. Sem esse aviso a lista some e
+// o envio só diz "Selecione um produto da lista", sem dizer por quê.
+function lookupHint(found){
+ const box=$('crateProductLookup');box.replaceChildren();
+ const p=document.createElement('p');p.className='hint';
+ if(!found.length){p.textContent='Nenhum produto ativo encontrado com esse nome. Confira a grafia ou o cadastro.';}
+ else{
+  const names=[...new Set(found.map(r=>r.item+' ('+r.unit+')'))];
+  p.textContent='Encontrado só fora de KG: '+names.slice(0,3).join(', ')+(names.length>3?' e outros':'')+'. Caixas exigem produto com unidade base KG; ajuste o cadastro no Catálogo.';
+ }
+ box.append(p);box.hidden=false;
+}
 async function warehouses(){
  try{
   const rows=await api('/api/warehouses');for(const id of ['crateWarehouse','crateTransferWarehouse']){const s=$(id);if(!s)continue;s.replaceChildren();for(const w of rows){const o=document.createElement('option');o.value=w.id;o.textContent=w.name;s.append(o);}}

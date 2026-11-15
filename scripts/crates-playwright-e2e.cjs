@@ -37,7 +37,12 @@ async function main(){
     let body={};try{body=req.postDataJSON()||{}}catch{}
     state.requests.push({pathname,method:req.method(),body});
     if(pathname==='/api/warehouses')return respond(route,200,[{id:1,name:'VR'},{id:2,name:'Câmara Fria'}]);
-    if(pathname==='/api/products/lookup')return respond(route,200,[{sku_id:123,item:'Tomate E2E',brand:'',barcode:'',unit:'KG',content_quantity:'1'}]);
+    if(pathname==='/api/products/lookup'){
+      const q=new URL(req.url()).searchParams.get('q')||'';
+      if(/cenoura/i.test(q))return respond(route,200,[{sku_id:321,item:'Cenoura E2E',brand:'',barcode:'',unit:'UN',content_quantity:'1'}]);
+      if(/inexistente/i.test(q))return respond(route,200,[]);
+      return respond(route,200,[{sku_id:123,item:'Tomate E2E',brand:'',barcode:'',unit:'KG',content_quantity:'1'}]);
+    }
     if(pathname==='/api/print/jobs')return respond(route,200,{jobs:state.jobs});
     if(pathname==='/api/crates/receive'){
       let result=state.receipts.get(body.operation_id);
@@ -78,6 +83,12 @@ async function main(){
   assert.equal(await page.locator('#crateWarehouse option').count(),2);
   let size=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(size[0]<=size[1],'Mobile horizontal overflow at load '+size);
+  // A busca explica por que um produto não aparece, em vez de sumir com a lista.
+  await page.locator('#crateSearch').fill('Cenoura');
+  await page.getByText('Encontrado só fora de KG: Cenoura E2E (UN).',{exact:false}).waitFor();
+  assert.equal(await page.locator('#crateProductLookup button').count(),0,'Produto fora de KG não pode ser escolhido');
+  await page.locator('#crateSearch').fill('Inexistente');
+  await page.getByText('Nenhum produto ativo encontrado com esse nome.',{exact:false}).waitFor();
   await page.locator('#crateSearch').fill('Tomate');
   await page.locator('#crateProductLookup button').first().waitFor();
   await page.locator('#crateProductLookup button').first().click();

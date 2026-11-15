@@ -280,6 +280,8 @@ label.check{display:flex;align-items:center;gap:8px;min-height:44px;margin-botto
 .nav a[href="/inventory"]{--ico:url("/static/icons/contagem.svg")}
 .nav a[href="/reports"]{--ico:url("/static/icons/relatorios.svg")}
 .nav a[href="/admin"]{--ico:url("/static/icons/administracao.svg")}
+.nav a[href="/crates"]{--ico:url("/static/icons/caixas.svg")}
+.nav a[href="/material-requests"]{--ico:url("/static/icons/requisicoes.svg")}
 .nav-more-toggle{--ico:url("/static/icons/mais.svg")}
 
 /* Celular e tablet: barra inferior com o dia a dia e "Mais" */
@@ -288,6 +290,9 @@ label.check{display:flex;align-items:center;gap:8px;min-height:44px;margin-botto
   .nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);padding-bottom:env(safe-area-inset-bottom,0px);border-top:1px solid var(--border);box-shadow:0 -4px 14px rgba(16,24,40,.07)}
   .nav>.nav-label{display:none}
   .nav>a,.nav-more-toggle{flex-direction:column;justify-content:center;gap:3px;min-width:0;min-height:60px;padding:8px 2px 6px;border-top:3px solid transparent;font-size:.75rem;line-height:1.15;text-align:center}
+  /* Com 7 ou mais itens, rótulos longos (Requisições) quebram dentro da coluna em vez de invadir a vizinha. */
+  .nav>a{overflow-wrap:anywhere;hyphens:auto}
+  @media(max-width:420px){.nav>a,.nav-more-toggle{font-size:.6875rem;padding-left:1px;padding-right:1px}}
   .nav>a[aria-current="page"]{border-top-color:var(--brand-primary);background:transparent}
   .nav-more{display:block;position:relative;min-width:0}
   .nav-more-toggle{display:flex;width:100%;height:100%;border-radius:0}
