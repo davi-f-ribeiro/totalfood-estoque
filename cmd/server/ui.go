@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -313,10 +314,21 @@ func (a *app) handleWarehouses(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, out)
 }
+
+// Código de unidade (units.code), por exemplo KG, UN, L.
+var unitCodePattern = regexp.MustCompile(`^[A-Z]{1,10}$`)
+
 func (a *app) handleLookup(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if len(q) < 2 {
 		writeJSON(w, 200, []any{})
+		return
+	}
+	// unit=KG (opcional) filtra no banco, antes do limite de 10: a tela de
+	// Caixas só aceita KG e, filtrando depois, um produto em KG podia ficar de fora.
+	unit := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("unit")))
+	if unit != "" && !unitCodePattern.MatchString(unit) {
+		writeJSONError(w, http.StatusBadRequest, "Unidade inválida.")
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
@@ -327,8 +339,9 @@ JOIN brands b ON b.id=s.brand_id
 WHERE s.active=true AND i.active=true AND (b.active=true OR b.id=0)
   AND (s.barcode=$1 OR lower(i.name) LIKE lower($2) OR lower(b.name) LIKE lower($2)
        OR lower(COALESCE(s.name,'')) LIKE lower($2))
+  AND ($3='' OR i.unit_code=$3)
 ORDER BY i.name,b.name,s.content_quantity,s.id
-LIMIT 10`, q, "%"+q+"%")
+LIMIT 10`, q, "%"+q+"%", unit)
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return

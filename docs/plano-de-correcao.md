@@ -10,8 +10,8 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 |---|---|---|
 | 1.1 Bootstrap do Diretor com variáveis diferentes no Compose e no código | feito | #30 |
 | 1.2 Limite de login contando acertos e agrupando todos atrás do proxy | feito | #30 (`CLIENT_IP_HEADER`, `TRUSTED_PROXY_HOPS`) |
-| 1.3 Erros do banco identificados pelo texto da mensagem (`strings.Contains(err.Error(), ...)`) | parcial: um teste garante que todo nome procurado existe no esquema; a troca por `pgconn.PgError` segue aberta | 5S |
-| 1.4 `WriteTimeout` de 10 s para todas as rotas | aberto | — |
+| 1.3 Erros do banco identificados pelo texto da mensagem (`strings.Contains(err.Error(), ...)`) | feito: código SQLSTATE e nome exato da constraint (`db_errors.go`); "assets_tag" casava também a validação `assets_tag_check` | PR de higiene do servidor |
+| 1.4 `WriteTimeout` de 10 s para todas as rotas | feito: prazo próprio para relatórios, planejamento e fotos de entrega; a foto ampliava só a leitura, e a resposta podia se perder | PR de higiene do servidor |
 | 1.5 Dois arquivos de migration com número 033 | feito: número repetido agora reprova o teste; o 033 fica como exceção registrada | 5S |
 | 1.6 README, `check.sh` e documentação de deploy desatualizados | feito: deploy documentado só para Render + Neon (Cloud Run descartado) | 5S |
 | 1.7 CI verificando só parte dos arquivos JavaScript | feito: `node --check` em todos os JS de `static/` | 5S |
@@ -47,12 +47,12 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Configuração de impressoras misturada à operação de Caixas | feito | #32 |
 | Menu inferior: ícones faltando e rótulos sobrepostos com 8 itens | feito | #31 |
 | Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | feito | PR de Requisições |
-| Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | aberto | — |
+| Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | feito: `unit=KG` filtra no banco | PR de higiene do servidor |
 | Menu do celular com 4 atalhos por perfil; abas na tela de Caixas | decisão | — |
 
 ## Outros achados
 
 | Item | Situação |
 |---|---|
-| Healthcheck do Compose usa `wget`, que a imagem final não tem | aberto |
+| Healthcheck do Compose usa `wget`, que a imagem final não tem | feito: `/app/estoque healthcheck` |
 | `resetProductionAccess` tinha teste, mas nada na aplicação a chamava | feito: removida (5S) |

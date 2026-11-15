@@ -38,11 +38,14 @@ async function main(){
     state.requests.push({pathname,method:req.method(),body});
     if(pathname==='/api/warehouses')return respond(route,200,[{id:1,name:'VR'},{id:2,name:'Câmara Fria'}]);
     if(pathname==='/api/products/lookup'){
-      const q=new URL(req.url()).searchParams.get('q')||'';
-      if(/cenoura/i.test(q))return respond(route,200,[{sku_id:321,item:'Cenoura E2E',brand:'',barcode:'',unit:'UN',content_quantity:'1'}]);
-      if(/inexistente/i.test(q))return respond(route,200,[]);
-      if(/^lata$/i.test(q))return respond(route,200,Array.from({length:10},(_,i)=>({sku_id:400+i,item:'Lata '+i,brand:'',barcode:'',unit:'UN',content_quantity:'1'})));
-      return respond(route,200,[{sku_id:123,item:'Tomate E2E',brand:'',barcode:'',unit:'KG',content_quantity:'1'}]);
+      // Como o servidor: filtra a unidade antes do limite de 10 resultados.
+      const sp=new URL(req.url()).searchParams,q=sp.get('q')||'',unit=sp.get('unit')||'';
+      let all;
+      if(/cenoura/i.test(q))all=[{sku_id:321,item:'Cenoura E2E',brand:'',barcode:'',unit:'UN',content_quantity:'1'}];
+      else if(/inexistente/i.test(q))all=[];
+      else if(/^batata$/i.test(q))all=[...Array.from({length:12},(_,i)=>({sku_id:400+i,item:'Batata palha '+i,brand:'',barcode:'',unit:'UN',content_quantity:'1'})),{sku_id:450,item:'Batata inglesa',brand:'',barcode:'',unit:'KG',content_quantity:'1'}];
+      else all=[{sku_id:123,item:'Tomate E2E',brand:'',barcode:'',unit:'KG',content_quantity:'1'}];
+      return respond(route,200,all.filter(r=>!unit||r.unit===unit).slice(0,10));
     }
     if(pathname==='/api/print/jobs')return respond(route,200,{jobs:state.jobs});
     if(pathname==='/api/crates/receive'){
@@ -83,12 +86,16 @@ async function main(){
   assert(size[0]<=size[1],'Mobile horizontal overflow at load '+size);
   // A busca explica por que um produto não aparece, em vez de sumir com a lista.
   await page.locator('#crateSearch').fill('Cenoura');
-  await page.getByText('Encontrado só fora de KG: Cenoura E2E (UN).',{exact:false}).waitFor();
+  await page.getByText('Nenhum produto em KG com esse nome. Encontrado fora de KG: Cenoura E2E (UN).',{exact:false}).waitFor();
   assert.equal(await page.locator('#crateProductLookup button').count(),0,'Produto fora de KG não pode ser escolhido');
   await page.locator('#crateSearch').fill('Inexistente');
   await page.getByText('Nenhum produto ativo encontrado com esse nome.',{exact:false}).waitFor();
-  await page.locator('#crateSearch').fill('Lata');
-  await page.getByText('Muitos produtos com esse nome e nenhum em KG entre os primeiros. Digite mais do nome.').waitFor();
+  // 12 produtos em UN antes do único em KG: o servidor filtra KG antes do
+  // limite de 10, e o produto em KG aparece para escolher.
+  await page.locator('#crateSearch').fill('Batata');
+  await page.locator('#crateProductLookup button',{hasText:'Batata inglesa'}).waitFor();
+  assert.equal(await page.locator('#crateProductLookup button').count(),1,'Só produtos em KG na lista de Caixas');
+  assert(state.requests.some(r=>r.pathname==='/api/products/lookup'),'Busca de produtos chamada');
   // Aviso do formulário fica ao lado do botão e dentro da tela (antes ficava no
   // topo da página, fora da vista no celular).
   await page.locator('#crateCount').fill('2');
@@ -100,8 +107,7 @@ async function main(){
   assert(await inViewport('#crateReceiveStatus'),'Aviso do recebimento precisa aparecer na tela');
   assert.match(await page.locator('#crateSelected').innerText(),/unidade base deve ser KG/);
   await page.locator('#crateSearch').fill('Tomate');
-  await page.locator('#crateProductLookup button').first().waitFor();
-  await page.locator('#crateProductLookup button').first().click();
+  await page.locator('#crateProductLookup button',{hasText:'Tomate E2E'}).click();
   assert.equal(await page.locator('#crateSku').inputValue(),'123');
   await page.locator('#crateCount').fill('2');
   await page.locator('#crateWeights input').nth(0).fill('20,000');
