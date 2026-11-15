@@ -1,0 +1,47 @@
+name: firmware-ci
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'feature/**'
+      - 'fix/**'
+    paths:
+      - 'firmware/etiqueta_zd220/**'
+      - '.github/workflows/firmware-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  esp32-s3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+      - name: Install pinned ESP32 core and firmware libraries
+        run: |
+          URL=https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index --additional-urls "$URL"
+          arduino-cli core install esp32:esp32@3.0.5 --additional-urls "$URL"
+          arduino-cli lib install WiFiManager
+          arduino-cli lib install PubSubClient
+          arduino-cli core list
+          arduino-cli lib list
+      - name: Compile ESP32-S3 N16R8 (USB host + OTA)
+        run: |
+          arduino-cli compile \
+            --fqbn 'esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=default_16MB,PSRAM=opi,USBMode=hwcdc' \
+            --output-dir "$RUNNER_TEMP/totalfood-esp32-build" \
+            firmware/etiqueta_zd220
+      - name: Upload firmware build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: totalfood-esp32-s3-n16r8
+          path: ${{ runner.temp }}/totalfood-esp32-build/*.bin
+          if-no-files-found: error
+          retention-days: 7

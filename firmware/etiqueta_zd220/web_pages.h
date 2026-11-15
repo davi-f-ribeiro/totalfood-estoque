@@ -142,6 +142,7 @@ static const char PAGE_INDEX_A[] = R"HTML(
 <section class="panel" aria-labelledby="filaTitle">
   <h2 id="filaTitle">Fila TotalFood</h2>
   <p class="hint">Etiquetas do estoque ficam salvas no servidor. Esta busca só acontece ao apertar o botão.</p>
+  <p class="hint">Este botão exige acesso de administrador. Se receber uma mensagem de autenticação, abra <a href="/config">Configurações</a>, entre e volte para imprimir.</p>
   <button id="wmsPull" type="button" class="block">Buscar e imprimir etiquetas</button>
   <p id="wmsFeedback" class="operation-feedback" role="status" aria-live="polite" hidden></p>
 </section>

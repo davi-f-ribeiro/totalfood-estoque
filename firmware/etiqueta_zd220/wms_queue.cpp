@@ -52,15 +52,16 @@ static void configureHTTP(HTTPClient& http,WiFiClientSecure& client,const String
  http.setTimeout(105000); // Render cold start. This runs outside loop().
  http.setReuse(false);
 }
-static bool sendResult(const String& url,const String& token,uint64_t id,const String& claimToken,bool sent){
+static bool sendResult(const String& url,const String& token,uint64_t id,const String& claimToken,const String& state){
  WiFiClientSecure client;
  HTTPClient http;
- String endpoint=url+"/api/print/jobs/"+String((unsigned long)id)+(sent?"/ack":"/fail");
+ String endpoint=url+"/api/print/jobs/"+String((unsigned long)id)+(state=="SENT"?"/ack":state=="FAILED"?"/fail":"/uncertain");
  configureHTTP(http,client,endpoint);
  http.addHeader("Authorization","Bearer "+token);
  http.addHeader("Content-Type","application/json");
  String body="{\"claim_token\":\""+claimToken+"\"";
- if(!sent)body+=",\"error\":\"Falha de envio USB\"";
+ if(state=="FAILED")body+=",\"error\":\"Falha antes do envio USB\"";
+ if(state=="UNCERTAIN")body+=",\"error\":\"Reinicio ou falha durante envio USB\"";
  body+="}";
  int code=http.POST(body);
  http.end();
@@ -71,15 +72,15 @@ static bool finishPending(Preferences& prefs){
  if(state=="")return true;
  uint32_t id=prefs.getUInt("job",0);
  String claim=prefs.getString("claim","");
- if(state=="CLAIMED"){
-  // Crash may have occurred before, during or after USB submission.
-  // Do not resend automatically; the lease will move to UNCERTAIN on server.
-  prefs.remove("state");prefs.remove("job");prefs.remove("claim");
-  queueMessage("Trabalho anterior incerto; confira no WMS antes de reenviar.");
-  return true;
+ // Reset after claiming, but before saving a USB result, is always uncertain.
+ // Keep durable claim metadata until the server acknowledges the uncertainty.
+ if(state!="CLAIMED"&&state!="SENT"&&state!="FAILED"&&state!="UNCERTAIN"){
+  queueMessage("Estado de impressao desconhecido; confira a fila.");
+  return false;
  }
- if(!id||claim.length()<32){queueMessage("Confirmação local inválida; verifique a fila.");return false;}
- if(!sendResult(cloudURL,cloudToken,id,claim,state=="SENT")){
+ if(!id||claim.length()<32){queueMessage("Confirmacao local invalida; verifique a fila.");return false;}
+ String outcome=state=="CLAIMED"?"UNCERTAIN":state;
+ if(!sendResult(cloudURL,cloudToken,id,claim,outcome)){
   queueMessage("Sem confirmação do servidor. Toque novamente sem reimprimir.");
   return false;
  }
@@ -96,7 +97,14 @@ static void queueWorker(void*){
   queueMessage("Sem hora confiável para validar HTTPS.");
   prefs.end();queueActive=false;vTaskDelete(nullptr);return;
  }
+ // A reboot may have interrupted USB sending. Reconcile without reprinting
+ // and stop this button press so an operator can review the uncertainty.
+ String previous=prefs.getString("state","");
  if(!finishPending(prefs)){
+  prefs.end();queueActive=false;vTaskDelete(nullptr);return;
+ }
+ if(previous=="CLAIMED"||previous=="UNCERTAIN"){
+  queueMessage("Envio anterior incerto. Confira no WMS antes de reenviar.");
   prefs.end();queueActive=false;vTaskDelete(nullptr);return;
  }
  for(int count=0;count<maxJobsPerPress;count++){
@@ -129,15 +137,19 @@ static void queueWorker(void*){
    break; // Claim expires to UNCERTAIN, never silently retry.
   }
   // Durable intent BEFORE sending; a reset does not generate a duplicate.
-  prefs.putUInt("job",id);
-  prefs.putString("claim",claimToken);
-  prefs.putString("state","CLAIMED");
-  bool sent=false;
+  if(prefs.putUInt("job",id)==0 ||
+     prefs.putString("claim",claimToken)==0 ||
+     prefs.putString("state","CLAIMED")==0){
+   queueMessage("Falha ao salvar a reserva no ESP. Nenhuma etiqueta enviada.");
+   break; // The server will mark the unacknowledged lease UNCERTAIN.
+  }
+  bool sent=false, attempted=false;
   if(usbPrinterReady()){
    uint32_t start=millis();
    while(!usbPrinterIdle()&&millis()-start<10000)delay(50);
    if(usbPrinterIdle()){
     uint32_t errors=usbPrinterErrors();
+    attempted=true; // The driver may have sent some data even if it returns false.
     bool queued=usbPrinterSend((const uint8_t*)zpl.c_str(),zpl.length(),10000,false);
     if(queued){
      start=millis();
@@ -146,9 +158,17 @@ static void queueWorker(void*){
     }
    }
   }
-  prefs.putString("state",sent?"SENT":"FAILED");
+  String outcome=sent?"SENT":(attempted?"UNCERTAIN":"FAILED");
+  if(prefs.putString("state",outcome)==0){
+   queueMessage("Falha ao registrar resultado USB. Verifique a etiqueta no WMS.");
+   break; // CLAIMED remains the conservative recovery state.
+  }
   if(!finishPending(prefs)){break;}
-  if(!sent){queueMessage("Falha ao enviar para a Zebra. Confira a impressora.");break;}
+  if(!sent){
+   queueMessage(attempted?"Envio USB incerto. Confira a fila antes de reenviar.":
+                         "Impressora indisponivel. Etiqueta nao enviada.");
+   break;
+  }
   queuePrinted++;
   queueMessage("Etiqueta enviada ao USB. Buscando a próxima...");
   delay(20);

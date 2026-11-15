@@ -84,6 +84,7 @@ func (a *app) registerPrintHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/print/jobs/claim", a.requirePrinter(a.handlePrintClaim))
 	mux.HandleFunc("POST /api/print/jobs/{id}/ack", a.requirePrinter(a.handlePrintAck))
 	mux.HandleFunc("POST /api/print/jobs/{id}/fail", a.requirePrinter(a.handlePrintFail))
+	mux.HandleFunc("POST /api/print/jobs/{id}/uncertain", a.requirePrinter(a.handlePrintUncertain))
 }
 
 type printerCtxKey struct{}
@@ -199,7 +200,7 @@ func (a *app) handlePrintClaim(w http.ResponseWriter, r *http.Request) {
    ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1
   )
   UPDATE print_jobs j SET status='CLAIMED',device_id=$1,claim_token_hash=$2,claimed_at=now(),
-    claim_expires_at=now()+interval '2 minutes'
+    claim_expires_at=now()+interval '5 minutes'
   FROM next_job n WHERE j.id=n.id RETURNING j.id,j.crate_id,j.revision,j.zpl,j.status`, id, hashToken(token)).
 		Scan(&job.ID, &job.CrateID, &job.Revision, &job.ZPL, &job.Status)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -241,9 +242,16 @@ type printAckInput struct {
 	Error      string `json:"error,omitempty"`
 }
 
-func (a *app) handlePrintAck(w http.ResponseWriter, r *http.Request)  { a.completePrintJob(w, r, false) }
-func (a *app) handlePrintFail(w http.ResponseWriter, r *http.Request) { a.completePrintJob(w, r, true) }
-func (a *app) completePrintJob(w http.ResponseWriter, r *http.Request, failed bool) {
+func (a *app) handlePrintAck(w http.ResponseWriter, r *http.Request) {
+	a.completePrintJob(w, r, "SENT")
+}
+func (a *app) handlePrintFail(w http.ResponseWriter, r *http.Request) {
+	a.completePrintJob(w, r, "FAILED")
+}
+func (a *app) handlePrintUncertain(w http.ResponseWriter, r *http.Request) {
+	a.completePrintJob(w, r, "UNCERTAIN")
+}
+func (a *app) completePrintJob(w http.ResponseWriter, r *http.Request, status string) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || id <= 0 {
 		writeJSONError(w, 400, "Trabalho inválido.")
@@ -257,14 +265,18 @@ func (a *app) completePrintJob(w http.ResponseWriter, r *http.Request, failed bo
 		writeJSONError(w, 400, "Confirmação inválida.")
 		return
 	}
-	status := "SENT"
-	if failed {
-		status = "FAILED"
-	}
+	// An expired lease may still receive an authenticated confirmation.
+	// Manual retry clears the old token and prevents an old ACK overriding a new claim.
 	var updated string
-	err = a.db.QueryRowContext(r.Context(), `UPDATE print_jobs SET status=$1,sent_at=CASE WHEN $1='SENT' THEN now() ELSE NULL END,
-    last_error=CASE WHEN $1='FAILED' THEN $5 ELSE NULL END
-    WHERE id=$2 AND device_id=$3 AND claim_token_hash=$4 AND (status='CLAIMED' OR status=$1)
+	err = a.db.QueryRowContext(r.Context(), `UPDATE print_jobs SET
+    status=$1,
+    sent_at=CASE WHEN $1='SENT' THEN now() ELSE NULL END,
+    last_error=CASE
+      WHEN $1='FAILED' THEN COALESCE(NULLIF($5,''),'Falha informada pelo ESP32')
+      WHEN $1='UNCERTAIN' THEN COALESCE(NULLIF($5,''),'Envio USB sem confirmação')
+      ELSE NULL END
+    WHERE id=$2 AND device_id=$3 AND claim_token_hash=$4
+      AND (status IN ('CLAIMED','UNCERTAIN') OR status=$1)
     RETURNING status`, status, id, printerID(r.Context()), hashToken(req.ClaimToken), req.Error).Scan(&updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, 409, "Trabalho não reservado por esta impressora ou já encerrado.")

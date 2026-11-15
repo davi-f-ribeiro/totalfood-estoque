@@ -38,7 +38,7 @@
 #include "web_pages.h"
 #include "logo_png.h"
 
-#define FW_VERSION    "1.6.0"
+#define FW_VERSION    "1.6.1"
 #define AP_NAME       "Etiqueta-Setup"
 #define AP_PASSWORD   "etiqueta"          // senha do Wi-Fi do portal cativo (mín. 8)
 #define ADMIN_USER    "admin"
@@ -907,8 +907,16 @@ static void setupOtaAndMdns() {
   if (cfg.raw9100) MDNS.addService("pdl-datastream", "tcp", 9100);
 }
 
-static void handleQueueStatus() { sendJson(200, wmsQueueStatus()); }
+static void handleQueueStatus() {
+  if (!requireAuth()) return;
+  sendJson(200, wmsQueueStatus());
+}
 static void handleQueuePull() {
+  if (!requireAuth()) return;
+  if (cfg.adminPass == "etiqueta") {
+    sendMsg(403, false, "Troque a senha padrão em Configurações antes de usar a fila.");
+    return;
+  }
   if (updating || rawBusy() || !wmsQueueStart(cfg.wmsUrl, cfg.wmsToken)) {
     sendMsg(409, false, "Confira Wi-Fi, impressora e pareamento em Configurações. Se a fila já estiver em andamento, aguarde.");
     return;
