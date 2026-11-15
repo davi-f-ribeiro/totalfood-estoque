@@ -42,6 +42,17 @@ class ManualQueueSafetyContract(unittest.TestCase):
         self.assertNotIn("setInsecure(", WORKER)
         self.assertIn('baseURL.startsWith("https://")', WORKER)
 
+    def test_read_only_warmup_precedes_claim_and_fits_core_timeout(self):
+        config = function_section(WORKER, "static void configureHTTP", "static bool warmUpWMS")
+        timeout = config.split("http.setTimeout(", 1)[1].split(")", 1)[0]
+        self.assertLessEqual(int(timeout), 65535)
+        warmup = function_section(WORKER, "static bool warmUpWMS", "static bool sendResult")
+        self.assertIn('url+"/health"', warmup)
+        self.assertIn("http.GET()", warmup)
+        self.assertNotIn("http.POST(", warmup)
+        worker = function_section(WORKER, "static void queueWorker", "bool wmsQueueStart")
+        self.assertLess(worker.index("warmUpWMS(cloudURL)"), worker.index("/api/print/jobs/claim"))
+
     def test_persist_before_usb_and_reconcile_after_reboot(self):
         self.assertIn('prefs.putString("state","CLAIMED")', WORKER)
         self.assertLess(WORKER.index('prefs.putString("state","CLAIMED")'), WORKER.index("usbPrinterSend((const uint8_t*)zpl"))

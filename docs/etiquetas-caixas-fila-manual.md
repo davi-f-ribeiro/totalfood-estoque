@@ -39,6 +39,8 @@ O token é específico de dispositivo, armazenado como hash no servidor e não v
 | Declarar resultado USB incerto | `POST /api/print/jobs/{id}/uncertain` | Bearer do ESP + claim token |
 | Informar falha USB | `POST /api/print/jobs/{id}/fail` | Bearer do ESP + claim token |
 
+Ao tocar no botão, o ESP primeiro consulta o estado do servidor em `GET /health`. Se o Render demorar, pode repetir essa consulta de leitura uma vez antes de reservar qualquer etiqueta.
+
 A reserva tem vencimento em **5 minutos**. ACK de envio USB ou registro explícito de resultado incerto pode chegar após o vencimento se o trabalho ainda não tiver sido reenviado manualmente. A autenticação de cada operação é feita pelo token de dispositivo e token da reserva. Reinício no estado CLAIMED não descarta o token: o ESP informa estado **UNCERTAIN** ao servidor e não repete a impressão. Se o envio USB foi tentado e não há confirmação segura, também é marcado UNCERTAIN.
 
 Reserve sempre com transação e `FOR UPDATE SKIP LOCKED`, ACK é idempotente. Lease expirado fica `UNCERTAIN`, sem reimpressão automática.

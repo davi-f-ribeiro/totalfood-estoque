@@ -49,8 +49,21 @@ static void configureHTTP(HTTPClient& http,WiFiClientSecure& client,const String
  client.setCACert(WMS_ROOT_CA);
  http.begin(client,uri);
  http.setConnectTimeout(20000);
- http.setTimeout(105000); // Render cold start. This runs outside loop().
+ http.setTimeout(65000); // HTTPClient::setTimeout takes uint16_t in ESP32 core 3.0.5.
  http.setReuse(false);
+}
+// Wake Render using a read-only request before reserving a label.
+static bool warmUpWMS(const String& url){
+ for(int attempt=0;attempt<2;attempt++){
+  WiFiClientSecure client;
+  HTTPClient http;
+  configureHTTP(http,client,url+"/health");
+  const int status=http.GET();
+  http.end();
+  if(status==200)return true;
+  if((status>0&&status<500)||WiFi.status()!=WL_CONNECTED)return false;
+ }
+ return false;
 }
 static bool sendResult(const String& url,const String& token,uint64_t id,const String& claimToken,const String& state){
  WiFiClientSecure client;
@@ -95,6 +108,11 @@ static void queueWorker(void*){
  }
  if(!timeReady()){
   queueMessage("Sem hora confiável para validar HTTPS.");
+  prefs.end();queueActive=false;vTaskDelete(nullptr);return;
+ }
+ queueMessage("Conectando ao TotalFood. A primeira consulta pode demorar...");
+ if(!warmUpWMS(cloudURL)){
+  queueMessage("Servidor TotalFood indisponível. Tente novamente.");
   prefs.end();queueActive=false;vTaskDelete(nullptr);return;
  }
  // A reboot may have interrupted USB sending. Reconcile without reprinting
