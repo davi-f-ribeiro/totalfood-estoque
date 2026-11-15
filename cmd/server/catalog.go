@@ -563,7 +563,7 @@ RETURNING version`, req.ItemID, req.BrandID, req.Name, req.Barcode, req.ContentQ
 
 func writeCatalogItemError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
-	if strings.Contains(err.Error(), "idx_inventory_items_normalized_name_unique") {
+	if violates(err, "idx_inventory_items_normalized_name_unique") {
 		writeJSONError(w, http.StatusConflict, "Já existe um item com este nome.")
 		return
 	}
@@ -572,11 +572,11 @@ func writeCatalogItemError(w http.ResponseWriter, err error, logPrefix string) {
 
 func writeCatalogSKUError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
-	if strings.Contains(err.Error(), "product_skus_barcode") || strings.Contains(err.Error(), "idx_product_skus_barcode") {
+	if violates(err, "product_skus_barcode_key") {
 		writeJSONError(w, http.StatusConflict, "Este código de barras já está cadastrado.")
 		return
 	}
-	if strings.Contains(err.Error(), "foreign key") {
+	if isForeignKeyViolation(err) {
 		writeJSONError(w, http.StatusBadRequest, "Item inválido.")
 		return
 	}

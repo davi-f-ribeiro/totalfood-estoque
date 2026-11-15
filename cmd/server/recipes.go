@@ -186,11 +186,10 @@ func recipeRequestProblem(req recipeRequest) string {
 
 func writeRecipeError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
-	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "idx_recipes_normalized_name_unique"):
+	case violates(err, "idx_recipes_normalized_name_unique"):
 		writeJSONError(w, http.StatusConflict, "Já existe uma ficha técnica com este nome.")
-	case strings.Contains(msg, "recipe_lines_item_id_fkey"):
+	case violates(err, "recipe_lines_item_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Ingrediente inválido. Escolha um item do estoque.")
 	default:
 		writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar a ficha técnica.")
@@ -199,7 +198,7 @@ func writeRecipeError(w http.ResponseWriter, err error, logPrefix string) {
 
 func writeCustomerError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
-	if strings.Contains(err.Error(), "idx_customers_normalized_name_unique") {
+	if violates(err, "idx_customers_normalized_name_unique") {
 		writeJSONError(w, http.StatusConflict, "Já existe um cliente com este nome.")
 		return
 	}

@@ -105,11 +105,10 @@ func (a *app) handleCreateRoute(w http.ResponseWriter, r *http.Request) {
 	err = a.db.QueryRowContext(ctx, `INSERT INTO routes (day,vehicle_id,driver_id) VALUES ($1::date,$2,$3) RETURNING id`,
 		req.Day, req.VehicleID, req.DriverID).Scan(&id)
 	if err != nil {
-		msg := err.Error()
 		switch {
-		case strings.Contains(msg, "idx_routes_open_vehicle_day"):
+		case violates(err, "idx_routes_open_vehicle_day"):
 			writeJSONError(w, http.StatusConflict, "Este veículo já tem uma rota aberta neste dia.")
-		case strings.Contains(msg, "idx_routes_open_driver_day"):
+		case violates(err, "idx_routes_open_driver_day"):
 			writeJSONError(w, http.StatusConflict, "Este motorista já tem uma rota aberta neste dia.")
 		default:
 			logisticsFail(w, http.StatusInternalServerError, "Não foi possível criar a rota.", "route create failed", err)

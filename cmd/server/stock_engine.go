@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"sort"
-	"strings"
 )
 
 func (a *app) createEntry(ctx context.Context, req movementRequest, hash string) (operationResult, error) {
@@ -141,7 +140,7 @@ func (a *app) createEntryLines(ctx context.Context, req movementRequest, lines [
 		}
 		if fiscalKey != "" {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO fiscal_documents (access_key, operation_id, movement_id) VALUES ($1,$2,$3)`, fiscalKey, req.OperationID, m); err != nil {
-				if strings.Contains(err.Error(), "fiscal_documents_access_key_key") {
+				if violates(err, "fiscal_documents_access_key_key") {
 					return 0, errDuplicateFiscalDocument
 				}
 				return 0, err

@@ -145,7 +145,7 @@ RETURNING id`, req.Name, active, req.OperationID, hash).Scan(&id)
 		if writeCatalogCreateError(w, err) {
 			return
 		}
-		if strings.Contains(err.Error(), "idx_brands_normalized_name_unique") {
+		if violates(err, "idx_brands_normalized_name_unique") {
 			writeJSONError(w, http.StatusConflict, req.Name+" já existe.")
 			return
 		}
@@ -184,7 +184,7 @@ RETURNING version`, req.Name, active, id, req.Version).Scan(&version)
 		return
 	}
 	if err != nil {
-		if strings.Contains(err.Error(), "idx_brands_normalized_name_unique") {
+		if violates(err, "idx_brands_normalized_name_unique") {
 			writeJSONError(w, http.StatusConflict, req.Name+" já existe.")
 			return
 		}
