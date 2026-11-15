@@ -605,10 +605,6 @@ func validItemReq(req catalogItemRequest) bool {
 	return req.Name != "" && req.CategoryID > 0 && req.UnitCode != "" && nonNegativeDecimal(req.MinimumStock)
 }
 
-func validSKUReq(req catalogSKURequest) bool {
-	return req.ItemID > 0 && req.Name != "" && req.Barcode != "" && positiveDecimal(req.ContentQuantity)
-}
-
 func cleanBarcode(v string) string {
 	return strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(v, "\r", ""), "\n", ""))
 }

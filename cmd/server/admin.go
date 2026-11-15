@@ -574,18 +574,3 @@ func (a *app) profileExists(r *http.Request, id int64) bool {
 	_ = a.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM profiles WHERE id=$1)`, id).Scan(&ok)
 	return ok
 }
-func (a *app) profileHasAdmin(r *http.Request, id int64) (bool, error) {
-	var ok bool
-	err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=$1 AND p.resource='users' AND p.action='write') AND EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=$1 AND p.resource='profiles' AND p.action='write')`, id).Scan(&ok)
-	return ok, err
-}
-func (a *app) userIsAdmin(r *http.Request, id int64) (bool, error) {
-	var ok bool
-	err := a.db.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM users u JOIN profile_permissions pp ON pp.profile_id=u.profile_id JOIN permissions p ON p.id=pp.permission_id WHERE u.id=$1 AND u.active=true AND p.resource='users' AND p.action='write') AND EXISTS(SELECT 1 FROM users u JOIN profile_permissions pp ON pp.profile_id=u.profile_id JOIN permissions p ON p.id=pp.permission_id WHERE u.id=$1 AND u.active=true AND p.resource='profiles' AND p.action='write')`, id).Scan(&ok)
-	return ok, err
-}
-func (a *app) activeAdminCountExcluding(r *http.Request, id int64) (int, error) {
-	var n int
-	err := a.db.QueryRowContext(r.Context(), `SELECT count(DISTINCT u.id) FROM users u WHERE u.active=true AND u.id<>$1 AND EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=u.profile_id AND p.resource='users' AND p.action='write') AND EXISTS(SELECT 1 FROM profile_permissions pp JOIN permissions p ON p.id=pp.permission_id WHERE pp.profile_id=u.profile_id AND p.resource='profiles' AND p.action='write')`, id).Scan(&n)
-	return n, err
-}

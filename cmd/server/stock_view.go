@@ -250,5 +250,3 @@ GROUP BY i.id,i.name,i.unit_code,i.minimum_stock
 HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
 ORDER BY i.name`
 }
-
-func normalizeOpText(v string) string { return strings.TrimSpace(v) }

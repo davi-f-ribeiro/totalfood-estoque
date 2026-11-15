@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
@@ -238,9 +237,4 @@ func productDisplayName(item, brand, content, unit string) string {
 		content = strings.TrimRight(content, ".")
 	}
 	return strings.TrimSpace(item) + " - " + strings.TrimSpace(brand) + " - " + content + " " + strings.TrimSpace(unit)
-}
-
-func parseBrandID(raw string) int64 {
-	id, _ := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	return id
 }
