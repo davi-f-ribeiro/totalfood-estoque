@@ -40,8 +40,8 @@ func printerText(s string, max int) string {
 	return b.String()
 }
 func crateZPL(c crateRow) string {
-	name := printerText(strings.ToUpper(c.Product), 23)
-	doc := printerText(c.Document, 34)
+	name := printerText(strings.ToUpper(c.Product), 34)
+	doc := printerText(c.Document, 20)
 	if doc == "" {
 		doc = "NAO INFORMADO"
 	}
@@ -50,13 +50,13 @@ func crateZPL(c crateRow) string {
 ^PW480
 ^LL480
 ^LH0,0
-^FO20,20^A0N,43,36^FD%s^FS
-^FO20,85^A0N,54,52^FD%s KG^FS
+^FO20,12^A0N,31,25^FB440,2,4,L,0^FD%s^FS
+^FO20,99^A0N,48,45^FD%s KG^FS
 ^FO20,163^A0N,26,24^FDCAIXA %d/%d^FS
 ^FO20,205^A0N,28,25^FD%s^FS
 ^FO20,258^A0N,24,21^FDENTRADA: %s^FS
 ^FO20,299^A0N,24,21^FDLOTE: TF-%d^FS
-^FO20,340^A0N,23,19^FDNF: %s^FS
+^FO20,340^A0N,19,15^FDNF: %s^FS
 ^FO315,157^BQN,2,5^FDLA,%s^FS
 ^FO20,425^A0N,20,20^FDTOTALFOOD - REV %d^FS
 ^XZ

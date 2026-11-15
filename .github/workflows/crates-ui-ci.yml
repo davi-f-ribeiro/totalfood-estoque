@@ -1,0 +1,45 @@
+name: crates-ui-ci
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'feature/**'
+      - 'fix/**'
+    paths:
+      - 'cmd/server/static/app.js'
+      - 'cmd/server/static/crates.js'
+      - 'cmd/server/static/crates.css'
+      - 'cmd/server/templates/crates.html'
+      - 'scripts/crates-playwright-e2e.cjs'
+      - '.github/workflows/crates-ui-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile-and-desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/crates-playwright" --no-audit --no-fund --save=false playwright@1.56.1
+      - name: Test crates UI at 390 and 1440 pixels
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable)"
+          test -x "$CHROME_BIN"
+          NODE_PATH="$RUNNER_TEMP/crates-playwright/node_modules" CHROME_BIN="$CHROME_BIN" node scripts/crates-playwright-e2e.cjs
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crates-responsive-screenshots
+          path: ui-review-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 7

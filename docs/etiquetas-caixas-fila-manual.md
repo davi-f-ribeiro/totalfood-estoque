@@ -53,6 +53,9 @@ Reserve sempre com transação e `FOR UPDATE SKIP LOCKED`, ACK é idempotente. L
 - `node --check cmd/server/static/crates.js`
 - `python3 -m unittest discover -s firmware/tests -v` (checagem estática, não compila o ESP)
 - Workflow `firmware-ci` compila o firmware com Arduino ESP32 core 3.0.5 em runner hospedado, gerando artefato BIN (o teste físico com Zebra continua obrigatório).
+- Workflow `crates-ui-ci` valida os fluxos de recebimento, falha após commit sem confirmação, reenvio idempotente, busca manual, pesagem, transferência e pareamento em Chromium a 390 e 1440 px. Gera screenshots como artefato.
+- Execução local do teste visual: `NODE_PATH=/caminho/node_modules CHROME_BIN=/caminho/chrome node scripts/crates-playwright-e2e.cjs`. O teste usa API simulada e arquivos JS/CSS reais, não consulta o Neon nem substitui os testes PostgreSQL.
+- Teste de etiqueta ZPL confirma 60 x 60 mm (480 dots), quebra do nome em duas linhas, peso, QR/ID, lote interno, NF, versão e neutralização de comandos ZPL injetados por dados.
 - Validar tela a 390 px e fluxo real com impressora Zebra ZD220, ESP32-S3 N16R8, USB, OTA, ausência de papel/USB, falha HTTPS e render com início frio.
 
 **Firmware:** pasta `firmware/etiqueta_zd220` deriva da versão 1.5.1 salva no Drive; versão alterada para 1.6.1. Compilar com Arduino ESP32 core **3.0.5**, placa ESP32S3 Dev Module, Flash 16M, OPI PSRAM, USB Hardware CDC/JTAG, configuração OTA compatível. Não assumir que a versão 3.3.x funcione para USB da Zebra. O certificado usado pelo Render deve encadear em uma das CAs embutidas em `wms_ca.h`; verificar antes da instalação.
