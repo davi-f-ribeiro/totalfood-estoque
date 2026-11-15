@@ -36,11 +36,13 @@
       </section>
       <label>Observação (opcional)<textarea id="materialNotes" rows="2" maxlength="1000" placeholder="Informações para o estoque"></textarea></label>
       <button type="submit" id="materialCreateSubmit">Enviar requisição</button>
+      <p id="materialCreateStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
     </form>
   </section>
   {{end}}
   <section class="panel material-list" aria-labelledby="materialListTitle">
     <div class="material-toolbar"><h2 id="materialListTitle">Requisições</h2><button class="secondary" id="materialRefresh" type="button">Atualizar</button></div>
+    <p id="materialListStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
     <div id="materialList" class="material-request-list" aria-live="polite"><p>Carregando requisições…</p></div>
   </section>
   <section class="panel material-detail" id="materialDetail" aria-labelledby="materialDetailTitle" hidden>

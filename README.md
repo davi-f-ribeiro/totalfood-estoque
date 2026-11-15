@@ -111,7 +111,7 @@ Além do domínio (estoque, custo, concorrência, idempotência, permissões), a
 - que toda rota citada em `docs/` e neste README existe no servidor;
 - que todo nome de constraint usado para traduzir erros do banco existe no esquema.
 
-Interface: `scripts/crates-playwright-e2e.cjs` testa a tela de Caixas no Chrome a 390 e 1440 px. Firmware: `python3 -m unittest discover -s firmware/tests`.
+Interface: `scripts/crates-playwright-e2e.cjs` testa a tela de Caixas no Chrome a 390 e 1440 px, e `scripts/material-requests-playwright-e2e.cjs` testa a tela de Requisições a 390 px. Firmware: `python3 -m unittest discover -s firmware/tests`.
 
 ## CI e promoção
 
@@ -119,6 +119,7 @@ Interface: `scripts/crates-playwright-e2e.cjs` testa a tela de Caixas no Chrome 
 |---|---|---|
 | `warehouse-feature-ci` | push em `feat/**`, `feature/**`, `fix/**` | `go vet`, testes com `-race` em PostgreSQL 17, build, Docker, `node --check` |
 | `crates-ui-ci` | mesmas branches, quando a tela de Caixas muda | Playwright da tela de Caixas |
+| `material-requests-ui-ci` | mesmas branches, quando a tela de Requisições muda | Playwright da tela de Requisições |
 | `firmware-ci` | mesmas branches, quando o firmware muda | compila o firmware ESP32 e publica o binário |
 | `production-gate` | push em `main` e `hotfix/**` | mesmo conjunto do `warehouse-feature-ci` no commit de produção |
 

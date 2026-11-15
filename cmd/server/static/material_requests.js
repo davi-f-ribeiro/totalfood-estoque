@@ -14,7 +14,35 @@ const stamp=s=>s?new Date(s).toLocaleString('pt-BR'):'—';
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined&&text!==null)e.textContent=String(text);if(cls)e.className=cls;return e};
 const field=(label,input)=>{const e=el('label');e.append(el('span',label),input);return e};
 const btn=(text,click,secondary=true)=>{const b=el('button',text,secondary?'secondary':'');b.type='button';b.addEventListener('click',click);return b};
+// Avisos ficam junto do que foi feito (contrato global, seção 3): formulário
+// de criação, lista, ou o cartão do material/separação/entrega no detalhe.
+// O aviso do topo (#materialStatus) fica só para a operação pendente
+// reenviada pela caixa do topo.
 function note(type,msg){setFeedback(status,type,msg)}
+function say(target,type,msg,retry){
+ if(!target)return note(type,msg);
+ setFeedback(target,type,msg);
+ if(retry&&type==='error'&&msg){const b=btn('Enviar de novo',()=>sendPending(retry),false);b.classList.add('material-retry-inline');target.append(' ',b)}
+ if(type&&!target.hidden)target.scrollIntoView({block:'nearest'});
+}
+// O detalhe é redesenhado depois de cada ação; o aviso é recolocado no
+// cartão com a mesma chave, ou no topo do detalhe se o cartão sumiu.
+let detailNote=null;
+function detailSay(key,type,msg,retry){detailNote={request:current,key,type,msg,retry};placeDetailNote()}
+function placeDetailNote(){
+ detailContent.querySelectorAll('[data-detail-note]').forEach(x=>x.remove());
+ if(!detailNote||detailNote.request!==current||detailNote.type==='')return;
+ const anchor=detailContent.querySelector('[data-note-key="'+detailNote.key+'"]')||detailContent.querySelector('[data-note-key="request"]');
+ if(!anchor)return;
+ const p=el('p',null,'operation-feedback');p.dataset.detailNote='1';p.setAttribute('role','status');p.setAttribute('aria-live','polite');
+ anchor.append(p);say(p,detailNote.type,detailNote.msg,detailNote.retry);
+}
+function report(where,type,msg,retry){
+ if(where&&where.kind==='create')return say($('materialCreateStatus'),type,msg,retry);
+ if(where&&where.kind==='list')return say($('materialListStatus'),type,msg,retry);
+ if(where&&where.kind==='detail')return detailSay(type==='success'&&where.successKey?where.successKey:where.key,type,msg,retry);
+ note(type,msg);
+}
 function showPending(){pendingBox.hidden=!pending;$('materialRetry').disabled=busy}
 function getStored(){try{let p=JSON.parse(sessionStorage.getItem(pendingKey)||'null');return p&&p.url&&p.body?p:null}catch(e){return null}}
 async function loadPending(){
@@ -37,29 +65,35 @@ async function clearPending(sent){
  if(offline)try{await offline.clearPending('material-request',sent.operation_id)}catch(e){}
  sessionStorage.removeItem(pendingKey);pending=null;showPending();
 }
-async function run(url,body,message){
+// opts: {label, loading, success(resp), failure, where}
+async function run(url,body,opts){
  await pendingReady;
- if(busy||pending){note('error','Há uma operação sem confirmação. Toque em “Enviar de novo” antes de continuar.');return false}
- const fresh={url,body,operation_id:body.operation_id||newOperationID()};
+ if(busy||pending){
+  const what=pending&&pending.label?pending.label:'uma operação anterior';
+  report(opts.where,'error','Ainda falta confirmar '+what+'. Envie de novo antes de continuar.',pending?{where:opts.where}:null);
+  return false;
+ }
+ const fresh={url,body,operation_id:body.operation_id||newOperationID(),label:opts.label};
  if(offline)try{
   const claimed=await offline.claimPending('material-request',fresh.operation_id,url,body);
   if(!claimed.claimed){
    pending={url:claimed.record.endpoint,body:claimed.record.payload,operation_id:claimed.record.operation_id};
    sessionStorage.setItem(pendingKey,JSON.stringify(pending));showPending();
-   note('error','Existe uma operação pendente neste dispositivo. Confira antes de continuar.');
+   report(opts.where,'error','Existe uma operação sem confirmação neste dispositivo. Envie de novo antes de continuar.',{where:opts.where});
    return false;
   }
  }catch(e){}
  pending=fresh;sessionStorage.setItem(pendingKey,JSON.stringify(pending));showPending();
- return sendPending(message);
+ return sendPending(opts);
 }
-async function sendPending(message){
+async function sendPending(opts={}){
  await pendingReady;
  if(!pending||busy)return false;
- busy=true;showPending();note('loading',message||'Enviando operação…');
- const sent=pending;
+ const where=opts.where,sent=pending;
+ const what=sent.label||'a operação anterior';
+ busy=true;showPending();report(where,'loading',opts.loading||('Conferindo '+what+'…'));
  try{
-  await api(sent.url,{method:'POST',body:JSON.stringify(sent.body),timeoutMs:movementSendTimeoutMs});
+  const resp=await api(sent.url,{method:'POST',body:JSON.stringify(sent.body),timeoutMs:movementSendTimeoutMs});
   await clearPending(sent);
   if(sent.url==='/api/material-requests'&&canWrite){
    draft=[];
@@ -68,19 +102,22 @@ async function sendPending(message){
    $('materialDeliveryDate').value=todayProductionDate();
    $('materialProductionDate').value=todayProductionDate();
   }
-  note('success','Operação registrada.');await refresh();
+  const done=opts.success?opts.success(resp||{}):(what.charAt(0).toUpperCase()+what.slice(1)+' confirmada.');
+  if(where&&where.kind==='detail')detailNote={request:current,key:where.successKey||where.key,type:'success',msg:done};
+  await refresh();
+  report(where,'success',done);
   return true;
  }catch(e){
   if(e.status>=400&&e.status<500){
    await clearPending(sent);
-   note('error',uiErrorMessage(e,'Confira os dados e tente novamente.'));
+   report(where,'error',uiErrorMessage(e,opts.failure||('Não foi possível concluir '+what+'.')));
   }else{
-   note('error','A resposta não foi confirmada. Reenvie a mesma operação para conferir sem duplicar.');
+   report(where,'error','Sem confirmação do servidor para '+what+'. Envie de novo: o mesmo lançamento é conferido sem duplicar.',{where,success:opts.success,failure:opts.failure});
   }
   return false;
  }finally{busy=false;showPending()}
 }
-$('materialRetry').addEventListener('click',()=>sendPending('Conferindo a operação anterior…'));
+$('materialRetry').addEventListener('click',()=>sendPending({}));
 async function refresh(){
  try{
   const records=await api('/api/material-requests');
@@ -95,18 +132,19 @@ async function refresh(){
    b.append(h,sub,state);b.setAttribute('aria-current',String(current===r.id));list.append(b);
   });
   if(current)await openReq(current,false);
- }catch(e){note('error',uiErrorMessage(e,'Não foi possível atualizar as requisições.'))}
+ }catch(e){report({kind:'list'},'error',uiErrorMessage(e,'Não foi possível atualizar as requisições.'))}
 }
 async function openReq(id,scroll=true){
  try{
   const r=await api('/api/material-requests/'+id);
+  if(current!==id)detailNote=null;
   current=id;detail.hidden=false;renderDetail(r);
   list.querySelectorAll('button[aria-current]').forEach(b=>b.setAttribute('aria-current',String(b.firstChild?.textContent?.startsWith('#'+id+' · '))));
   if(scroll)detail.scrollIntoView({block:'start',behavior:'auto'});
- }catch(e){note('error',uiErrorMessage(e,'Não foi possível abrir a requisição.'))}
+ }catch(e){report({kind:'list'},'error',uiErrorMessage(e,'Não foi possível abrir a requisição #'+id+'.'))}
 }
 $('materialRefresh').addEventListener('click',refresh);
-$('materialClose').addEventListener('click',()=>{current=0;detail.hidden=true;list.querySelectorAll('button[aria-current]').forEach(b=>b.setAttribute('aria-current','false'))});
+$('materialClose').addEventListener('click',()=>{current=0;detailNote=null;detail.hidden=true;list.querySelectorAll('button[aria-current]').forEach(b=>b.setAttribute('aria-current','false'))});
 function actionRow(){return el('div',null,'material-actions')}
 function numericInput(value){
  const i=el('input');i.type='text';i.inputMode='decimal';i.value=String(value||'');i.placeholder='Quantidade';i.setAttribute('aria-label','Quantidade em unidade-base');return i;
@@ -117,18 +155,23 @@ async function chooseReserve(line,wrap){
  const skuSelect=el('select');skuSelect.setAttribute('aria-label','Apresentação e depósito');
  try{
   const options=await api('/api/material-requests/options/'+line.item_id);
-  if(!options.length){wrap.append(el('p','Não há estoque disponível deste material.','hint'));return}
+  if(!options.length){wrap.append(el('p','Não há estoque disponível de '+line.item+'.','hint'));return}
   options.forEach(o=>{const opt=el('option',o.brand+' · '+o.sku+' · '+o.warehouse+' (livre '+number(o.available)+' / físico '+number(o.stock)+' '+line.unit+')');opt.value=o.sku_id+':'+o.warehouse_id;skuSelect.append(opt)});
   const qty=numericInput((Number(line.quantity)-Number(line.reserved)-Number(line.delivered)).toFixed(3));
   box.append(field('Apresentação e depósito',skuSelect),field('Separar ('+line.unit+')',qty));
   const actions=actionRow();
   actions.append(btn('Confirmar separação',async()=>{
-   if(!validQuantity(qty.value)){note('error','Informe quantidade maior que zero, com até 3 casas decimais.');return}
+   const where={kind:'detail',key:'line:'+line.id};
+   if(!validQuantity(qty.value)){report(where,'error','Informe a quantidade de '+line.item+' maior que zero, com até 3 casas decimais.');return}
    const [sku_id,warehouse_id]=skuSelect.value.split(':').map(Number);
-   await run('/api/material-requests/'+current+'/reserve',{operation_id:newOperationID(),line_id:line.id,sku_id,warehouse_id,quantity:requestDecimal(qty.value)},'Reservando material…');
+   const o=options.find(x=>x.sku_id===sku_id&&x.warehouse_id===warehouse_id)||{};
+   const q=number(requestDecimal(qty.value))+' '+line.unit;
+   await run('/api/material-requests/'+current+'/reserve',{operation_id:newOperationID(),line_id:line.id,sku_id,warehouse_id,quantity:requestDecimal(qty.value)},
+    {label:'a separação de '+q+' de '+line.item,loading:'Separando '+q+' de '+line.item+'…',where,
+     success:()=>q+' de '+line.item+' separados ('+(o.brand||'')+(o.warehouse?', '+o.warehouse:'')+').',failure:'Separação de '+line.item+' recusada.'});
   },false),btn('Fechar',()=>{wrap.textContent=''}));
   wrap.append(box,actions);
- }catch(e){note('error',uiErrorMessage(e,'Não foi possível consultar o estoque.'))}
+ }catch(e){const p=el('p',null,'operation-feedback');wrap.append(p);say(p,'error',uiErrorMessage(e,'Não foi possível consultar o estoque de '+line.item+'.'))}
 }
 function renderDetail(r){
  detailContent.textContent='';
@@ -141,17 +184,20 @@ function renderDetail(r){
  ].forEach(([label,value])=>{const d=el('div');d.append(el('small',label),el('strong',value));facts.append(d)});
  detailContent.append(facts);
  if(r.notes)detailContent.append(el('p','Observação: '+r.notes));
+ const top=el('div');top.dataset.noteKey='request';
  if(canWrite&&!r.deliveries.length&&r.status!=='CANCELADA'){
   const actions=actionRow();
   actions.append(btn('Cancelar requisição',async()=>{
    if(!window.confirm('Cancelar esta requisição e liberar as reservas?'))return;
-   await run('/api/material-requests/'+r.id+'/cancel',{},'Cancelando requisição…');
+   await run('/api/material-requests/'+r.id+'/cancel',{},{label:'o cancelamento da requisição #'+r.id,loading:'Cancelando a requisição #'+r.id+'…',
+    where:{kind:'detail',key:'request'},success:()=>'Requisição #'+r.id+' cancelada e reservas liberadas.',failure:'Cancelamento da requisição #'+r.id+' recusado.'});
   }));
-  detailContent.append(actions);
+  top.append(actions);
  }
+ detailContent.append(top);
  detailContent.append(el('h3','Materiais'));
  r.lines.forEach(line=>{
-  const card=el('article',null,'material-line-details');
+  const card=el('article',null,'material-line-details');card.dataset.noteKey='line:'+line.id;
   card.append(el('strong',line.item),el('p','Solicitado '+number(line.quantity)+' '+line.unit+' · Separado '+number(line.reserved)+' · Entregue '+number(line.delivered),'material-small'));
   const available=Number(line.quantity)-Number(line.reserved)-Number(line.delivered);
   if(canFulfill&&available>0.0001&&r.status!=='CANCELADA'&&r.status!=='RECEBIDA'){
@@ -162,19 +208,25 @@ function renderDetail(r){
  if(r.reservations.length){
   detailContent.append(el('h3','Separações'));
   r.reservations.forEach(res=>{
-   const card=el('article',null,'material-reservation');
+   const card=el('article',null,'material-reservation');card.dataset.noteKey='res:'+res.id;
    const line=r.lines.find(x=>x.id===res.line_id);
+   const item=line?.item||'Material',unit=line?.unit||'';
    card.append(el('strong',(line?.item||'Material')+' · '+res.brand),el('p',res.sku+' · '+res.warehouse,'material-small'),
      el('p','Reservado '+number(res.quantity)+' · Saldo separado '+number(res.remaining)+' '+(line?.unit||'')+' · '+res.status,'material-small'));
    if(canFulfill&&res.status==='ATIVA'&&Number(res.remaining)>0){
     const input=numericInput(res.remaining);
     const actions=actionRow();
     actions.append(btn('Confirmar entrega',async()=>{
-     if(!validQuantity(input.value)){note('error','Quantidade inválida.');return}
-     await run('/api/material-requests/'+r.id+'/deliver',{operation_id:newOperationID(),reservation_id:res.id,quantity:requestDecimal(input.value)},'Registrando a saída física…');
+     const where={kind:'detail',key:'res:'+res.id,successKey:'deliveries'};
+     if(!validQuantity(input.value)){report(where,'error','Informe a quantidade de '+item+' a entregar, maior que zero e com até 3 casas decimais.');return}
+     const q=number(requestDecimal(input.value))+' '+unit;
+     await run('/api/material-requests/'+r.id+'/deliver',{operation_id:newOperationID(),reservation_id:res.id,quantity:requestDecimal(input.value)},
+      {label:'a entrega de '+q+' de '+item,loading:'Registrando a saída de '+q+' de '+item+'…',where,
+       success:d=>'Entrega de '+q+' de '+item+' registrada'+(d.movement_id?' (saída #'+d.movement_id+')':'')+'. Falta a cozinha confirmar o recebimento.',failure:'Entrega de '+item+' recusada.'});
     },false),btn('Liberar reserva',async()=>{
      if(!window.confirm('Liberar o saldo não entregue desta separação?'))return;
-     await run('/api/material-requests/'+r.id+'/reservations/'+res.id+'/release',{},'Liberando reserva…');
+     await run('/api/material-requests/'+r.id+'/reservations/'+res.id+'/release',{},{label:'a liberação da reserva de '+item,loading:'Liberando a reserva de '+item+'…',
+      where:{kind:'detail',key:'res:'+res.id},success:()=>'Reserva de '+item+' ('+res.brand+') liberada; o saldo voltou a ficar livre.',failure:'Liberação da reserva de '+item+' recusada.'});
     }));
     card.append(field('Quantidade a entregar',input),actions);
    }
@@ -182,16 +234,17 @@ function renderDetail(r){
   });
  }
  if(r.deliveries.length){
-  detailContent.append(el('h3','Entregas e recebimento'));
+  const dh=el('div');dh.dataset.noteKey='deliveries';dh.append(el('h3','Entregas e recebimento'));detailContent.append(dh);
   r.deliveries.forEach(d=>{
-   const card=el('article',null,'material-delivery');
+   const card=el('article',null,'material-delivery');card.dataset.noteKey='delivery:'+d.id;
    card.append(el('strong','Entrega #'+d.id+' · '+number(d.quantity)+' unidades-base'),
      el('p','Saída #'+d.movement_id+' · '+stamp(d.delivered_at)+' · '+d.delivered_by,'material-small'),
      el('p',d.received?'Recebimento confirmado por '+d.received_by:'Aguardando recebimento','material-small'));
    if(canReceive&&!d.received){
     card.append(btn('Confirmar recebimento',async()=>{
      if(!window.confirm('Você recebeu o material desta entrega?'))return;
-     await run('/api/material-requests/'+r.id+'/deliveries/'+d.id+'/receive',{},'Confirmando recebimento…');
+     await run('/api/material-requests/'+r.id+'/deliveries/'+d.id+'/receive',{},{label:'o recebimento da entrega #'+d.id,loading:'Confirmando o recebimento da entrega #'+d.id+'…',
+      where:{kind:'detail',key:'delivery:'+d.id},success:()=>'Recebimento da entrega #'+d.id+' confirmado.',failure:'Recebimento da entrega #'+d.id+' recusado.'});
     },false));
    }
    detailContent.append(card);
@@ -202,6 +255,7 @@ function renderDetail(r){
   r.events.forEach(x=>events.append(el('div',stamp(x.at)+' · '+x.by+' · '+x.action+' · '+x.details,'material-event')));
   detailContent.append(events);
  }
+ placeDetailNote();
 }
 if(canWrite){
  const form=$('materialCreateForm'),search=$('materialSearch'),matches=$('materialMatches'),draftHost=$('materialDraft');
@@ -226,19 +280,23 @@ if(canWrite){
    items.filter(item=>!draft.some(x=>x.id===item.id)).forEach(item=>{
     matches.append(btn(item.name+' · '+item.unit,()=>{draft.push({...item,quantity:''});search.value='';matches.textContent='';renderDraft()}));
    });
-  }catch(e){if(seq===searchSequence)note('error','Não foi possível buscar materiais.')}
+  }catch(e){if(seq===searchSequence)matches.append(el('p',uiErrorMessage(e,'Não foi possível buscar materiais.'),'hint'))}
  }
  search.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>lookup(search.value),250)});
  form.addEventListener('submit',async e=>{
   e.preventDefault();
+  const where={kind:'create'};
   if(!form.checkValidity()){form.reportValidity();return}
-  if(!draft.length){note('error','Adicione pelo menos um material.');return}
-  if(draft.some(x=>!validQuantity(x.quantity))){note('error','Informe todas as quantidades com até 3 casas decimais.');return}
+  if(!draft.length){report(where,'error','Adicione pelo menos um material à requisição.');return}
+  const bad=draft.find(x=>!validQuantity(x.quantity));
+  if(bad){report(where,'error','Informe a quantidade de '+bad.name+' maior que zero, com até 3 casas decimais.');return}
   const body={operation_id:newOperationID(),unit_name:$('materialUnit').value.trim(),
    delivery_date:$('materialDeliveryDate').value,production_date:$('materialProductionDate').value,
    service:$('materialService').value,notes:$('materialNotes').value.trim(),
    lines:draft.map(x=>({item_id:x.id,quantity:requestDecimal(x.quantity)}))};
-  await run('/api/material-requests',body,'Criando requisição…');
+  const n=draft.length;
+  await run('/api/material-requests',body,{label:'a requisição de '+body.unit_name,loading:'Enviando a requisição de '+body.unit_name+'…',where,
+   success:x=>'Requisição'+(x.id?' #'+x.id:'')+' enviada ao estoque: '+n+(n===1?' material':' materiais')+' para '+body.unit_name+'.',failure:'Requisição recusada.'});
  });
 }
 refresh();
