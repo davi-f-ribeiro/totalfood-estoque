@@ -22,7 +22,7 @@ var proofTemperaturePattern = regexp.MustCompile(`^-?[0-9]{1,3}(\.[0-9]{1,2})?$`
 
 func (a *app) registerProofHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/delivery-orders/{id}/deliver", a.requireAuth("dispatch", "write", a.handleDeliverWithProof))
-	mux.HandleFunc("GET /api/delivery-proofs/{id}/content", a.requireAuth("dispatch", "read", a.handleProofContent))
+	mux.HandleFunc("GET /api/delivery-proofs/{id}/content", withWriteTimeout(proofTransferTime, a.requireAuth("dispatch", "read", a.handleProofContent)))
 }
 
 func (a *app) handleDeliverWithProof(w http.ResponseWriter, r *http.Request) {
@@ -30,8 +30,10 @@ func (a *app) handleDeliverWithProof(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Foto pelo celular pode demorar mais que o limite geral do servidor.
-	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(90 * time.Second))
+	// Foto pelo celular pode demorar mais que o limite geral do servidor. O prazo
+	// de escrita também precisa crescer: ele conta desde o início da requisição,
+	// e sem isso a entrega era gravada mas a resposta não chegava ao celular.
+	extendDeadlines(w, proofTransferTime, proofTransferTime+15*time.Second)
 	r.Body = http.MaxBytesReader(w, r.Body, proofMaxBytes+(256<<10))
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		var tooBig *http.MaxBytesError
@@ -152,7 +154,7 @@ INSERT INTO delivery_proofs (order_id,event_id,kind,receiver_name,temperature_c,
 VALUES ($1,$2,$3,$4,$5::numeric,$6,$7) RETURNING id`,
 		id, eventID, kind, optionalText(receiver), optionalText(temperature), nilIfEmpty(content), optionalText(contentType)).Scan(&proofID)
 	if err != nil {
-		if strings.Contains(err.Error(), "temperature_c") {
+		if violates(err, "delivery_proofs_temperature_c_check") {
 			writeJSONError(w, http.StatusBadRequest, "Temperatura fora da faixa aceita (de -30 a 100 °C).")
 			return
 		}

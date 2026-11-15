@@ -41,7 +41,7 @@ func (a *app) registerPlannerHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/plans", a.requireAuth("planning", "write", a.handleSavePlan))
 	mux.HandleFunc("GET /api/plans/{id}", a.requireAuth("planning", "read", a.handlePlan))
 	mux.HandleFunc("PATCH /api/plans/{id}", a.requireAuth("planning", "write", a.handleSavePlan))
-	mux.HandleFunc("POST /api/plans/{id}/solve", a.requireAuth("planning", "write", a.handleSolvePlan))
+	mux.HandleFunc("POST /api/plans/{id}/solve", withWriteTimeout(slowReportTimeout, a.requireAuth("planning", "write", a.handleSolvePlan)))
 	mux.HandleFunc("POST /api/plans/{id}/approve", a.requireAuth("planning", "write", a.handleApprovePlan))
 	mux.HandleFunc("PATCH /api/plans/{id}/actuals", a.requireAuth("planning", "write", a.handleSavePlanActual))
 	mux.HandleFunc("GET /api/plans/{id}/purchase-requests", a.requireAuth("planning", "read", a.handlePlanPurchaseRequests))
@@ -327,7 +327,7 @@ func (a *app) handleSaveCustomerGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		if strings.Contains(err.Error(), "idx_customer_groups_normalized_name_unique") {
+		if violates(err, "idx_customer_groups_normalized_name_unique") {
 			writeJSONError(w, http.StatusConflict, "Já existe um grupo com este nome.")
 			return
 		}

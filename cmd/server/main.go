@@ -34,6 +34,19 @@ type app struct {
 }
 
 func main() {
+	// "estoque healthcheck [url]": usado pelo healthcheck do Compose. A imagem
+	// final (debian-slim) não tem wget nem curl, então o próprio binário consulta /health.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		url := "http://127.0.0.1:5656/health"
+		if len(os.Args) > 2 {
+			url = os.Args[2]
+		}
+		if err := healthcheck(url); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		log.Printf("server stopped: %v", err)
 		os.Exit(1)
@@ -159,10 +172,58 @@ func newHTTPServer(addr string, a *app) *http.Server {
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      serverWriteTimeout,
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
+}
+
+// O servidor responde em até serverWriteTimeout por padrão. Rotas que podem
+// passar disso (relatórios grandes, planejamento, foto de entrega pelo celular)
+// ganham um prazo maior só para elas, sem afrouxar o limite das demais.
+const serverWriteTimeout = 10 * time.Second
+
+const (
+	slowReportTimeout = 60 * time.Second
+	proofTransferTime = 90 * time.Second
+)
+
+// extendDeadlines amplia o prazo de leitura do corpo e de escrita da resposta
+// desta requisição. Usa http.ResponseController; se o ResponseWriter não
+// suportar (ex.: um wrapper sem Unwrap), registra no log e segue com o padrão.
+func extendDeadlines(w http.ResponseWriter, read, write time.Duration) {
+	rc := http.NewResponseController(w)
+	now := time.Now()
+	if read > 0 {
+		if err := rc.SetReadDeadline(now.Add(read)); err != nil {
+			log.Printf("extend read deadline: %v", err)
+		}
+	}
+	if err := rc.SetWriteDeadline(now.Add(write)); err != nil {
+		log.Printf("extend write deadline: %v", err)
+	}
+}
+
+// withWriteTimeout dá a uma rota lenta um prazo de resposta próprio.
+func withWriteTimeout(d time.Duration, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		extendDeadlines(w, 0, d)
+		next(w, r)
+	}
+}
+
+// healthcheck consulta url e falha se a resposta não for 200.
+func healthcheck(url string) error {
+	client := http.Client{Timeout: 4 * time.Second}
+	res, err := client.Get(url)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck: %s returned %d", url, res.StatusCode)
+	}
+	return nil
 }
 
 func (a *app) health(w http.ResponseWriter, r *http.Request) {

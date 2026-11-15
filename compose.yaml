@@ -33,7 +33,8 @@ services:
       BOOTSTRAP_ADMIN_USER: diretor
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5656/health"]
+      # A imagem final não tem wget nem curl; o próprio binário consulta /health.
+      test: ["CMD", "/app/estoque", "healthcheck", "http://127.0.0.1:5656/health"]
       interval: 30s
       timeout: 5s
       retries: 3
