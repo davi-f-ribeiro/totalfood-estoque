@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -282,5 +284,29 @@ func TestPrintNewRevisionCancelsPendingLabel(t *testing.T) {
 	f.a.handlePrintRetry(rr, retry)
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("retry of a cancelled old revision: %d", rr.Code)
+	}
+}
+
+// Busca da fila, teste e revogação travam a impressora antes das etiquetas.
+// Com uma reserva vencida, busca e teste simultâneos na mesma impressora não
+// podem entrar em impasse (o PostgreSQL abortaria um deles com 503).
+func TestPrintClaimAndTestLockDeviceBeforeJobs(t *testing.T) {
+	src, err := os.ReadFile("print_queue.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	for _, fn := range []string{"func (a *app) handlePrintClaim(", "func (a *app) handlePrintTest("} {
+		start := strings.Index(s, fn)
+		if start < 0 {
+			t.Fatalf("%s not found", fn)
+		}
+		end := strings.Index(s[start:], "\n}\n")
+		body := s[start : start+end]
+		device := strings.Index(body, "print_devices")
+		jobs := strings.Index(body, "expireStalePrintClaims(")
+		if device < 0 || jobs < 0 || device > jobs {
+			t.Errorf("%s must lock print_devices before expiring print_jobs", fn)
+		}
 	}
 }

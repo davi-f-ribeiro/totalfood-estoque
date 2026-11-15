@@ -245,13 +245,14 @@ func (a *app) handlePrintClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	if err = expireStalePrintClaims(r.Context(), tx); err != nil {
+	// Visto por último a cada busca, com ou sem etiqueta na fila: é o sinal de
+	// que o ESP alcança o servidor. Trava a impressora antes das etiquetas, na
+	// mesma ordem do teste e da revogação, para não haver impasse entre elas.
+	if _, err = tx.ExecContext(r.Context(), `UPDATE print_devices SET last_seen_at=now() WHERE id=$1`, id); err != nil {
 		writeJSONError(w, 503, "Fila indisponível.")
 		return
 	}
-	// Visto por último a cada busca, com ou sem etiqueta na fila: é o sinal de
-	// que o ESP alcança o servidor.
-	if _, err = tx.ExecContext(r.Context(), `UPDATE print_devices SET last_seen_at=now() WHERE id=$1`, id); err != nil {
+	if err = expireStalePrintClaims(r.Context(), tx); err != nil {
 		writeJSONError(w, 503, "Fila indisponível.")
 		return
 	}
