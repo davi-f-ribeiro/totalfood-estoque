@@ -2,9 +2,8 @@
 'use strict';
 const $=id=>document.getElementById(id);
 if(!$('crateReceiveForm'))return;
-const feedback=$('crateNotice'),weightsBox=$('crateWeights'),countInput=$('crateCount');
+const weightsBox=$('crateWeights'),countInput=$('crateCount');
 let selected=null,currentCrate=null,searchTimer=0;
-function note(type,message){setFeedback(feedback,type,message);}
 // Cada formulário mostra o aviso logo abaixo do próprio botão; um aviso no topo
 // da página fica fora da vista no celular e o botão parece não responder.
 // Rola até o aviso só quando ele é do formulário que a pessoa acabou de enviar,
@@ -13,7 +12,7 @@ function note(type,message){setFeedback(feedback,type,message);}
 let lastSubmitted=null;
 document.addEventListener('submit',e=>{lastSubmitted=e.target},true);
 function noteIn(id,type,message){
- const el=$(id);if(!el)return note(type,message);
+ const el=$(id);if(!el)return;
  setFeedback(el,type,message);
  if(type&&!el.hidden&&lastSubmitted&&el.closest('form')===lastSubmitted)el.scrollIntoView({block:'nearest'});
 }
