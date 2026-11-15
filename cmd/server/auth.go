@@ -11,11 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -52,13 +50,6 @@ type createUserRequest struct {
 	Profile  string `json:"profile"`
 	Active   *bool  `json:"active"`
 }
-
-type loginThrottle struct {
-	mu sync.Mutex
-	m  map[string][]time.Time
-}
-
-var authThrottle = &loginThrottle{m: map[string][]time.Time{}}
 
 func (a *app) registerAuthHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/login", a.handleLogin)
@@ -111,15 +102,7 @@ func (a *app) bootstrapDirector(ctx context.Context) error {
 }
 
 func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if ip == "" {
-		ip = r.RemoteAddr
-	}
-	if !authThrottle.allow(ip) {
-		log.Printf("login throttled ip=%s", ip)
-		writeJSONError(w, http.StatusTooManyRequests, "Muitas tentativas. Aguarde alguns minutos e tente de novo.")
-		return
-	}
+	ip := clientIP(r, trustedProxyHops())
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	defer r.Body.Close()
 	var req loginRequest
@@ -129,12 +112,19 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
+	// Checked before the lookup and bcrypt, so a blocked client costs nothing.
+	if authThrottle.blocked(ip, req.Login, time.Now()) {
+		log.Printf("login throttled ip=%s login=%s", ip, req.Login)
+		writeJSONError(w, http.StatusTooManyRequests, "Muitas tentativas. Aguarde alguns minutos e tente de novo.")
+		return
+	}
 	var id int64
 	var hash string
 	var active, mustChange bool
 	err := a.db.QueryRowContext(r.Context(), `SELECT id,password_hash,active,must_change_password FROM users WHERE login=$1`, req.Login).Scan(&id, &hash, &active, &mustChange)
 	if errors.Is(err, sql.ErrNoRows) {
 		log.Printf("login failed login=%s reason=not_found", req.Login)
+		authThrottle.fail(ip, req.Login, time.Now())
 		writeJSONError(w, http.StatusUnauthorized, "Usuário ou senha incorretos.")
 		return
 	}
@@ -145,14 +135,17 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !active {
 		log.Printf("login failed login=%s reason=inactive", req.Login)
+		authThrottle.fail(ip, req.Login, time.Now())
 		writeJSONError(w, http.StatusForbidden, "Este usuário está desativado.")
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 		log.Printf("login failed login=%s reason=password", req.Login)
+		authThrottle.fail(ip, req.Login, time.Now())
 		writeJSONError(w, http.StatusUnauthorized, "Usuário ou senha incorretos.")
 		return
 	}
+	authThrottle.succeed(ip, req.Login)
 	tok, err := newToken()
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
@@ -317,25 +310,8 @@ func newToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 func hashToken(v string) string { h := sha256.Sum256([]byte(v)); return hex.EncodeToString(h[:]) }
-func (l *loginThrottle) allow(k string) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	now := time.Now()
-	xs := l.m[k][:0]
-	for _, t := range l.m[k] {
-		if now.Sub(t) < 15*time.Minute {
-			xs = append(xs, t)
-		}
-	}
-	if len(xs) >= 10 {
-		l.m[k] = xs
-		return false
-	}
-	l.m[k] = append(xs, now)
-	return true
-}
-func osGetenv(k string) string { return strings.TrimSpace(os.Getenv(k)) }
-func secureCookie() bool       { return os.Getenv("COOKIE_SECURE") != "false" }
+func osGetenv(k string) string  { return strings.TrimSpace(os.Getenv(k)) }
+func secureCookie() bool        { return os.Getenv("COOKIE_SECURE") != "false" }
 func setSessionCookie(w http.ResponseWriter, tok string, exp time.Time) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: tok, Path: "/", Expires: exp, HttpOnly: true, Secure: secureCookie(), SameSite: http.SameSiteStrictMode})
 }

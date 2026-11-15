@@ -16,6 +16,9 @@ Variáveis de ambiente:
 - `HTTP_ADDR` — endereço do servidor HTTP. Opcional, padrão `:8080`.
 - `MIGRATIONS_DIR` — diretório de migrations. Opcional, padrão `migrations`.
 - `OSRM_URL` — endereço do serviço OSRM usado para ordenar as paradas das rotas, como `http://osrm:5000`. Opcional. Sem ele, ou com o OSRM fora do ar, a rota usa uma estimativa pela distância em linha reta e a tela avisa.
+- `TRUSTED_PROXY_HOPS` — quantos proxies confiáveis ficam na frente da aplicação. Opcional, padrão `0` (usa o endereço da conexão). Com `1` ou mais, o IP do cliente para o limite de tentativas de login vem do `X-Forwarded-For`, contando da direita. Só aumente se houver de fato esse número de proxies, senão o cliente consegue forjar o endereço.
+
+O login aceita até 10 senhas erradas por usuário e endereço, e até 50 erros por endereço em qualquer usuário, numa janela de 15 minutos. Logins corretos não contam. O controle fica em memória: com várias instâncias, cada uma conta separado.
 
 Credenciais devem ficar somente no ambiente. Não exponha PostgreSQL diretamente à internet; exponha apenas a aplicação HTTP atrás da rede/firewall apropriado.
 

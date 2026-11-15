@@ -156,9 +156,7 @@ func doLogin(t *testing.T, a *app, login, pass string) loginData {
 }
 
 func loginAttempt(a *app, login, pass string) *httptest.ResponseRecorder {
-	authThrottle.mu.Lock()
-	authThrottle.m = map[string][]time.Time{}
-	authThrottle.mu.Unlock()
+	authThrottle.reset()
 	return authReq(a, http.MethodPost, "/api/login", map[string]any{"login": login, "password": pass}, loginData{}, "")
 }
 

@@ -10,6 +10,7 @@ Variáveis de ambiente usadas pela aplicação:
 - `MIGRATIONS_DIR` — diretório de migrations dentro da imagem (`/app/migrations`).
 - `RUN_MIGRATIONS` — padrão `true` para desenvolvimento/local. Em Cloud Run público, usar `false` depois que a etapa explícita de migration tiver sido executada.
 - `COOKIE_SECURE` — padrão seguro; usar `false` somente em desenvolvimento HTTP local.
+- `TRUSTED_PROXY_HOPS` — número de proxies confiáveis na frente da aplicação, para o limite de login usar o IP real do cliente via `X-Forwarded-For`. Padrão `0`. Confirmar quantos saltos a hospedagem adiciona antes de definir; um valor alto demais deixa o cliente forjar o endereço.
 - `DB_MAX_OPEN_CONNS` — padrão `10`.
 - `DB_MAX_IDLE_CONNS` — padrão `5`.
 - `DB_CONN_MAX_LIFETIME_SECONDS` — padrão `1800`.
