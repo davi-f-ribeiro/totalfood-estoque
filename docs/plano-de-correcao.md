@@ -45,7 +45,7 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Caixas: aviso fora da tela no celular, dica de KG apagada, espaçamento | feito | #34 |
 | Configuração de impressoras misturada à operação de Caixas | feito | #32 |
 | Menu inferior: ícones faltando e rótulos sobrepostos com 8 itens | feito | #31 |
-| Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | em andamento | — |
+| Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | feito | PR de Requisições |
 | Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | aberto | — |
 | Menu do celular com 4 atalhos por perfil; abas na tela de Caixas | decisão | — |
 

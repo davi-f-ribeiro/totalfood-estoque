@@ -41,3 +41,6 @@
   .material-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
   .material-inline{grid-template-columns:minmax(0,2fr) minmax(100px,1fr)}
 }
+/* Aviso de uma ação no detalhe, dentro do cartão em que se agiu. */
+[data-detail-note]{margin-top:8px}
+.material-retry-inline{margin-left:8px}
