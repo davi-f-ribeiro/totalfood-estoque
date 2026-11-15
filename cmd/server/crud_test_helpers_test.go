@@ -45,3 +45,12 @@ func createTestBrand(t *testing.T, a *app, name string) int64 {
 	}
 	return id
 }
+
+func tableCount(t *testing.T, a *app, table string) int {
+	t.Helper()
+	var n int
+	if err := a.db.QueryRow(`SELECT count(*) FROM ` + table).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}

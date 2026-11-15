@@ -40,7 +40,7 @@ A autorização é sempre verificada no servidor; o menu só esconde o que o per
 | [Planner de cardápio](docs/planner-cardapio-contract.md) | Contrato do planejamento, solver e previsto x realizado |
 | [Requisições de materiais](docs/requisicoes-materiais.md) | Fluxo, perfis e endpoints das requisições |
 | [Caixas e etiquetas](docs/etiquetas-caixas-fila-manual.md) | Caixas, fila de impressão, ESP32 e Zebra |
-| [Deploy](docs/cloud-run-neon.md) | Variáveis, migrations e publicação (Render e Cloud Run com Neon) |
+| [Deploy](docs/deploy-render-neon.md) | Produção no Render com Neon: variáveis, migrations e conferência do banco |
 | [Plano de correção](docs/plano-de-correcao.md) | Situação dos itens da revisão de arquitetura |
 
 ## Configuração

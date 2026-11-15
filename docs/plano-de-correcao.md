@@ -13,8 +13,8 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | 1.3 Erros do banco identificados pelo texto da mensagem (`strings.Contains(err.Error(), ...)`) | parcial: um teste garante que todo nome procurado existe no esquema; a troca por `pgconn.PgError` segue aberta | 5S |
 | 1.4 `WriteTimeout` de 10 s para todas as rotas | aberto | — |
 | 1.5 Dois arquivos de migration com número 033 | feito: número repetido agora reprova o teste; o 033 fica como exceção registrada | 5S |
-| 1.6 README, `check.sh` e documentação de deploy desatualizados | feito | 5S |
-| 1.7 CI verificando só parte dos arquivos JavaScript | ver PR do 5S | 5S |
+| 1.6 README, `check.sh` e documentação de deploy desatualizados | feito: deploy documentado só para Render + Neon (Cloud Run descartado) | 5S |
+| 1.7 CI verificando só parte dos arquivos JavaScript | feito: `node --check` em todos os JS de `static/` | 5S |
 | 1.8 Todo o servidor em `package main`, com handler e SQL juntos | aberto | — |
 | 1.9 `app.js` com 127 KB em poucas linhas | aberto | — |
 
@@ -45,7 +45,7 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Caixas: aviso fora da tela no celular, dica de KG apagada, espaçamento | feito | #34 |
 | Configuração de impressoras misturada à operação de Caixas | feito | #32 |
 | Menu inferior: ícones faltando e rótulos sobrepostos com 8 itens | feito | #31 |
-| Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | aberto | — |
+| Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | em andamento | — |
 | Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | aberto | — |
 | Menu do celular com 4 atalhos por perfil; abas na tela de Caixas | decisão | — |
 
@@ -54,4 +54,4 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Item | Situação |
 |---|---|
 | Healthcheck do Compose usa `wget`, que a imagem final não tem | aberto |
-| `resetProductionAccess` tem teste, mas nada na aplicação a chama | decisão: ligar a uma operação ou remover |
+| `resetProductionAccess` tinha teste, mas nada na aplicação a chamava | feito: removida (5S) |
