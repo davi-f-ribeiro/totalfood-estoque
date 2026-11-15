@@ -13,11 +13,13 @@
 
 ## Pareamento (uma vez)
 
-1. No WMS, com permissão de administração de depósitos, acesse **Caixas de hortifruti → Parear impressora**, informe nome e copie o token exibido **uma única vez**.
+1. No WMS, com permissão de administração de depósitos, acesse **Administração → Impressoras de etiquetas**, informe nome e copie o token exibido **uma única vez**.
 2. No ESP, acesse `http://etiqueta.local/config` como administrador e informe URL HTTPS pública do WMS e token. Salve.
 3. No WMS, receba caixas informando pesos individualizados. A entrada gera automaticamente jobs e as etiquetas 60×60 mm.
 4. A busca e o status exigem autenticação de administrador do ESP. A fila não opera com a senha padrão; configure uma senha própria antes de usar. Acesse **Configurações** e autentique-se antes do primeiro acionamento, retornando à tela principal. Toque **Buscar e imprimir etiquetas**. A busca acontece **apenas ao tocar**.
 5. Confira fila e status no WMS. Em caso de falta de ACK ou reinício, não há reimpressão automática: o trabalho fica incerto e requer decisão do operador.
+
+Na mesma seção ficam a lista de impressoras e o botão **Revogar** (pede um segundo toque). Uma impressora revogada perde o acesso na hora; o nome continua reservado, então um novo acesso precisa de outro nome. A fila de impressão continua na tela de Caixas, que é de operação.
 
 O token é específico de dispositivo, armazenado como hash no servidor e não volta nas consultas de configuração do ESP. O ESP grava o segredo local em Preferences/NVS (proteja acesso físico e admin da rede local).
 

@@ -12,8 +12,6 @@
 .crate-result,.crate-job{border:1px solid var(--border,#d6dce2);border-radius:10px;padding:.75rem}
 .crate-result a{margin-left:.5rem}
 .crate-current{font-weight:600}
-.crate-printer-result{padding:.75rem;border:1px solid var(--border,#d6dce2);border-radius:10px;margin-top:.5rem;overflow-wrap:anywhere}
-.crate-printer-result code{display:block;user-select:all;white-space:normal;margin:.4rem 0}
 .crate-job{display:flex;justify-content:space-between;align-items:center;gap:.6rem}
 .crate-job button{flex-shrink:0}
 @media(max-width:580px){.crates-main .crates-grid{grid-template-columns:1fr}.crate-job{align-items:flex-start;flex-direction:column}.crate-weights .crate-weight-row label{grid-template-columns:4.8rem 1fr}}

@@ -484,3 +484,8 @@ button:disabled{background:var(--surface-secondary);color:var(--text-muted);bord
   .editor-dialog{inset:auto 0 0 0;height:auto;max-height:100dvh;margin:0;border-radius:var(--radius-md) var(--radius-md) 0 0}
   .editor-dialog form{padding:14px 14px 0}
 }
+
+/* Administração → Impressoras de etiquetas: código de acesso exibido uma vez. */
+.printer-token{margin-top:16px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-secondary);overflow-wrap:anywhere}
+.printer-token p{margin:0 0 8px}
+.printer-token code{display:block;margin:0 0 12px;user-select:all;white-space:normal;font-size:.95rem}

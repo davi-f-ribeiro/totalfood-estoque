@@ -208,20 +208,6 @@ $('crateTransferForm')?.addEventListener('submit',async e=>{
  });
 });
 $('crateQueueRefresh').addEventListener('click',()=>jobs());
-$('cratePrinterForm')?.addEventListener('submit',async e=>{
- e.preventDefault();const btn=$('cratePrinterForm').querySelector('button');
- await runLocked(btn,async()=>{
-  try{
-   const data=await api('/api/print/devices',{method:'POST',body:JSON.stringify({name:$('cratePrinterName').value.trim()})});
-   const box=$('cratePrinterResult');box.replaceChildren();
-   const p=document.createElement('p');p.textContent='Token de pareamento da impressora '+data.name+' (exibido uma única vez):';
-   const c=document.createElement('code');c.textContent=data.token;
-   const copy=document.createElement('button');copy.type='button';copy.className='secondary';copy.textContent='Copiar token';
-   copy.onclick=()=>navigator.clipboard?.writeText(data.token);
-   box.append(p,c,copy);box.hidden=false;note('success','Impressora cadastrada. Configure o token no ESP32.');
-  }catch(err){note('error',uiErrorMessage(err,'Não foi possível cadastrar a impressora.'))}
- });
-});
 warehouses();jobs();
 const requested=new URLSearchParams(location.search).get('crate');
 if(requested){const id=idFromCode(requested);if(id){$('crateFind').value=requested;loadCrate(id).catch(()=>{})}}

@@ -8,7 +8,7 @@ const html=original.replace('{{template "header" .}}','<header>Gestão de Estoqu
 .replace('{{template "nav" .}}','<nav><a href="/crates">Caixas</a></nav>')
 .replaceAll('{{.CSRF}}','e2e-token').replaceAll('{{if .CanTransfer}}','')
 .replaceAll('{{if .CanWarehouseAdmin}}','').replaceAll('{{end}}','');
-const state={crates:[],jobs:[],requests:[],receipts:new Map(),weighs:new Map(),transfers:new Map(),failReceive:true,printers:[]};
+const state={crates:[],jobs:[],requests:[],receipts:new Map(),weighs:new Map(),transfers:new Map(),failReceive:true};
 const respond=(route,status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 async function main(){
  // Serve repository static files locally so the browser test is standalone and
@@ -72,10 +72,6 @@ async function main(){
         if(!state.transfers.has(body.operation_id)){c.warehouse_id=body.to_warehouse_id;state.transfers.set(body.operation_id,{...c})}
         return respond(route,200,state.transfers.get(body.operation_id));
       }
-    }
-    if(pathname==='/api/print/devices'){
-      state.printers.push(body.name);
-      return respond(route,201,{id:90,name:body.name,token:'local-review-token-a12345678901234567890123456789012345'});
     }
     return respond(route,404,{error:'Unknown route '+pathname});
   });
@@ -143,10 +139,10 @@ async function main(){
   await page.locator('#crateTransferStatus',{hasText:'Caixa transferida sem alterar sua identificação.'}).waitFor();
   assert(await inViewport('#crateTransferStatus'),'Aviso da transferência precisa aparecer na tela');
   assert.equal(state.crates[0].warehouse_id,2);
-  await page.locator('#cratePrinterName').fill('Zebra cozinha');
-  await page.locator('#cratePrinterForm button[type=submit]').click();
-  await page.getByText('Impressora cadastrada. Configure o token no ESP32.').waitFor();
-  assert.equal(state.printers.length,1);
+  // Configuração de impressoras fica em Administração, não na tela de operação.
+  assert.equal(await page.locator('#cratePrinterForm').count(),0,'Caixas não pode ter pareamento de impressora');
+  assert.equal(await page.locator('a[href="/admin"]').count(),1,'Caixas aponta para Administração');
+  assert.equal(state.requests.filter(r=>r.pathname.startsWith('/api/print/devices')).length,0);
   size=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(size[0]<=size[1],'Mobile horizontal overflow after operations '+size);
   const output=path.join(root,'ui-review-screenshots');fs.mkdirSync(output,{recursive:true});
@@ -156,7 +152,7 @@ async function main(){
   const wide=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(wide[0]<=wide[1],'Desktop horizontal overflow '+wide);
   assert.deepEqual(errors,[],'No JavaScript exceptions');
-  console.log(JSON.stringify({status:'PASS',mobile:size,desktop:wide,receipts:rec.length,crates:state.crates.length,weighs:state.weighs.size,transfers:state.transfers.size,printers:state.printers.length,screenshots:output},null,2));
+  console.log(JSON.stringify({status:'PASS',mobile:size,desktop:wide,receipts:rec.length,crates:state.crates.length,weighs:state.weighs.size,transfers:state.transfers.size,screenshots:output},null,2));
   await page.close();
  }finally{await b.close();await new Promise(resolve=>localServer.close(resolve))}
 }
