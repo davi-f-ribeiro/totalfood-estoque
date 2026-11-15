@@ -1,0 +1,38 @@
+name: material-requests-ui-ci
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'feature/**'
+      - 'fix/**'
+    paths:
+      - 'cmd/server/static/app.js'
+      - 'cmd/server/static/utils/offline-store.js'
+      - 'cmd/server/static/material_requests.js'
+      - 'cmd/server/static/material_requests.css'
+      - 'cmd/server/templates/material_requests.html'
+      - 'scripts/material-requests-playwright-e2e.cjs'
+      - '.github/workflows/material-requests-ui-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright test runtime
+        run: |
+          npm install --prefix "$RUNNER_TEMP/material-playwright" --no-audit --no-fund --save=false playwright@1.56.1
+      - name: Test Requisições UI at 390 pixels
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable)"
+          test -x "$CHROME_BIN"
+          NODE_PATH="$RUNNER_TEMP/material-playwright/node_modules" CHROME_BIN="$CHROME_BIN" node scripts/material-requests-playwright-e2e.cjs
