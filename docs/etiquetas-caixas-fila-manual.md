@@ -16,10 +16,10 @@
 1. No WMS, com permissão de administração de depósitos, acesse **Administração → Impressoras de etiquetas**, informe nome e copie o token exibido **uma única vez**.
 2. No ESP, acesse `http://etiqueta.local/config` como administrador e informe URL HTTPS pública do WMS e token. Salve.
 3. No WMS, receba caixas informando pesos individualizados. A entrada gera automaticamente jobs e as etiquetas 60×60 mm.
-4. A busca e o status exigem autenticação de administrador do ESP. A fila não opera com a senha padrão; configure uma senha própria antes de usar. Acesse **Configurações** e autentique-se antes do primeiro acionamento, retornando à tela principal. Toque **Buscar e imprimir etiquetas**. A busca acontece **apenas ao tocar**.
+4. No ESP, abra a aba **Fila TotalFood** (`http://etiqueta.local/fila`) e toque **Buscar e imprimir etiquetas**. A busca acontece **apenas ao tocar**. A aba é separada da impressão manual para ninguém buscar a fila sem querer.
 5. Confira fila e status no WMS. Em caso de falta de ACK ou reinício, não há reimpressão automática: o trabalho fica incerto e requer decisão do operador.
 
-Para testar a impressora sem mexer no estoque, use **Enviar teste** na mesma seção: entra na fila uma etiqueta "ETIQUETA DE TESTE" só para aquela impressora (`POST /api/print/devices/{id}/test`, admin de depósitos). Depois toque em **Buscar e imprimir etiquetas** no ESP32; a lista mostra a situação do último teste (aguardando, enviado ao USB, sem confirmação). Enquanto um teste daquela impressora não terminar, outro é recusado. No banco, a etiqueta de teste é o trabalho sem caixa (`crate_id` nulo) e sempre tem impressora definida (migration 040).
+Para testar a impressora sem mexer no estoque, use **Enviar teste** na mesma seção: entra na fila uma etiqueta "ETIQUETA DE TESTE" só para aquela impressora (`POST /api/print/devices/{id}/test`, admin de depósitos). Depois toque em **Buscar e imprimir etiquetas** na aba **Fila TotalFood** do ESP32; a lista mostra a situação do último teste (aguardando, enviado ao USB, sem confirmação). Enquanto um teste daquela impressora não terminar, outro é recusado. No banco, a etiqueta de teste é o trabalho sem caixa (`crate_id` nulo) e sempre tem impressora definida (migration 040).
 
 Na mesma seção ficam a lista de impressoras e o botão **Revogar** (pede um segundo toque). Uma impressora revogada perde o acesso na hora; o nome continua reservado, então um novo acesso precisa de outro nome. A fila de impressão continua na tela de Caixas, que é de operação.
 
@@ -47,6 +47,10 @@ O token é específico de dispositivo, armazenado como hash no servidor e não v
 Ao tocar no botão, o ESP primeiro consulta o estado do servidor em `GET /health`. Se o Render demorar, pode repetir essa consulta de leitura uma vez antes de reservar qualquer etiqueta.
 
 A reserva tem vencimento em **5 minutos**. ACK de envio USB ou registro explícito de resultado incerto pode chegar após o vencimento se o trabalho ainda não tiver sido reenviado manualmente. A autenticação de cada operação é feita pelo token de dispositivo e token da reserva. Reinício no estado CLAIMED não descarta o token: o ESP informa estado **UNCERTAIN** ao servidor e não repete a impressão. Se o envio USB foi tentado e não há confirmação segura, também é marcado UNCERTAIN.
+
+### Acesso à fila no ESP
+
+Decisão de 15/11/2026: o ESP fica numa **rede interna fechada**. Por isso, buscar a fila (`POST /api/queue/pull`) e acompanhar o andamento (`GET /api/queue/status`) **não pedem senha**: a busca só imprime etiquetas que usuários autenticados já lançaram no WMS. Configurações, token do WMS, modelo da etiqueta, atualização do sistema e descarte de confirmação pendente continuam exigindo a senha de administrador do ESP. Se o ESP for para uma rede aberta, essa decisão precisa ser revista.
 
 ### Confirmação pendente no ESP
 
@@ -86,7 +90,7 @@ Reserve sempre com transação e `FOR UPDATE SKIP LOCKED`, ACK é idempotente. L
 - Etiqueta de caixas reutiliza o cabeçalho com logo centralizado `LOGODP.GRF`, separadores e rodapé institucional dos modelos existentes (Câmara Fria/Despacho). A fila envia ZPL pronto; o firmware já carrega o logo na memória da Zebra ao conectar. Etiquetas antigas já enfileiradas não são modificadas automaticamente.
 - Validar tela a 390 px e fluxo real com impressora Zebra ZD220, ESP32-S3 N16R8, USB, OTA, ausência de papel/USB, falha HTTPS e render com início frio.
 
-**Firmware:** pasta `firmware/etiqueta_zd220` deriva da versão 1.5.1 salva no Drive; versão alterada para 1.6.3. Compilar com Arduino ESP32 core **3.0.5**, placa ESP32S3 Dev Module, Flash 16M, OPI PSRAM, USB Hardware CDC/JTAG, configuração OTA compatível. Não assumir que a versão 3.3.x funcione para USB da Zebra. O certificado usado pelo Render deve encadear em uma das CAs embutidas em `wms_ca.h`; verificar antes da instalação.
+**Firmware:** pasta `firmware/etiqueta_zd220` deriva da versão 1.5.1 salva no Drive; versão alterada para 1.6.4. Compilar com Arduino ESP32 core **3.0.5**, placa ESP32S3 Dev Module, Flash 16M, OPI PSRAM, USB Hardware CDC/JTAG, configuração OTA compatível. Não assumir que a versão 3.3.x funcione para USB da Zebra. O certificado usado pelo Render deve encadear em uma das CAs embutidas em `wms_ca.h`; verificar antes da instalação.
 
 **Limites conhecidos:** "enviado" significa que o driver USB aceitou/transmitiu o trabalho; sem confirmação física de etiqueta emitida. Não é uma garantia de exatamente-uma-impressão física. O operador deve resolver estado `UNCERTAIN` antes de reimprimir.
 

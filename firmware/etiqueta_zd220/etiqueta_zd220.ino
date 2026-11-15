@@ -38,7 +38,7 @@
 #include "web_pages.h"
 #include "logo_png.h"
 
-#define FW_VERSION    "1.6.3"
+#define FW_VERSION    "1.6.4"
 #define AP_NAME       "Etiqueta-Setup"
 #define AP_PASSWORD   "etiqueta"          // senha do Wi-Fi do portal cativo (mín. 8)
 #define ADMIN_USER    "admin"
@@ -551,6 +551,9 @@ static void sendPage(const char* title, const char* bodyA, const char* bodyB) {
   for (const char* p : parts) server.sendContent(p, strlen(p));
 }
 static void handleIndex()    { sendPage("Imprimir", PAGE_INDEX_A, PAGE_INDEX_B); }
+// Aba própria para a fila, separada da impressão manual, para ninguém
+// buscar a fila sem querer. Sem senha: o ESP fica numa rede interna fechada.
+static void handleQueuePg()  { sendPage("Fila TotalFood", PAGE_QUEUE_A, PAGE_QUEUE_B); }
 static void handleConfigPg() { if (requireAuth()) sendPage("Configurações", PAGE_CONFIG_A, PAGE_CONFIG_B); }
 static void handleTplPg()    { if (requireAuth()) sendPage("Modelo da etiqueta", PAGE_TEMPLATE_A, PAGE_TEMPLATE_B); }
 static void handleUpdatePg() { if (requireAuth()) sendPage("Atualizar sistema", PAGE_UPDATE_A, PAGE_UPDATE_B); }
@@ -907,16 +910,13 @@ static void setupOtaAndMdns() {
   if (cfg.raw9100) MDNS.addService("pdl-datastream", "tcp", 9100);
 }
 
+// Buscar e acompanhar a fila não exigem senha (rede interna fechada): só
+// imprimem etiquetas que usuários autenticados já lançaram no WMS.
+// Configuração, token, modelo, OTA e descarte continuam com requireAuth().
 static void handleQueueStatus() {
-  if (!requireAuth()) return;
   sendJson(200, wmsQueueStatus());
 }
 static void handleQueuePull() {
-  if (!requireAuth()) return;
-  if (cfg.adminPass == "etiqueta") {
-    sendMsg(403, false, "Troque a senha padrão em Configurações antes de usar a fila.");
-    return;
-  }
   if (updating || rawBusy() || !wmsQueueStart(cfg.wmsUrl, cfg.wmsToken)) {
     sendMsg(409, false, "Confira Wi-Fi, impressora e pareamento em Configurações. Se a fila já estiver em andamento, aguarde.");
     return;
@@ -940,6 +940,7 @@ static void handleQueueDiscard() {
 
 static void setupWeb() {
   server.on("/",              HTTP_GET,  handleIndex);
+  server.on("/fila",          HTTP_GET,  handleQueuePg);
   server.on("/config",        HTTP_GET,  handleConfigPg);
   server.on("/template",      HTTP_GET,  handleTplPg);
   server.on("/update",        HTTP_GET,  handleUpdatePg);
