@@ -52,10 +52,14 @@ $('crateSearch').addEventListener('input',()=>{
 });
 // Caixas só aceitam produto com unidade base KG. Sem esse aviso a lista some e
 // o envio só diz "Selecione um produto da lista", sem dizer por quê.
+// A busca devolve no máximo 10 produtos; sem nenhum em KG entre eles, o
+// produto certo pode ter ficado de fora da lista.
+const lookupLimit=10;
 function lookupHint(found){
  const box=$('crateProductLookup');box.replaceChildren();
  const p=document.createElement('p');p.className='hint';
- if(!found.length){p.textContent='Nenhum produto ativo encontrado com esse nome. Confira a grafia ou o cadastro.';}
+ if(found.length>=lookupLimit){p.textContent='Muitos produtos com esse nome e nenhum em KG entre os primeiros. Digite mais do nome.';}
+ else if(!found.length){p.textContent='Nenhum produto ativo encontrado com esse nome. Confira a grafia ou o cadastro.';}
  else{
   const names=[...new Set(found.map(r=>r.item+' ('+r.unit+')'))];
   p.textContent='Encontrado só fora de KG: '+names.slice(0,3).join(', ')+(names.length>3?' e outros':'')+'. Caixas exigem produto com unidade base KG; ajuste o cadastro no Catálogo.';

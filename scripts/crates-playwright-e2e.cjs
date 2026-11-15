@@ -41,6 +41,7 @@ async function main(){
       const q=new URL(req.url()).searchParams.get('q')||'';
       if(/cenoura/i.test(q))return respond(route,200,[{sku_id:321,item:'Cenoura E2E',brand:'',barcode:'',unit:'UN',content_quantity:'1'}]);
       if(/inexistente/i.test(q))return respond(route,200,[]);
+      if(/^lata$/i.test(q))return respond(route,200,Array.from({length:10},(_,i)=>({sku_id:400+i,item:'Lata '+i,brand:'',barcode:'',unit:'UN',content_quantity:'1'})));
       return respond(route,200,[{sku_id:123,item:'Tomate E2E',brand:'',barcode:'',unit:'KG',content_quantity:'1'}]);
     }
     if(pathname==='/api/print/jobs')return respond(route,200,{jobs:state.jobs});
@@ -89,6 +90,8 @@ async function main(){
   assert.equal(await page.locator('#crateProductLookup button').count(),0,'Produto fora de KG não pode ser escolhido');
   await page.locator('#crateSearch').fill('Inexistente');
   await page.getByText('Nenhum produto ativo encontrado com esse nome.',{exact:false}).waitFor();
+  await page.locator('#crateSearch').fill('Lata');
+  await page.getByText('Muitos produtos com esse nome e nenhum em KG entre os primeiros. Digite mais do nome.').waitFor();
   await page.locator('#crateSearch').fill('Tomate');
   await page.locator('#crateProductLookup button').first().waitFor();
   await page.locator('#crateProductLookup button').first().click();
