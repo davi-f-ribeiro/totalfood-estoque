@@ -15,8 +15,10 @@
   <section class="panel" aria-labelledby="receiveTitle">
    <h2 id="receiveTitle">Receber e identificar caixas</h2>
    <form id="crateReceiveForm">
-    <label for="crateSearch">Produto</label>
-    <input id="crateSearch" type="search" autocomplete="off" required placeholder="Digite tomate, batata, cenoura…">
+    <div class="crate-field">
+     <label for="crateSearch">Produto</label>
+     <input id="crateSearch" type="search" autocomplete="off" required placeholder="Digite tomate, batata, cenoura…">
+    </div>
     <input type="hidden" id="crateSku">
     <div class="lookup" id="crateProductLookup" hidden></div>
     <p id="crateSelected" class="hint">Escolha o produto na lista. Para hortifruti, a unidade base deve ser KG.</p>
@@ -32,6 +34,7 @@
     <div id="crateWeights" class="crate-weights"></div>
     <p class="crate-total" aria-live="polite">Peso total: <strong id="crateTotal">0,000 kg</strong></p>
     <button type="submit" id="crateReceiveSubmit">Registrar entrada e gerar etiquetas</button>
+    <p id="crateReceiveStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
    </form>
    <div id="crateReceiveResult" class="crate-results" aria-live="polite"></div>
   </section>
@@ -48,6 +51,7 @@
       <button id="scanCancel" class="secondary" type="button">Fechar câmera</button>
     </section>
     <button type="submit" class="secondary">Localizar caixa</button>
+    <p id="crateFindStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
    </form>
    <div id="crateDetail" hidden>
     <p id="crateCurrent" class="crate-current"></p>
@@ -56,12 +60,14 @@
      <label>Observação (opcional)<input id="crateWeighNotes" maxlength="500" placeholder="Retorno da cozinha"></label>
      <p class="hint">A redução do peso registra o consumo no estoque; o peso não pode aumentar nesta operação.</p>
      <button type="submit" id="crateWeighSubmit">Salvar pesagem e reetiquetar</button>
+     <p id="crateWeighStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
     </form>
     {{if .CanTransfer}}<form id="crateTransferForm">
       <h3>Transferir caixa</h3>
       <label>Depósito de destino<select id="crateTransferWarehouse" required></select></label>
       <p class="hint">A caixa mantém seu ID e lote de recebimento; o movimento entre depósitos é registrado no estoque.</p>
       <button type="submit" class="secondary" id="crateTransferSubmit">Confirmar transferência</button>
+      <p id="crateTransferStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
     </form>{{end}}
    </div>
   </section>
@@ -69,6 +75,7 @@
    <h2 id="queueTitle">Fila de impressão</h2>
    <p class="hint">As etiquetas aguardam no servidor. No ESP32, pressione <strong>Buscar e imprimir etiquetas</strong>.</p>
    <button class="secondary" type="button" id="crateQueueRefresh">Atualizar fila</button>
+   <p id="crateQueueStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
    <div id="cratePrintJobs" class="crate-jobs" aria-live="polite"></div>
   </section>
   {{if .CanWarehouseAdmin}}
