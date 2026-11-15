@@ -70,18 +70,8 @@
    <p class="hint">As etiquetas aguardam no servidor. No ESP32, pressione <strong>Buscar e imprimir etiquetas</strong>.</p>
    <button class="secondary" type="button" id="crateQueueRefresh">Atualizar fila</button>
    <div id="cratePrintJobs" class="crate-jobs" aria-live="polite"></div>
+   {{if .CanWarehouseAdmin}}<p class="hint">Para criar ou revogar o acesso de uma impressora, use <a href="/admin">Administração</a>.</p>{{end}}
   </section>
-  {{if .CanWarehouseAdmin}}
-  <section class="panel" aria-labelledby="printerTitle">
-   <h2 id="printerTitle">Parear impressora</h2>
-   <p class="hint">Um código de acesso é criado apenas uma vez. Configure-o na tela local do ESP32; não o compartilhe.</p>
-   <form id="cratePrinterForm">
-     <label>Nome da impressora<input id="cratePrinterName" placeholder="Zebra Câmara Fria" required maxlength="60"></label>
-     <button type="submit" class="secondary">Criar acesso da impressora</button>
-   </form>
-   <div id="cratePrinterResult" class="crate-printer-result" hidden></div>
-  </section>
-  {{end}}
 </main>
 <script src="/static/vendor/zxing-browser.min.js" defer></script>
 <script src="/static/app.js" defer></script>
