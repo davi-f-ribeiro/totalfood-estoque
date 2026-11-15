@@ -98,6 +98,8 @@ function renderTable(){
     if(!compact())table.append(headerRow());
     lines.forEach((ln,i)=>table.append(lineRow(ln,i)));
   }
+  /* Redesenhar (ex.: girar a tela) não pode destravar um lançamento sem confirmação. */
+  if(pending)table.querySelectorAll('input,button').forEach(el=>{el.disabled=true});
   refreshComputed();
 }
 function refreshComputed(){
@@ -229,13 +231,14 @@ async function dropPending(){
   if(id&&store()){try{await store().clearPending('movement',id)}catch(e){}}
   pending=null;pendingState='';pendingBox.hidden=true;retryBtn.hidden=true;discardBtn.hidden=true;lock(false);renderFacts();
 }
-function lock(on){[wh,to,search,addBtn,doc,notes,productionDate].forEach(el=>{el.disabled=on});table.querySelectorAll('input,button').forEach(el=>{el.disabled=on})}
+function lock(on){[wh,to,search,addBtn,$('batchScan'),doc,notes,productionDate].forEach(el=>{if(el)el.disabled=on});table.querySelectorAll('input,button').forEach(el=>{el.disabled=on})}
 function showPending(retryable,discardable){
   disarmDiscard(discardBtn);pendingBox.hidden=false;
   const name=pending.url.includes('/entry')?'Entrada':pending.url.includes('/exit')?'Saída':'Transferência';
   const n=Array.isArray(pending.body.lines)?pending.body.lines.length:1;
   pendingText.textContent=name+' sem confirmação · '+plural(n,'produto','produtos')+'. Confira se foi registrada antes de fazer outro lançamento.';
   retryBtn.hidden=!retryable;discardBtn.hidden=!discardable;lock(true);renderFacts();
+  if(compact())pendingBox.scrollIntoView({block:'start',behavior:'smooth'});
 }
 function summaryOfLaunch(){
   const names=lines.slice(0,2).map(l=>skuLabel(l).item).join(', ');
@@ -302,6 +305,9 @@ clearBtn.addEventListener('click',()=>{reset();note('','')});
 /* initScanner (app.js) abre a câmera em tela cheia; o código lido entra como se tivesse sido bipado. */
 if(compact())search.placeholder='Nome, marca ou código';
 if(typeof initScanner==='function'&&compact()){
+  /* A câmera fica no passo 1 do assistente, oculto no modo lote: trazemos para o
+     cartão de busca, para o aviso de câmera negada aparecer junto do botão. */
+  const sc=$('scanner');if(sc)document.querySelector('.batch-scan .batch-scan-row')?.after(sc);
   initScanner('batchScan',async code=>{search.value=code;await runSearch(true)});
   $('batchScan').addEventListener('scanner:start',()=>{lookupSeq++;hideLookup();lookupNote('','')});
 }

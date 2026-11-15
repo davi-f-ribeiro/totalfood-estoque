@@ -20,7 +20,7 @@ const page_html=title=>template.replace('{{template "header" .}}','<header class
 const FEIJAO={sku_id:5,item:'Feijão carioca',brand:'Kicaldo',barcode:'7891234567890',unit:'KG',content_quantity:'1'};
 const ARROZ={sku_id:6,item:'Arroz branco',brand:'Tio João',barcode:'7890000000017',unit:'KG',content_quantity:'5'};
 const stock={5:'10',6:'20'};
-const posts=[];
+const posts=[],recorded=new Set(),checks=[];
 const respond=(route,status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 
 async function main(){
@@ -36,22 +36,29 @@ async function main(){
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_BIN,args:['--no-sandbox']});
  const shots=process.env.UI_SHOTS||'';
  try{
-  const open=async(viewport,pathname,title)=>{
+  const open=async(viewport,pathname,title,opts={})=>{
    const page=await browser.newPage({viewport,deviceScaleFactor:1});
    const errors=[];page.on('pageerror',e=>errors.push(e.message));
    // Câmera simulada: um vídeo de canvas e um BarcodeDetector que devolve o próximo código da fila.
-   await page.addInitScript(()=>{
+   await page.addInitScript(denied=>{
     window.__codes=[];
+    if(denied){navigator.mediaDevices.getUserMedia=async()=>{throw Object.assign(new Error('Permission denied'),{name:'NotAllowedError'})};window.BarcodeDetector=class{async detect(){return[]}};return}
     navigator.mediaDevices.getUserMedia=async()=>{const c=document.createElement('canvas');c.width=320;c.height=240;const g=c.getContext('2d');setInterval(()=>{g.fillStyle='#'+Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0');g.fillRect(0,0,320,240)},50);return c.captureStream(10)};
     window.BarcodeDetector=class{constructor(){}static async getSupportedFormats(){return['ean_13']}async detect(){const c=window.__codes.shift();return c?[{rawValue:c}]:[]}};
-   });
+   },!!opts.cameraDenied);
    await page.route('**'+pathname,r=>r.request().isNavigationRequest()?r.fulfill({status:200,contentType:'text/html; charset=utf-8',body:page_html(title)}):r.continue());
    await page.route('**/api/**',async route=>{
     const req=route.request(),u=new URL(req.url()),p=u.pathname;
     if(p==='/api/warehouses')return respond(route,200,[{id:1,name:'Câmara Fria'}]);
     if(p==='/api/products/lookup'){const q=(u.searchParams.get('q')||'').toLowerCase();return respond(route,200,[FEIJAO,ARROZ].filter(x=>x.barcode===q||x.item.toLowerCase().includes(q)))}
     if(p==='/api/stock/availability'){const id=u.searchParams.get('sku_id');return respond(route,200,[{warehouse_id:1,quantity:stock[id]||'0'}])}
-    if(p==='/api/movements/exit/batch'){posts.push(req.postDataJSON());return respond(route,201,{id:77,status:'confirmed'})}
+    if(p==='/api/movements/exit/batch'){
+     const b=req.postDataJSON();posts.push(b);recorded.add(b.operation_id);
+     // Resposta perdida depois de gravar: o servidor registrou, o celular não soube.
+     if(opts.loseFirstResponse&&posts.length===1)return respond(route,503,{error:'Resposta perdida'});
+     return respond(route,201,{id:77,status:'confirmed'});
+    }
+    if(p.startsWith('/api/operations/')){const id=decodeURIComponent(p.split('/').pop());checks.push(id);return recorded.has(id)?respond(route,200,{id:77,status:'confirmed'}):respond(route,404,{error:'not found'})}
     return respond(route,404,{error:'Unknown route '+p});
    });
    await page.goto(base+pathname,{waitUntil:'networkidle'});
@@ -124,6 +131,43 @@ async function main(){
    await page.locator('#batchRecent',{hasText:'Feijão carioca, Arroz branco'}).waitFor();
    await noOverflow(page);
    if(shots)await page.screenshot({path:path.join(shots,'saida-lote-390-ok.png'),fullPage:false});
+   assert.deepEqual(errors,[]);
+   await page.close();
+  }
+
+  // ---------- Celular: resposta perdida, conferir sem duplicar ----------
+  {
+   posts.length=0;
+   const {page,errors}=await open({width:390,height:844},'/exit','Saída',{loseFirstResponse:true});
+   await page.locator('#batchSearch').fill('feij');
+   await page.locator('#batchLookup button',{hasText:'Feijão carioca'}).click();
+   await page.locator('#batchFeedback',{hasText:'adicionado'}).waitFor();
+   await page.locator('#batchSubmit').click();
+   await page.locator('#batchStatus',{hasText:'Não foi possível saber se o lançamento foi registrado.'}).waitFor();
+   await page.waitForTimeout(600); // rolagem suave até o aviso
+   assert(await inViewport(page,'#batchCheck'),'“Conferir” precisa aparecer na tela do celular');
+   assert(await page.locator('#batchScan').isDisabled(),'Câmera travada enquanto há lançamento sem confirmação');
+   assert(await page.locator('.batch-row.is-card .batch-step').first().isDisabled(),'Cartões travados enquanto há lançamento sem confirmação');
+   await page.locator('#batchCheck').click();
+   await page.locator('#batchStatus',{hasText:'O lançamento já estava registrado.'}).waitFor();
+   assert.equal(posts.length,1,'Conferir não reenvia: um único POST');
+   assert.equal(checks.at(-1),posts[0].operation_id,'Conferiu o mesmo lançamento');
+   assert.equal(await page.locator('#batchPending').isVisible(),false);
+   assert.equal(await page.locator('#batchScan').isDisabled(),false,'Câmera volta depois de conferir');
+   assert.deepEqual(errors,[]);
+   await page.close();
+  }
+
+  // ---------- Celular: câmera negada, aviso junto do botão ----------
+  for(const [pathname,title,button] of [['/exit','Saída','#batchScan'],['/entry','Entrada','#scanProduct']]){
+   const {page,errors}=await open({width:390,height:844},pathname,title,{cameraDenied:true});
+   await page.locator(button).click();
+   await page.locator('#scanStatus.error, #scanStatus.msg.error').first().waitFor();
+   assert.notEqual((await page.locator('#scanStatus').innerText()).trim(),'',title+': motivo da falha da câmera');
+   assert(await inViewport(page,'#scanStatus'),title+': aviso da câmera precisa aparecer na tela');
+   const gap=await page.evaluate(b=>{const a=document.querySelector(b).getBoundingClientRect(),s=document.getElementById('scanStatus').getBoundingClientRect();return Math.abs(s.top-a.bottom)},button);
+   assert(gap<400,title+': aviso da câmera longe do botão ('+Math.round(gap)+' px)');
+   if(title==='Saída')assert(await page.locator('.batch-scan #scanner').count(),'Saída: câmera dentro do cartão de busca');
    assert.deepEqual(errors,[]);
    await page.close();
   }
