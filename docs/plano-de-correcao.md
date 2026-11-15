@@ -31,7 +31,7 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | 2.4 Qualquer impressora pega qualquer etiqueta de caixa (sem filtro por depósito) | aberto | — |
 | 2.5 Etiqueta marcada como enviada sem consultar papel, tampa e pausa da Zebra (`~HS`) | aberto | — |
 | 2.6 Fila do ESP exige login e recusa a senha padrão | feito | #27 |
-| 2.6 Operador precisava da senha de administrador do ESP para imprimir | feito: fila sem senha numa aba própria (rede interna fechada, decisão de 15/11) | firmware 1.6.4 |
+| 2.6 Operador precisava da senha de administrador do ESP para imprimir | feito: fila sem senha numa aba própria (rede interna fechada, decisão de 15/11) | #37 (firmware 1.6.4) |
 | 2.6 Porta 9100 aberta sem autenticação | aberto | — |
 | 2.7 Falha de banco na autenticação da impressora respondia 401 | feito | #29 |
 | 2.7 `last_seen_at` só atualiza quando há trabalho; comentário órfão na migration 039; `^CI28` com texto só ASCII | aberto | — |
@@ -46,9 +46,10 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Caixas: aviso fora da tela no celular, dica de KG apagada, espaçamento | feito | #34 |
 | Configuração de impressoras misturada à operação de Caixas | feito | #32 |
 | Menu inferior: ícones faltando e rótulos sobrepostos com 8 itens | feito | #31 |
-| Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | feito | PR de Requisições |
+| Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | feito | #36 |
 | Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | aberto | — |
 | Menu do celular com 4 atalhos por perfil; abas na tela de Caixas | decisão | — |
+| Saída no celular um produto por vez (pedido de 15/11: lote como no desktop) | feito: Saída em lote no celular, com câmera | PR da Saída em lote |
 
 ## Outros achados
 
