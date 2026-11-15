@@ -52,11 +52,27 @@ jobs:
             --fqbn "$FQBN" \
             --output-dir "$RUNNER_TEMP/totalfood-esp32-build" \
             firmware/etiqueta_zd220
+      - name: Name binaries with the firmware version
+        id: version
+        run: |
+          set -euo pipefail
+          # Versão vem de FW_VERSION no .ino, a mesma exibida pelo ESP.
+          V=$(sed -n 's/^#define FW_VERSION *"\([0-9][0-9.]*\)".*/\1/p' firmware/etiqueta_zd220/etiqueta_zd220.ino)
+          if [ -z "$V" ]; then
+            echo "::error::FW_VERSION not found in etiqueta_zd220.ino"
+            exit 1
+          fi
+          cd "$RUNNER_TEMP/totalfood-esp32-build"
+          for f in etiqueta_zd220.ino*.bin; do
+            mv "$f" "${f/etiqueta_zd220.ino/etiqueta_zd220-v$V}"
+          done
+          ls -l *.bin
+          echo "version=$V" >> "$GITHUB_OUTPUT"
       - name: Upload firmware build
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: totalfood-esp32-s3-n16r8
+          name: totalfood-esp32-s3-n16r8-v${{ steps.version.outputs.version }}
           path: ${{ runner.temp }}/totalfood-esp32-build/*.bin
           if-no-files-found: error
           retention-days: 7
