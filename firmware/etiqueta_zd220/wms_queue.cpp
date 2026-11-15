@@ -52,13 +52,24 @@ static void configureHTTP(HTTPClient& http,WiFiClientSecure& client,const String
  http.setTimeout(65000); // HTTPClient::setTimeout takes uint16_t in ESP32 core 3.0.5.
  http.setReuse(false);
 }
+// Short, operator-readable cause of a failed request: HTTP status, or the
+// HTTPClient error plus the TLS error (certificate problems show up here).
+static String requestFailure(int status,WiFiClientSecure& client){
+ if(status>0)return "HTTP "+String(status);
+ String why=HTTPClient::errorToString(status);
+ char tls[72]={0};
+ if(client.lastError(tls,sizeof(tls))!=0&&tls[0])why+=" / TLS: "+String(tls);
+ return why.substring(0,110);
+}
 // Wake Render using a read-only request before reserving a label.
-static bool warmUpWMS(const String& url){
+// On failure, why holds the cause shown to the operator.
+static bool warmUpWMS(const String& url,String& why){
  for(int attempt=0;attempt<2;attempt++){
   WiFiClientSecure client;
   HTTPClient http;
   configureHTTP(http,client,url+"/health");
   const int status=http.GET();
+  if(status!=200)why=requestFailure(status,client);
   http.end();
   if(status==200)return true;
   if((status>0&&status<500)||WiFi.status()!=WL_CONNECTED)return false;
@@ -123,8 +134,9 @@ static void queueWorker(void*){
   prefs.end();queueActive=false;vTaskDelete(nullptr);return;
  }
  queueMessage("Conectando ao TotalFood. A primeira consulta pode demorar...");
- if(!warmUpWMS(cloudURL)){
-  queueMessage("Servidor TotalFood indisponível. Tente novamente.");
+ String why;
+ if(!warmUpWMS(cloudURL,why)){
+  queueMessage("TotalFood sem resposta ("+why+"). Tente de novo.");
   prefs.end();queueActive=false;vTaskDelete(nullptr);return;
  }
  // A reboot may have interrupted USB sending. Reconcile without reprinting
@@ -154,7 +166,11 @@ static void queueWorker(void*){
    break;
   }
   if(code!=200){
-   http.end();queueMessage("Servidor indisponível ou credenciais inválidas.");break;
+   String why=requestFailure(code,client);
+   http.end();
+   queueMessage(code==401?"Impressora nao autorizada no WMS (HTTP 401). Confira o token.":
+                          "Falha ao buscar a fila ("+why+"). Tente de novo.");
+   break;
   }
   String jobID=http.header("X-Print-Job-ID");
   String claimToken=http.header("X-Print-Claim");

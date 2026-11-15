@@ -38,7 +38,7 @@
 #include "web_pages.h"
 #include "logo_png.h"
 
-#define FW_VERSION    "1.6.2"
+#define FW_VERSION    "1.6.3"
 #define AP_NAME       "Etiqueta-Setup"
 #define AP_PASSWORD   "etiqueta"          // senha do Wi-Fi do portal cativo (mín. 8)
 #define ADMIN_USER    "admin"

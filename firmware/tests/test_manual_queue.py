@@ -9,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INO = (ROOT / "etiqueta_zd220" / "etiqueta_zd220.ino").read_text(encoding="utf-8")
 WORKER = (ROOT / "etiqueta_zd220" / "wms_queue.cpp").read_text(encoding="utf-8")
+CA = (ROOT / "etiqueta_zd220" / "wms_ca.h").read_text(encoding="utf-8")
 SERVER = (ROOT.parents[0] / "cmd" / "server" / "print_queue.go").read_text(encoding="utf-8")
 
 
@@ -51,7 +52,7 @@ class ManualQueueSafetyContract(unittest.TestCase):
         self.assertIn("http.GET()", warmup)
         self.assertNotIn("http.POST(", warmup)
         worker = function_section(WORKER, "static void queueWorker", "bool wmsQueueStart")
-        self.assertLess(worker.index("warmUpWMS(cloudURL)"), worker.index("/api/print/jobs/claim"))
+        self.assertLess(worker.index("warmUpWMS(cloudURL,why)"), worker.index("/api/print/jobs/claim"))
 
     def test_persist_before_usb_and_reconcile_after_reboot(self):
         self.assertIn('prefs.putString("state","CLAIMED")', WORKER)
@@ -100,6 +101,19 @@ class ManualQueueSafetyContract(unittest.TestCase):
         auth = function_section(SERVER, "func (a *app) requirePrinter", "func printerID")
         self.assertLess(auth.index("errors.Is(err, sql.ErrNoRows)"), auth.index("writeJSONError(w, 401, \"Impressora não autorizada.\")\n\t\t\treturn\n\t\t}\n\t\tif err != nil"))
         self.assertIn("writeJSONError(w, 503,", auth)
+
+    def test_trusts_every_root_render_issues_from(self):
+        # Render alternates Let's Encrypt and Google Trust Services (WR1 and WE1).
+        for root in ("ISRG Root X1", "ISRG Root X2", "GTS Root R1", "GTS Root R4"):
+            self.assertIn(root, CA)
+        self.assertGreaterEqual(CA.count("-----BEGIN CERTIFICATE-----"), 5)
+
+    def test_failure_message_names_the_cause(self):
+        worker = function_section(WORKER, "static void queueWorker", "bool wmsQueueStart")
+        self.assertIn("TotalFood sem resposta (\"+why+\")", worker)
+        failure = function_section(WORKER, "static String requestFailure", "static bool warmUpWMS")
+        self.assertIn("client.lastError(", failure)
+        self.assertIn("HTTPClient::errorToString(", failure)
 
 
 if __name__ == "__main__":
