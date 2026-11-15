@@ -128,6 +128,39 @@ func TestClientIPTrustsOnlyConfiguredProxyHops(t *testing.T) {
 	}
 }
 
+func TestLoginClientIPPrefersConfiguredEdgeHeader(t *testing.T) {
+	req := func(trueClient string, xff string) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/api/login", nil)
+		r.RemoteAddr = "10.1.0.1:4000"
+		if trueClient != "" {
+			r.Header.Set("True-Client-IP", trueClient)
+		}
+		if xff != "" {
+			r.Header.Set("X-Forwarded-For", xff)
+		}
+		return r
+	}
+	t.Setenv("TRUSTED_PROXY_HOPS", "")
+	t.Setenv("CLIENT_IP_HEADER", "")
+	if got := loginClientIP(req("198.51.100.7", "")); got != "10.1.0.1" {
+		t.Fatalf("header must be ignored unless configured: got %s", got)
+	}
+	t.Setenv("CLIENT_IP_HEADER", "True-Client-IP")
+	if got := loginClientIP(req("198.51.100.7", "1.2.3.4")); got != "198.51.100.7" {
+		t.Fatalf("configured header: got %s", got)
+	}
+	if got := loginClientIP(req("not-an-ip", "")); got != "10.1.0.1" {
+		t.Fatalf("invalid header value must fall back: got %s", got)
+	}
+	if got := loginClientIP(req("", "")); got != "10.1.0.1" {
+		t.Fatalf("missing header must fall back: got %s", got)
+	}
+	t.Setenv("TRUSTED_PROXY_HOPS", "1")
+	if got := loginClientIP(req("", "203.0.113.9")); got != "203.0.113.9" {
+		t.Fatalf("missing header falls back to TRUSTED_PROXY_HOPS: got %s", got)
+	}
+}
+
 func TestTrustedProxyHopsDefaultsToZero(t *testing.T) {
 	for value, want := range map[string]int{"": 0, "abc": 0, "-1": 0, "1": 1, " 2 ": 2} {
 		t.Setenv("TRUSTED_PROXY_HOPS", value)

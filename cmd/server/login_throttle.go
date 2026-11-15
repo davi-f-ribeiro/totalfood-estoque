@@ -149,6 +149,20 @@ func clientIP(r *http.Request, hops int) string {
 	return candidate
 }
 
+// loginClientIP picks the address used for login throttling. CLIENT_IP_HEADER
+// names a header written by a trusted edge that the client cannot set, such as
+// Cloudflare's True-Client-IP in front of Render. Only set it when every request
+// passes through that edge; otherwise a client can choose its own address.
+// Without it, or when the header is missing or invalid, TRUSTED_PROXY_HOPS applies.
+func loginClientIP(r *http.Request) string {
+	if name := strings.TrimSpace(os.Getenv("CLIENT_IP_HEADER")); name != "" {
+		if v := strings.TrimSpace(r.Header.Get(name)); net.ParseIP(v) != nil {
+			return v
+		}
+	}
+	return clientIP(r, trustedProxyHops())
+}
+
 func trustedProxyHops() int {
 	n, err := strconv.Atoi(strings.TrimSpace(os.Getenv("TRUSTED_PROXY_HOPS")))
 	if err != nil || n < 0 {

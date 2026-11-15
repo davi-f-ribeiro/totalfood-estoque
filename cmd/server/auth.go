@@ -102,7 +102,7 @@ func (a *app) bootstrapDirector(ctx context.Context) error {
 }
 
 func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r, trustedProxyHops())
+	ip := loginClientIP(r)
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	defer r.Body.Close()
 	var req loginRequest
@@ -123,7 +123,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var active, mustChange bool
 	err := a.db.QueryRowContext(r.Context(), `SELECT id,password_hash,active,must_change_password FROM users WHERE login=$1`, req.Login).Scan(&id, &hash, &active, &mustChange)
 	if errors.Is(err, sql.ErrNoRows) {
-		log.Printf("login failed login=%s reason=not_found", req.Login)
+		log.Printf("login failed login=%s reason=not_found ip=%s", req.Login, ip)
 		authThrottle.fail(ip, req.Login, time.Now())
 		writeJSONError(w, http.StatusUnauthorized, "Usuário ou senha incorretos.")
 		return
@@ -134,13 +134,13 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !active {
-		log.Printf("login failed login=%s reason=inactive", req.Login)
+		log.Printf("login failed login=%s reason=inactive ip=%s", req.Login, ip)
 		authThrottle.fail(ip, req.Login, time.Now())
 		writeJSONError(w, http.StatusForbidden, "Este usuário está desativado.")
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
-		log.Printf("login failed login=%s reason=password", req.Login)
+		log.Printf("login failed login=%s reason=password ip=%s", req.Login, ip)
 		authThrottle.fail(ip, req.Login, time.Now())
 		writeJSONError(w, http.StatusUnauthorized, "Usuário ou senha incorretos.")
 		return
