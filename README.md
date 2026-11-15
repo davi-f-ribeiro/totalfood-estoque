@@ -52,8 +52,18 @@ Variáveis principais do Compose:
 - `POSTGRES_DB` — banco PostgreSQL, padrão `estoque`.
 - `POSTGRES_USER` — usuário PostgreSQL, padrão `estoque`.
 - `POSTGRES_PASSWORD` — senha PostgreSQL, padrão local `estoque_dev_change_me`.
-- `BOOTSTRAP_DIRECTOR_LOGIN` — login inicial do Diretor, padrão `diretor`.
-- `BOOTSTRAP_DIRECTOR_PASSWORD` — senha inicial do Diretor, padrão local `troque-esta-senha`.
+- `BOOTSTRAP_ADMIN_ENABLED` — `true` cria ou redefine o usuário `diretor` ao iniciar. Padrão `false`.
+- `BOOTSTRAP_ADMIN_PASSWORD` — senha inicial do Diretor. Obrigatória quando `BOOTSTRAP_ADMIN_ENABLED=true`; sem padrão.
+
+### Primeiro acesso em banco vazio
+
+Sem bootstrap, um banco vazio não tem nenhum usuário. Para criar o Diretor:
+
+```sh
+BOOTSTRAP_ADMIN_ENABLED=true BOOTSTRAP_ADMIN_PASSWORD='senha-temporaria' docker compose up --build
+```
+
+Entre com `diretor` e a senha temporária; o sistema exige a troca de senha no primeiro acesso. Depois, reinicie **sem** `BOOTSTRAP_ADMIN_ENABLED=true`: enquanto ligado, cada início redefine a senha do Diretor para a temporária e encerra as sessões dele.
 
 Em produção, defina senhas próprias por variável de ambiente ou arquivo `.env` local não versionado.
 

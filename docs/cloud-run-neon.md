@@ -14,7 +14,7 @@ Variáveis de ambiente usadas pela aplicação:
 - `DB_MAX_IDLE_CONNS` — padrão `5`.
 - `DB_CONN_MAX_LIFETIME_SECONDS` — padrão `1800`.
 - `DB_CONN_MAX_IDLE_SECONDS` — padrão `300`.
-- `BOOTSTRAP_DIRECTOR_LOGIN` / `BOOTSTRAP_DIRECTOR_PASSWORD` — não usar no deploy da base já preparada; servem apenas para bootstrap de banco vazio.
+- `BOOTSTRAP_ADMIN_ENABLED` / `BOOTSTRAP_ADMIN_USER` (sempre `diretor`) / `BOOTSTRAP_ADMIN_PASSWORD` — não usar no deploy da base já preparada; servem apenas para bootstrap de banco vazio. Ligado, cada início redefine a senha do Diretor e encerra as sessões dele.
 - `FISCAL_ALLOWED_HOSTS` — opcional, legado do módulo fiscal preservado.
 
 ## Migrations
