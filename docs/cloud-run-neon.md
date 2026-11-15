@@ -10,11 +10,13 @@ Variáveis de ambiente usadas pela aplicação:
 - `MIGRATIONS_DIR` — diretório de migrations dentro da imagem (`/app/migrations`).
 - `RUN_MIGRATIONS` — padrão `true` para desenvolvimento/local. Em Cloud Run público, usar `false` depois que a etapa explícita de migration tiver sido executada.
 - `COOKIE_SECURE` — padrão seguro; usar `false` somente em desenvolvimento HTTP local.
+- `CLIENT_IP_HEADER` — cabeçalho com o IP do cliente escrito pelo proxy da hospedagem (no Render, `True-Client-IP`). Opcional; tem prioridade sobre `TRUSTED_PROXY_HOPS`. Só usar se toda requisição passar por esse proxy.
+- `TRUSTED_PROXY_HOPS` — número de proxies confiáveis na frente da aplicação, para o limite de login usar o IP real do cliente via `X-Forwarded-For`. Padrão `0`. Confirmar quantos saltos a hospedagem adiciona antes de definir; um valor alto demais deixa o cliente forjar o endereço.
 - `DB_MAX_OPEN_CONNS` — padrão `10`.
 - `DB_MAX_IDLE_CONNS` — padrão `5`.
 - `DB_CONN_MAX_LIFETIME_SECONDS` — padrão `1800`.
 - `DB_CONN_MAX_IDLE_SECONDS` — padrão `300`.
-- `BOOTSTRAP_DIRECTOR_LOGIN` / `BOOTSTRAP_DIRECTOR_PASSWORD` — não usar no deploy da base já preparada; servem apenas para bootstrap de banco vazio.
+- `BOOTSTRAP_ADMIN_ENABLED` / `BOOTSTRAP_ADMIN_USER` (sempre `diretor`) / `BOOTSTRAP_ADMIN_PASSWORD` — não usar no deploy da base já preparada; servem apenas para bootstrap de banco vazio. Ligado, cada início redefine a senha do Diretor e encerra as sessões dele.
 - `FISCAL_ALLOWED_HOSTS` — opcional, legado do módulo fiscal preservado.
 
 ## Migrations
