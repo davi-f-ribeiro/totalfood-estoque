@@ -33,8 +33,23 @@ jobs:
           arduino-cli lib list
       - name: Compile ESP32-S3 N16R8 (USB host + OTA)
         run: |
+          set -euo pipefail
+          BOARDS="$HOME/.arduino15/packages/esp32/hardware/esp32/3.0.5/boards.txt"
+          test -r "$BOARDS"
+          echo "16 MB partition schemes available in core 3.0.5:"
+          grep -E '^esp32s3[.]menu[.]PartitionScheme[.][^.]+=' "$BOARDS" | grep '16M' || true
+          # Select a 16 MB layout with 3 MB OTA app slots, not a huge/no-OTA layout.
+          PARTITION=$(awk -F= '/^esp32s3[.]menu[.]PartitionScheme[.][^.]+=/ && /16M/ && /3MB APP/ {
+            split($1, parts, "."); print parts[4]; exit
+          }' "$BOARDS")
+          if [ -z "$PARTITION" ]; then
+            echo "::error::No ESP32-S3 16MB / 3MB OTA partition scheme found in esp32 core 3.0.5"
+            exit 1
+          fi
+          FQBN="esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=$PARTITION,PSRAM=opi,USBMode=hwcdc"
+          echo "Compiling with FQBN $FQBN"
           arduino-cli compile \
-            --fqbn 'esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=default_16MB,PSRAM=opi,USBMode=hwcdc' \
+            --fqbn "$FQBN" \
             --output-dir "$RUNNER_TEMP/totalfood-esp32-build" \
             firmware/etiqueta_zd220
       - name: Upload firmware build
