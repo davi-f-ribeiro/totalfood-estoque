@@ -37,7 +37,6 @@ func crudVersion(t *testing.T, a *app, table string, id int64) int64 {
 	return version
 }
 
-
 func createTestBrand(t *testing.T, a *app, name string) int64 {
 	t.Helper()
 	var id int64

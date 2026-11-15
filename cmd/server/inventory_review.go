@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	errInventoryNotInReview    = errors.New("inventory is not in review")
-	errInventoryNotDivergent   = errors.New("inventory line is not divergent")
-	errInventoryRecountExists  = errors.New("inventory recount already exists")
+	errInventoryNotInReview   = errors.New("inventory is not in review")
+	errInventoryNotDivergent  = errors.New("inventory line is not divergent")
+	errInventoryRecountExists = errors.New("inventory recount already exists")
 )
 
 type inventoryReviewLine struct {

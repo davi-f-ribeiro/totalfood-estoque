@@ -466,7 +466,6 @@ func TestBlindSelectionHasNoDuplicates(t *testing.T) {
 	}
 }
 
-
 func TestBlindUsesOnlyEligibleWarehouseAndSKUs(t *testing.T) {
 	e := newInventoryTestEnv(t)
 	ctx := context.Background()
@@ -523,17 +522,29 @@ func TestInventoryCreationOperationIdempotency(t *testing.T) {
 
 		before := tableCount(t, e.a, "inventory_validations")
 		first, err := e.a.createTotalInventory(ctx, e.userID, wh1, "inventory-total-idem")
-		if err != nil { t.Fatalf("first total: %v", err) }
+		if err != nil {
+			t.Fatalf("first total: %v", err)
+		}
 		after := tableCount(t, e.a, "inventory_validations")
-		if after != before+1 { t.Fatalf("first total count before=%d after=%d", before, after) }
+		if after != before+1 {
+			t.Fatalf("first total count before=%d after=%d", before, after)
+		}
 		retry, err := e.a.createTotalInventory(ctx, e.userID, wh1, "inventory-total-idem")
-		if err != nil { t.Fatalf("retry total: %v", err) }
-		if retry.ID != first.ID { t.Fatalf("idempotent total ids first=%d retry=%d", first.ID, retry.ID) }
-		if got := tableCount(t, e.a, "inventory_validations"); got != after { t.Fatalf("retry duplicated inventory count=%d want=%d", got, after) }
+		if err != nil {
+			t.Fatalf("retry total: %v", err)
+		}
+		if retry.ID != first.ID {
+			t.Fatalf("idempotent total ids first=%d retry=%d", first.ID, retry.ID)
+		}
+		if got := tableCount(t, e.a, "inventory_validations"); got != after {
+			t.Fatalf("retry duplicated inventory count=%d want=%d", got, after)
+		}
 		if _, err := e.a.createTotalInventory(ctx, e.userID, wh2, "inventory-total-idem"); err != errOperationConflict {
 			t.Fatalf("different payload must conflict, got %v", err)
 		}
-		if got := tableCount(t, e.a, "inventory_validations"); got != after { t.Fatalf("conflict changed inventory count=%d want=%d", got, after) }
+		if got := tableCount(t, e.a, "inventory_validations"); got != after {
+			t.Fatalf("conflict changed inventory count=%d want=%d", got, after)
+		}
 	})
 
 	t.Run("blind", func(t *testing.T) {
@@ -547,12 +558,22 @@ func TestInventoryCreationOperationIdempotency(t *testing.T) {
 
 		before := tableCount(t, e.a, "inventory_validations")
 		first, err := e.a.createBlindInventory(ctx, e.userID, "inventory-blind-idem")
-		if err != nil { t.Fatalf("first blind: %v", err) }
+		if err != nil {
+			t.Fatalf("first blind: %v", err)
+		}
 		after := tableCount(t, e.a, "inventory_validations")
-		if after != before+1 { t.Fatalf("first blind count before=%d after=%d", before, after) }
+		if after != before+1 {
+			t.Fatalf("first blind count before=%d after=%d", before, after)
+		}
 		retry, err := e.a.createBlindInventory(ctx, e.userID, "inventory-blind-idem")
-		if err != nil { t.Fatalf("retry blind: %v", err) }
-		if retry.ID != first.ID || retry.WarehouseID != first.WarehouseID { t.Fatalf("idempotent blind changed selection first=%+v retry=%+v", first, retry) }
-		if got := tableCount(t, e.a, "inventory_validations"); got != after { t.Fatalf("retry duplicated blind inventory count=%d want=%d", got, after) }
+		if err != nil {
+			t.Fatalf("retry blind: %v", err)
+		}
+		if retry.ID != first.ID || retry.WarehouseID != first.WarehouseID {
+			t.Fatalf("idempotent blind changed selection first=%+v retry=%+v", first, retry)
+		}
+		if got := tableCount(t, e.a, "inventory_validations"); got != after {
+			t.Fatalf("retry duplicated blind inventory count=%d want=%d", got, after)
+		}
 	})
 }

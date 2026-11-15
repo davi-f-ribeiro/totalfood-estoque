@@ -201,7 +201,6 @@ func assertStock(t *testing.T, a *app, sku, wh int64, qty, avg string) {
 	}
 }
 
-
 func TestMovementIdempotencyIsBoundToOriginalOperator(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
@@ -210,14 +209,14 @@ func TestMovementIdempotencyIsBoundToOriginalOperator(t *testing.T) {
 
 	first, err := a.createEntry(ctx, movementRequest{
 		OperationID: "op-owned-idempotency",
-		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "10", UserID: userA,
+		SKUID:       sku, WarehouseID: wh, Quantity: "1", UnitCost: "10", UserID: userA,
 	}, "same-request-hash")
 	if err != nil {
 		t.Fatalf("first movement: %v", err)
 	}
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "op-owned-idempotency",
-		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "10", UserID: userB,
+		SKUID:       sku, WarehouseID: wh, Quantity: "1", UnitCost: "10", UserID: userB,
 	}, "same-request-hash"); !errors.Is(err, errOperationConflict) {
 		t.Fatalf("cross-user replay must conflict, got %v", err)
 	}
@@ -254,7 +253,7 @@ ON CONFLICT DO NOTHING`); err != nil {
 	otherID := createTestUser(t, a, "movement-lookup-other", "secret", "Estoquista", true)
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "op-owner-lookup",
-		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "5", UserID: ownerID,
+		SKUID:       sku, WarehouseID: wh, Quantity: "1", UnitCost: "5", UserID: ownerID,
 	}, "lookup-hash"); err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +274,6 @@ ON CONFLICT DO NOTHING`); err != nil {
 		t.Fatal("test users unexpectedly identical")
 	}
 }
-
 
 func TestCanonicalStockSnapshotReconstructsHistoricalQuantityAndAverageCost(t *testing.T) {
 	a, sku, wh1, wh2 := newStockTestApp(t)
@@ -398,72 +396,106 @@ func TestMovementReportFiltersTypePeriodWarehouseAndExcludesTransfers(t *testing
 	}
 }
 
-
 func TestBalanceReportReconstructsHistoricalAverageCostAtCutoff(t *testing.T) {
 	a, sku, wh1, _ := newStockTestApp(t)
 	ctx := context.Background()
-	if _, err := a.db.Exec(`UPDATE movements SET occurred_at='2026-08-01T00:00:00Z'`); err != nil { t.Fatal(err) }
-	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
-	e1:=mv(a.createEntry(ctx,movementRequest{OperationID:"balance-report-1",SKUID:sku,WarehouseID:wh1,Quantity:"10",UnitCost:"10"},"br1"))
-	e2:=mv(a.createEntry(ctx,movementRequest{OperationID:"balance-report-2",SKUID:sku,WarehouseID:wh1,Quantity:"10",UnitCost:"14"},"br2"))
-	x:=mv(a.createExit(ctx,movementRequest{OperationID:"balance-report-3",SKUID:sku,WarehouseID:wh1,Quantity:"5"},"br3"))
-	for _,v:=range []struct{id int64;at string}{{e1.MovementID,"2026-09-01T10:00:00Z"},{e2.MovementID,"2026-09-10T10:00:00Z"},{x.MovementID,"2026-09-20T10:00:00Z"}} {
-		if _,err:=a.db.Exec(`UPDATE movements SET occurred_at=$1 WHERE id=$2`,v.at,v.id);err!=nil{t.Fatal(err)}
+	if _, err := a.db.Exec(`UPDATE movements SET occurred_at='2026-08-01T00:00:00Z'`); err != nil {
+		t.Fatal(err)
 	}
-	before:=time.Date(2026,9,15,0,0,0,0,time.UTC)
-	rows,err:=a.listBalanceReport(ctx,before,wh1)
-	if err!=nil{t.Fatal(err)}
-	if len(rows)!=1 || rows[0].Quantity!="20.000" || rows[0].AvgCost!="12.0000" {
-		t.Fatalf("historical balance=%+v want qty 20 avg 12",rows)
+	mv := func(res operationResult, err error) operationResult { return mustMove2(t, res, err) }
+	e1 := mv(a.createEntry(ctx, movementRequest{OperationID: "balance-report-1", SKUID: sku, WarehouseID: wh1, Quantity: "10", UnitCost: "10"}, "br1"))
+	e2 := mv(a.createEntry(ctx, movementRequest{OperationID: "balance-report-2", SKUID: sku, WarehouseID: wh1, Quantity: "10", UnitCost: "14"}, "br2"))
+	x := mv(a.createExit(ctx, movementRequest{OperationID: "balance-report-3", SKUID: sku, WarehouseID: wh1, Quantity: "5"}, "br3"))
+	for _, v := range []struct {
+		id int64
+		at string
+	}{{e1.MovementID, "2026-09-01T10:00:00Z"}, {e2.MovementID, "2026-09-10T10:00:00Z"}, {x.MovementID, "2026-09-20T10:00:00Z"}} {
+		if _, err := a.db.Exec(`UPDATE movements SET occurred_at=$1 WHERE id=$2`, v.at, v.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)
+	rows, err := a.listBalanceReport(ctx, before, wh1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Quantity != "20.000" || rows[0].AvgCost != "12.0000" {
+		t.Fatalf("historical balance=%+v want qty 20 avg 12", rows)
 	}
 }
 
-
 func TestMovementReportPreservesLegacyResponsible(t *testing.T) {
 	a, _, _, _ := newStockTestApp(t)
-	ctx:=context.Background()
-	if _,err:=a.db.Exec(`UPDATE movements SET occurred_at='2026-09-05T12:00:00Z', responsible='Davi', user_id=NULL WHERE legacy_id IS NOT NULL OR id=(SELECT min(id) FROM movements)`);err!=nil{t.Fatal(err)}
-	start:=time.Date(2026,9,1,0,0,0,0,time.UTC);end:=time.Date(2026,10,1,0,0,0,0,time.UTC)
-	rows,err:=a.listMovementReport(ctx,"ENTRADA",start,end,0)
-	if err!=nil{t.Fatal(err)}
-	found:=false
-	for _,r:=range rows{if r.Responsible=="Davi"{found=true;break}}
-	if !found{t.Fatalf("legacy responsible not preserved: %+v",rows)}
+	ctx := context.Background()
+	if _, err := a.db.Exec(`UPDATE movements SET occurred_at='2026-09-05T12:00:00Z', responsible='Davi', user_id=NULL WHERE legacy_id IS NOT NULL OR id=(SELECT min(id) FROM movements)`); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	rows, err := a.listMovementReport(ctx, "ENTRADA", start, end, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range rows {
+		if r.Responsible == "Davi" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("legacy responsible not preserved: %+v", rows)
+	}
 }
 
 func TestReportEndpointsRequireOperationsRead(t *testing.T) {
 	a, _, _, _ := newStockTestApp(t)
-	if _,err:=a.db.Exec(`
+	if _, err := a.db.Exec(`
 INSERT INTO profile_permissions(profile_id,permission_id)
 SELECT p.id,perm.id FROM profiles p JOIN permissions perm ON perm.resource='stock' AND perm.action='read'
-WHERE p.name='Estoquista' ON CONFLICT DO NOTHING`);err!=nil{t.Fatal(err)}
-	createTestUser(t,a,"report-stock-only","secret","Estoquista",true)
-	login:=doLogin(t,a,"report-stock-only","secret")
-	rr:=authReq(a,http.MethodGet,"/api/reports/movements?type=ENTRADA&start=2026-09-01T00:00:00Z&end=2026-10-01T00:00:00Z",nil,login,"")
-	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only movement report status=%d body=%s",rr.Code,rr.Body.String())}
-	rr=authReq(a,http.MethodGet,"/api/reports/balance?before=2026-10-01T00:00:00Z",nil,login,"")
-	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only balance report status=%d body=%s",rr.Code,rr.Body.String())}
-	rr=authReq(a,http.MethodGet,"/api/reports/warehouses",nil,login,"")
-	if rr.Code!=http.StatusForbidden{t.Fatalf("stock-only report warehouses status=%d body=%s",rr.Code,rr.Body.String())}
+WHERE p.name='Estoquista' ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	createTestUser(t, a, "report-stock-only", "secret", "Estoquista", true)
+	login := doLogin(t, a, "report-stock-only", "secret")
+	rr := authReq(a, http.MethodGet, "/api/reports/movements?type=ENTRADA&start=2026-09-01T00:00:00Z&end=2026-10-01T00:00:00Z", nil, login, "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("stock-only movement report status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = authReq(a, http.MethodGet, "/api/reports/balance?before=2026-10-01T00:00:00Z", nil, login, "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("stock-only balance report status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = authReq(a, http.MethodGet, "/api/reports/warehouses", nil, login, "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("stock-only report warehouses status=%d body=%s", rr.Code, rr.Body.String())
+	}
 
-	if _,err:=a.db.Exec(`
+	if _, err := a.db.Exec(`
 DELETE FROM profile_permissions pp
 USING profiles p, permissions perm
 WHERE pp.profile_id=p.id AND pp.permission_id=perm.id
   AND p.name='Estoquista' AND perm.resource='stock' AND perm.action='read';
 INSERT INTO profile_permissions(profile_id,permission_id)
 SELECT p.id,perm.id FROM profiles p JOIN permissions perm ON perm.resource='operations' AND perm.action='read'
-WHERE p.name='Estoquista' ON CONFLICT DO NOTHING`);err!=nil{t.Fatal(err)}
-	createTestUser(t,a,"report-operations-only","secret","Estoquista",true)
-	reportOnly:=doLogin(t,a,"report-operations-only","secret")
-	rr=authReq(a,http.MethodGet,"/api/reports/warehouses",nil,reportOnly,"")
-	if rr.Code!=http.StatusOK{t.Fatalf("operations-only report warehouses status=%d body=%s",rr.Code,rr.Body.String())}
-	rr=authReq(a,http.MethodGet,"/api/warehouses",nil,reportOnly,"")
-	if rr.Code!=http.StatusForbidden{t.Fatalf("operations-only stock warehouses must remain forbidden, status=%d body=%s",rr.Code,rr.Body.String())}
-	rr=authReq(a,http.MethodGet,"/reports",nil,reportOnly,"")
-	if rr.Code!=http.StatusOK{t.Fatalf("operations-only reports page status=%d body=%s",rr.Code,rr.Body.String())}
+WHERE p.name='Estoquista' ON CONFLICT DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
+	createTestUser(t, a, "report-operations-only", "secret", "Estoquista", true)
+	reportOnly := doLogin(t, a, "report-operations-only", "secret")
+	rr = authReq(a, http.MethodGet, "/api/reports/warehouses", nil, reportOnly, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("operations-only report warehouses status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = authReq(a, http.MethodGet, "/api/warehouses", nil, reportOnly, "")
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("operations-only stock warehouses must remain forbidden, status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	rr = authReq(a, http.MethodGet, "/reports", nil, reportOnly, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("operations-only reports page status=%d body=%s", rr.Code, rr.Body.String())
+	}
 }
-
 
 func TestMovementValidationMessagesAreSpecific(t *testing.T) {
 	a := &app{}
@@ -496,7 +528,6 @@ func TestMovementValidationMessagesAreSpecific(t *testing.T) {
 		})
 	}
 }
-
 
 func TestLegacyMovementHashRemainsStableAcrossPresentationUpgrade(t *testing.T) {
 	body := `{"operation_id":"op-legacy-hash","sku_id":1,"warehouse_id":2,"quantity":"3","unit_cost":"13.30"}`

@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-
 func warehouseFixture(t *testing.T, a *app, label string, active bool) int64 {
 	t.Helper()
 	var id int64
@@ -80,7 +79,6 @@ func TestWarehouseAdministrationLifecycleAndMovementGuard(t *testing.T) {
 	}
 }
 
-
 func TestInactiveWarehouseRejectedAcrossStockOperationsAndSelectors(t *testing.T) {
 	a, sku, wh1, _ := newStockTestApp(t)
 	ctx := context.Background()
@@ -148,7 +146,6 @@ func TestWarehouseWithNegativeBalanceCannotBeDeactivated(t *testing.T) {
 		t.Fatalf("warehouse deactivated with negative balance active=%v err=%v", active, err)
 	}
 }
-
 
 func TestWarehouseDatabaseInvariantsRejectDirectBypass(t *testing.T) {
 	a, sku, _, _ := newStockTestApp(t)
@@ -244,7 +241,6 @@ func TestInactiveWarehouseRejectedByAssetAssignment(t *testing.T) {
 	}
 }
 
-
 func TestWarehouseWithCurrentAssetCannotBeDeactivatedAndDirectAssignmentIsRejected(t *testing.T) {
 	a, _, _, _ := newStockTestApp(t)
 	wh1 := warehouseFixture(t, a, "asset-occupied", true)
@@ -317,7 +313,6 @@ func TestWarehouseAdminRequiresPermission(t *testing.T) {
 		t.Fatalf("sales warehouse admin status=%d", rr.Code)
 	}
 }
-
 
 func TestWarehouseMigration019IncrementalAndIdempotent(t *testing.T) {
 	db := openTestDatabase(t)

@@ -11,18 +11,18 @@ import (
 )
 
 var (
-	errInventoryAdjustmentNotEligible = errors.New("inventory adjustment is not eligible")
-	errInventoryAdjustmentAlreadyApplied = errors.New("inventory adjustment already applied")
+	errInventoryAdjustmentNotEligible     = errors.New("inventory adjustment is not eligible")
+	errInventoryAdjustmentAlreadyApplied  = errors.New("inventory adjustment already applied")
 	errInventoryAdjustmentCostUnavailable = errors.New("inventory adjustment cost basis unavailable")
 )
 
 type inventoryAdjustmentCandidate struct {
-	ValidationID      int64
-	SKUID             int64
-	WarehouseID       int64
-	SnapshotQuantity  string
-	PhysicalQuantity  string
-	Difference        string
+	ValidationID     int64
+	SKUID            int64
+	WarehouseID      int64
+	SnapshotQuantity string
+	PhysicalQuantity string
+	Difference       string
 }
 
 func (a *app) applyInventoryStockAdjustment(ctx context.Context, validationID, skuID, userID int64, operationID string) (operationResult, error) {
@@ -94,12 +94,12 @@ FOR UPDATE OF a`, validationID, skuID).Scan(&existingMovementID, &existingOperat
 	hash := hex.EncodeToString(hashBytes[:])
 	req := movementRequest{
 		OperationID: operationID,
-		SKUID: candidate.SKUID,
+		SKUID:       candidate.SKUID,
 		WarehouseID: candidate.WarehouseID,
-		Quantity: quantity,
-		UnitCost: unitCost,
-		UserID: userID,
-		Notes: fmt.Sprintf("Ajuste da auditoria de estoque #%d.", validationID),
+		Quantity:    quantity,
+		UnitCost:    unitCost,
+		UserID:      userID,
+		Notes:       fmt.Sprintf("Ajuste da auditoria de estoque #%d.", validationID),
 	}
 	res, err := writeMovementTx(ctx, tx, "AJUSTE", req, hash, func(ctx context.Context, tx *sql.Tx) (int64, error) {
 		movementID, err := insertMovement(ctx, tx, "AJUSTE", req, hash)

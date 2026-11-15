@@ -13,7 +13,7 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 
 	t.Run("catalog item", func(t *testing.T) {
 		catID := lookupID(t, a, `SELECT id FROM categories WHERE name='Alimentos'`)
-		create := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), 
+		create := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(),
 			"name": "CRUD Version Item", "category_id": catID, "unit_code": "KG", "minimum_stock": "0",
 		}, director, "")
 		if create.Code != http.StatusCreated {
@@ -47,13 +47,13 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 
 	t.Run("sku", func(t *testing.T) {
 		catID := lookupID(t, a, `SELECT id FROM categories WHERE name='Alimentos'`)
-		parent := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(), 
+		parent := authReq(a, http.MethodPost, "/api/catalog/items", map[string]any{"operation_id": testOperationID(),
 			"name": "CRUD Version SKU Parent", "category_id": catID, "unit_code": "UN", "minimum_stock": "0",
 		}, director, "")
 		parentID := jsonID(t, parent.Body.Bytes())
-		brandID := createTestBrand(t,a,"CRUD Version Brand")
-		create := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), 
-			"item_id": parentID, "brand_id":brandID, "content_quantity":"1", "barcode": "7899999000001",
+		brandID := createTestBrand(t, a, "CRUD Version Brand")
+		create := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(),
+			"item_id": parentID, "brand_id": brandID, "content_quantity": "1", "barcode": "7899999000001",
 		}, director, "")
 		if create.Code != http.StatusCreated {
 			t.Fatalf("create sku status=%d body=%s", create.Code, create.Body.String())
@@ -62,14 +62,14 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 		version := crudVersion(t, a, "product_skus", id)
 
 		first := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(id), map[string]any{
-			"item_id": parentID, "brand_id":brandID, "content_quantity":"2", "barcode": "7899999000001",
+			"item_id": parentID, "brand_id": brandID, "content_quantity": "2", "barcode": "7899999000001",
 			"active": true, "version": version,
 		}, director, "")
 		if first.Code != http.StatusOK {
 			t.Fatalf("first sku edit status=%d body=%s", first.Code, first.Body.String())
 		}
 		stale := authReq(a, http.MethodPatch, "/api/catalog/skus/"+itoa(id), map[string]any{
-			"item_id": parentID, "brand_id":brandID, "content_quantity":"3", "barcode": "7899999000001",
+			"item_id": parentID, "brand_id": brandID, "content_quantity": "3", "barcode": "7899999000001",
 			"active": true, "version": version,
 		}, director, "")
 		if stale.Code != http.StatusConflict || !strings.Contains(stale.Body.String(), concurrentEditMessage) {
@@ -79,7 +79,7 @@ func TestCRUDOptimisticConcurrencyRejectsStaleEdits(t *testing.T) {
 		if err := a.db.QueryRow(`SELECT name FROM product_skus WHERE id=$1`, id).Scan(&name); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(name,"CRUD Version Brand") || !strings.Contains(name,"2 UN") {
+		if !strings.Contains(name, "CRUD Version Brand") || !strings.Contains(name, "2 UN") {
 			t.Fatalf("stale sku overwrote first edit name=%q", name)
 		}
 	})

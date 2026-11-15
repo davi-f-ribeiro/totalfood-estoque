@@ -30,19 +30,19 @@ RETURNING id`, itemID, t.Name()+"-out").Scan(&skuOut); err != nil {
 
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "canonical-sibling-entry",
-		SKUID: skuIn,
+		SKUID:       skuIn,
 		WarehouseID: wh,
-		Quantity: "10",
-		UnitCost: "5",
+		Quantity:    "10",
+		UnitCost:    "5",
 	}, "canonical-sibling-entry-hash"); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, err := a.createExit(ctx, movementRequest{
 		OperationID: "canonical-sibling-exit",
-		SKUID: skuOut,
+		SKUID:       skuOut,
 		WarehouseID: wh,
-		Quantity: "1",
+		Quantity:    "1",
 	}, "canonical-sibling-exit-hash"); err != nil {
 		if errors.Is(err, errInsufficientStock) {
 			t.Fatalf("sibling SKU must consume the shared item balance; got insufficient stock: %v", err)
@@ -77,19 +77,19 @@ RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
 
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "canonical-cost-a",
-		SKUID: skuA,
+		SKUID:       skuA,
 		WarehouseID: wh,
-		Quantity: "10",
-		UnitCost: "10",
+		Quantity:    "10",
+		UnitCost:    "10",
 	}, "canonical-cost-a-hash"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "canonical-cost-b",
-		SKUID: skuB,
+		SKUID:       skuB,
 		WarehouseID: wh,
-		Quantity: "10",
-		UnitCost: "14",
+		Quantity:    "10",
+		UnitCost:    "14",
 	}, "canonical-cost-b-hash"); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,6 @@ RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
 	}
 }
 
-
 func TestCanonicalStockSiblingSKUsCannotDoubleSpendSharedBalance(t *testing.T) {
 	a, skuA, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
@@ -126,7 +125,7 @@ RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
 	}
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "canonical-concurrency-seed",
-		SKUID: skuA, WarehouseID: wh, Quantity: "10", UnitCost: "10",
+		SKUID:       skuA, WarehouseID: wh, Quantity: "10", UnitCost: "10",
 	}, "canonical-concurrency-seed-hash"); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +138,7 @@ RETURNING id`, itemID, t.Name()+"-b").Scan(&skuB); err != nil {
 			defer wg.Done()
 			_, errs[i] = a.createExit(ctx, movementRequest{
 				OperationID: []string{"canonical-concurrency-a", "canonical-concurrency-b"}[i],
-				SKUID: skuID, WarehouseID: wh, Quantity: "7",
+				SKUID:       skuID, WarehouseID: wh, Quantity: "7",
 			}, []string{"canonical-concurrency-a-hash", "canonical-concurrency-b-hash"}[i])
 		}(i, skuID)
 	}
@@ -178,7 +177,6 @@ WHERE m.operation_id IN ('canonical-concurrency-a','canonical-concurrency-b')`).
 		t.Fatalf("concurrent exits overallocated lots: %s want 7.000", allocated)
 	}
 }
-
 
 func TestInventorySiblingBarcodeResolvesSingleCanonicalLine(t *testing.T) {
 	e := newInventoryTestEnv(t)
@@ -271,7 +269,6 @@ VALUES($1,$2,'KG',true) RETURNING id`, t.Name()+"-other-parent", catID).Scan(&ot
 	_ = skuB
 }
 
-
 func TestPresentationNormalizationAlhoThreeKg(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
@@ -279,9 +276,9 @@ func TestPresentationNormalizationAlhoThreeKg(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := a.createEntry(ctx, movementRequest{
-		OperationID: "alho-3kg-entry",
+		OperationID:       "alho-3kg-entry",
 		QuantitySemantics: presentationQuantitySemantics,
-		SKUID: sku, WarehouseID: wh, Quantity: "1", UnitCost: "39.90",
+		SKUID:             sku, WarehouseID: wh, Quantity: "1", UnitCost: "39.90",
 	}, "alho-3kg-entry-hash")
 	if err != nil {
 		t.Fatal(err)
@@ -323,16 +320,16 @@ RETURNING id`, itemID, t.Name()+"-pack").Scan(&pack); err != nil {
 	}
 
 	if _, err := a.createEntry(ctx, movementRequest{
-		OperationID: "bigbag-entry",
+		OperationID:       "bigbag-entry",
 		QuantitySemantics: presentationQuantitySemantics,
-		SKUID: bigBag, WarehouseID: wh, Quantity: "1", UnitCost: "50",
+		SKUID:             bigBag, WarehouseID: wh, Quantity: "1", UnitCost: "50",
 	}, "bigbag-entry-hash"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.createExit(ctx, movementRequest{
-		OperationID: "pack-exit",
+		OperationID:       "pack-exit",
 		QuantitySemantics: presentationQuantitySemantics,
-		SKUID: pack, WarehouseID: wh, Quantity: "1",
+		SKUID:             pack, WarehouseID: wh, Quantity: "1",
 	}, "pack-exit-hash"); err != nil {
 		t.Fatal(err)
 	}
@@ -370,26 +367,29 @@ func TestPresentationNormalizationTransferUsesCanonicalQuantity(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := a.createEntry(ctx, movementRequest{
-		OperationID: "transfer-seed",
+		OperationID:       "transfer-seed",
 		QuantitySemantics: presentationQuantitySemantics, SKUID: sku, WarehouseID: fromWH, Quantity: "2", UnitCost: "50",
 	}, "transfer-seed-hash"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.createTransfer(ctx, movementRequest{
-		OperationID: "transfer-one-bag",
+		OperationID:       "transfer-one-bag",
 		QuantitySemantics: presentationQuantitySemantics, SKUID: sku, FromWarehouseID: fromWH, ToWarehouseID: toWH, Quantity: "1",
 	}, "transfer-one-bag-hash"); err != nil {
 		t.Fatal(err)
 	}
 	from, err := getStockSnapshot(ctx, a.db, sku, fromWH)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	to, err := getStockSnapshot(ctx, a.db, sku, toWH)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if from.Quantity != "10.000" || to.Quantity != "10.000" {
 		t.Fatalf("transfer canonical balances from=%s to=%s want 10.000/10.000", from.Quantity, to.Quantity)
 	}
 }
-
 
 func TestCanonicalStockPreservesHistoricalParentAfterSKUReassignment(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
@@ -448,17 +448,17 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 	director := doLogin(t, a, "director-content-quantity", "secret")
 	catID := lookupID(t, a, `SELECT id FROM categories ORDER BY id LIMIT 1`)
 
-	itemResp := authReq(a, "POST", "/api/catalog/items", map[string]any{"operation_id": testOperationID(), 
+	itemResp := authReq(a, "POST", "/api/catalog/items", map[string]any{"operation_id": testOperationID(),
 		"name": "Apresentacao Teste", "category_id": catID, "unit_code": "KG", "minimum_stock": "0",
 	}, director, "")
 	if itemResp.Code != 201 {
 		t.Fatalf("create item status=%d body=%s", itemResp.Code, itemResp.Body.String())
 	}
 	itemID := jsonID(t, itemResp.Body.Bytes())
-	brandID := createTestBrand(t,a,"Marca Apresentacao Teste")
+	brandID := createTestBrand(t, a, "Marca Apresentacao Teste")
 
-	skuResp := authReq(a, "POST", "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), 
-		"item_id": itemID, "brand_id":brandID, "content_quantity":"1", "barcode": t.Name()+"-ean",
+	skuResp := authReq(a, "POST", "/api/catalog/skus", map[string]any{"operation_id": testOperationID(),
+		"item_id": itemID, "brand_id": brandID, "content_quantity": "1", "barcode": t.Name() + "-ean",
 	}, director, "")
 	if skuResp.Code != 201 {
 		t.Fatalf("create sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
@@ -473,7 +473,7 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 	}
 
 	edit := authReq(a, "PATCH", "/api/catalog/skus/"+itoa(skuID), map[string]any{
-		"item_id": itemID, "brand_id":brandID, "barcode": t.Name()+"-ean",
+		"item_id": itemID, "brand_id": brandID, "barcode": t.Name() + "-ean",
 		"content_quantity": "3", "active": true, "version": crudVersion(t, a, "product_skus", skuID),
 	}, director, "")
 	if edit.Code != 200 {
@@ -486,7 +486,6 @@ func TestCatalogContentQuantityDefaultsAndUpdates(t *testing.T) {
 		t.Fatalf("updated content=%s want 3.0000", content)
 	}
 }
-
 
 func TestCanonicalStockSharesBalanceAcrossBrandsOfSameParent(t *testing.T) {
 	a, skuBrandB, wh, _ := newStockTestApp(t)
@@ -512,22 +511,22 @@ RETURNING id`, itemID, t.Name()+"-marca-a").Scan(&skuBrandA); err != nil {
 	}
 
 	if _, err := a.createEntry(ctx, movementRequest{
-		OperationID: "cross-brand-entry",
+		OperationID:       "cross-brand-entry",
 		QuantitySemantics: presentationQuantitySemantics,
-		SKUID: skuBrandB,
-		WarehouseID: wh,
-		Quantity: "1",
-		UnitCost: "50",
+		SKUID:             skuBrandB,
+		WarehouseID:       wh,
+		Quantity:          "1",
+		UnitCost:          "50",
 	}, "cross-brand-entry-hash"); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, err := a.createExit(ctx, movementRequest{
-		OperationID: "cross-brand-exit",
+		OperationID:       "cross-brand-exit",
 		QuantitySemantics: presentationQuantitySemantics,
-		SKUID: skuBrandA,
-		WarehouseID: wh,
-		Quantity: "1",
+		SKUID:             skuBrandA,
+		WarehouseID:       wh,
+		Quantity:          "1",
 	}, "cross-brand-exit-hash"); err != nil {
 		t.Fatalf("brands under the same parent must share stock: %v", err)
 	}
@@ -556,7 +555,6 @@ WHERE movement_id IN (
 	}
 }
 
-
 func TestLotsFIFOWithoutExpiry(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
@@ -564,26 +562,36 @@ func TestLotsFIFOWithoutExpiry(t *testing.T) {
 	first, err := a.createEntry(ctx, movementRequest{
 		OperationID: "lot-fifo-entry-1", SKUID: sku, WarehouseID: wh, Quantity: "4", UnitCost: "10",
 	}, "lot-fifo-entry-1-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	second, err := a.createEntry(ctx, movementRequest{
 		OperationID: "lot-fifo-entry-2", SKUID: sku, WarehouseID: wh, Quantity: "5", UnitCost: "12",
 	}, "lot-fifo-entry-2-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	exit, err := a.createExit(ctx, movementRequest{
 		OperationID: "lot-fifo-exit", SKUID: sku, WarehouseID: wh, Quantity: "6",
 	}, "lot-fifo-exit-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var firstLot, secondLot int64
 	if err := a.db.QueryRow(`
 SELECT l.id FROM stock_lots l
 JOIN movement_lines ml ON ml.id=l.source_movement_line_id
-WHERE ml.movement_id=$1`, first.MovementID).Scan(&firstLot); err != nil { t.Fatal(err) }
+WHERE ml.movement_id=$1`, first.MovementID).Scan(&firstLot); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.db.QueryRow(`
 SELECT l.id FROM stock_lots l
 JOIN movement_lines ml ON ml.id=l.source_movement_line_id
-WHERE ml.movement_id=$1`, second.MovementID).Scan(&secondLot); err != nil { t.Fatal(err) }
+WHERE ml.movement_id=$1`, second.MovementID).Scan(&secondLot); err != nil {
+		t.Fatal(err)
+	}
 
 	rows, err := a.db.Query(`
 SELECT a.stock_lot_id,a.quantity::text
@@ -591,16 +599,20 @@ FROM stock_lot_allocations a
 JOIN movement_lines ml ON ml.id=a.movement_line_id
 WHERE ml.movement_id=$1
 ORDER BY a.stock_lot_id`, exit.MovementID)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer rows.Close()
 	got := map[int64]string{}
 	for rows.Next() {
 		var id int64
 		var q string
-		if err := rows.Scan(&id,&q); err != nil { t.Fatal(err) }
-		got[id]=q
+		if err := rows.Scan(&id, &q); err != nil {
+			t.Fatal(err)
+		}
+		got[id] = q
 	}
-	if got[firstLot]!="4.000" || got[secondLot]!="2.000" {
+	if got[firstLot] != "4.000" || got[secondLot] != "2.000" {
 		t.Fatalf("FIFO allocations=%v want first 4.000 second 2.000", got)
 	}
 }
@@ -612,22 +624,36 @@ func TestLotsFEFOWhenExpiryExists(t *testing.T) {
 	oldEntry, err := a.createEntry(ctx, movementRequest{
 		OperationID: "lot-fefo-old-entry", SKUID: sku, WarehouseID: wh, Quantity: "5", UnitCost: "10",
 	}, "lot-fefo-old-entry-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	newEntry, err := a.createEntry(ctx, movementRequest{
 		OperationID: "lot-fefo-new-entry", SKUID: sku, WarehouseID: wh, Quantity: "5", UnitCost: "10",
 	}, "lot-fefo-new-entry-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var oldLot, newLot int64
-	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, oldEntry.MovementID).Scan(&oldLot); err != nil { t.Fatal(err) }
-	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, newEntry.MovementID).Scan(&newLot); err != nil { t.Fatal(err) }
-	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-31' WHERE id=$1`, oldLot); err != nil { t.Fatal(err) }
-	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-11-30' WHERE id=$1`, newLot); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, oldEntry.MovementID).Scan(&oldLot); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, newEntry.MovementID).Scan(&newLot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-31' WHERE id=$1`, oldLot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-11-30' WHERE id=$1`, newLot); err != nil {
+		t.Fatal(err)
+	}
 
 	exit, err := a.createExit(ctx, movementRequest{
 		OperationID: "lot-fefo-exit", SKUID: sku, WarehouseID: wh, Quantity: "3",
 	}, "lot-fefo-exit-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var chosen int64
 	var qty string
@@ -635,7 +661,9 @@ func TestLotsFEFOWhenExpiryExists(t *testing.T) {
 SELECT a.stock_lot_id,a.quantity::text
 FROM stock_lot_allocations a
 JOIN movement_lines ml ON ml.id=a.movement_line_id
-WHERE ml.movement_id=$1`, exit.MovementID).Scan(&chosen,&qty); err != nil { t.Fatal(err) }
+WHERE ml.movement_id=$1`, exit.MovementID).Scan(&chosen, &qty); err != nil {
+		t.Fatal(err)
+	}
 	if chosen != newLot || qty != "3.000" {
 		t.Fatalf("FEFO chose lot=%d qty=%s want lot=%d qty=3.000", chosen, qty, newLot)
 	}
@@ -645,23 +673,33 @@ func TestLotsCrossBrandExitTracksEntryOrigin(t *testing.T) {
 	a, skuBrandB, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
 	var itemID int64
-	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuBrandB).Scan(&itemID); err != nil { t.Fatal(err) }
-	if _, err := a.db.Exec(`UPDATE product_skus SET brand='Marca B',name='Marca B 10kg',content_quantity=10 WHERE id=$1`, skuBrandB); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuBrandB).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE product_skus SET brand='Marca B',name='Marca B 10kg',content_quantity=10 WHERE id=$1`, skuBrandB); err != nil {
+		t.Fatal(err)
+	}
 	var skuBrandA int64
 	if err := a.db.QueryRow(`
 INSERT INTO product_skus (item_id,brand,name,barcode,content_quantity,active)
-VALUES ($1,'Marca A','Marca A 1kg',$2,1,true) RETURNING id`, itemID, t.Name()+"-a").Scan(&skuBrandA); err != nil { t.Fatal(err) }
+VALUES ($1,'Marca A','Marca A 1kg',$2,1,true) RETURNING id`, itemID, t.Name()+"-a").Scan(&skuBrandA); err != nil {
+		t.Fatal(err)
+	}
 
 	entry, err := a.createEntry(ctx, movementRequest{
-		OperationID: "lot-cross-brand-entry",
+		OperationID:       "lot-cross-brand-entry",
 		QuantitySemantics: presentationQuantitySemantics, SKUID: skuBrandB, WarehouseID: wh, Quantity: "1", UnitCost: "50",
 	}, "lot-cross-brand-entry-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	exit, err := a.createExit(ctx, movementRequest{
-		OperationID: "lot-cross-brand-exit",
+		OperationID:       "lot-cross-brand-exit",
 		QuantitySemantics: presentationQuantitySemantics, SKUID: skuBrandA, WarehouseID: wh, Quantity: "2",
 	}, "lot-cross-brand-exit-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var sourceSKU, exitSKU int64
 	var allocated string
@@ -671,7 +709,9 @@ FROM stock_lot_allocations a
 JOIN movement_lines exit_ml ON exit_ml.id=a.movement_line_id
 JOIN stock_lots l ON l.id=a.stock_lot_id
 JOIN movement_lines source_ml ON source_ml.id=l.source_movement_line_id
-WHERE exit_ml.movement_id=$1`, exit.MovementID).Scan(&sourceSKU,&exitSKU,&allocated); err != nil { t.Fatal(err) }
+WHERE exit_ml.movement_id=$1`, exit.MovementID).Scan(&sourceSKU, &exitSKU, &allocated); err != nil {
+		t.Fatal(err)
+	}
 	if sourceSKU != skuBrandB || exitSKU != skuBrandA || allocated != "2.000" {
 		t.Fatalf("cross-brand trace source=%d exit=%d qty=%s", sourceSKU, exitSKU, allocated)
 	}
@@ -685,15 +725,23 @@ func TestTransferLotsPreserveLineageAndExpiry(t *testing.T) {
 	entry, err := a.createEntry(ctx, movementRequest{
 		OperationID: "lot-transfer-entry", SKUID: sku, WarehouseID: fromWH, Quantity: "8", UnitCost: "10",
 	}, "lot-transfer-entry-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	var sourceLot int64
-	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, entry.MovementID).Scan(&sourceLot); err != nil { t.Fatal(err) }
-	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-20',manufacturer_lot_code='FAB-123',received_at='2026-01-15T10:00:00Z' WHERE id=$1`, sourceLot); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, entry.MovementID).Scan(&sourceLot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-20',manufacturer_lot_code='FAB-123',received_at='2026-01-15T10:00:00Z' WHERE id=$1`, sourceLot); err != nil {
+		t.Fatal(err)
+	}
 
 	transfer, err := a.createTransfer(ctx, movementRequest{
 		OperationID: "lot-transfer", SKUID: sku, FromWarehouseID: fromWH, ToWarehouseID: toWH, Quantity: "3",
 	}, "lot-transfer-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var derivedSource int64
 	var qty, lotCode string
@@ -702,12 +750,13 @@ func TestTransferLotsPreserveLineageAndExpiry(t *testing.T) {
 SELECT l.source_lot_id,l.initial_quantity::text,COALESCE(l.manufacturer_lot_code,''),l.expires_at::text,l.received_at::text
 FROM stock_lots l
 JOIN movement_lines ml ON ml.id=l.source_movement_line_id
-WHERE ml.movement_id=$1 AND ml.direction='IN'`, transfer.MovementID).Scan(&derivedSource,&qty,&lotCode,&expiry,&receivedAt); err != nil { t.Fatal(err) }
-	if derivedSource != sourceLot || qty != "3.000" || lotCode != "FAB-123" || expiry != "2026-12-20" || !strings.HasPrefix(receivedAt,"2026-01-15 10:00:00") {
+WHERE ml.movement_id=$1 AND ml.direction='IN'`, transfer.MovementID).Scan(&derivedSource, &qty, &lotCode, &expiry, &receivedAt); err != nil {
+		t.Fatal(err)
+	}
+	if derivedSource != sourceLot || qty != "3.000" || lotCode != "FAB-123" || expiry != "2026-12-20" || !strings.HasPrefix(receivedAt, "2026-01-15 10:00:00") {
 		t.Fatalf("transfer lineage source=%d qty=%s code=%s expiry=%s received=%s", derivedSource, qty, lotCode, expiry, receivedAt)
 	}
 }
-
 
 func TestLotBalancesReconcileWithCanonicalLedgerByWarehouse(t *testing.T) {
 	a, sku, wh1, wh2 := newStockTestApp(t)
@@ -775,8 +824,10 @@ WHERE l.item_id=$1 AND l.warehouse_id=$2`, itemID, warehouseID).Scan(&lots); err
 func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
-	brandID := createTestBrand(t,a,t.Name()+"-Brand")
-	if _, err := a.db.Exec(`UPDATE product_skus SET brand_id=$1 WHERE id=$2`,brandID,sku); err != nil { t.Fatal(err) }
+	brandID := createTestBrand(t, a, t.Name()+"-Brand")
+	if _, err := a.db.Exec(`UPDATE product_skus SET brand_id=$1 WHERE id=$2`, brandID, sku); err != nil {
+		t.Fatal(err)
+	}
 	entry, err := a.createEntry(ctx, movementRequest{
 		OperationID: "detail-lot-entry", SKUID: sku, WarehouseID: wh, Quantity: "6", UnitCost: "9",
 	}, "detail-lot-entry-hash")
@@ -795,7 +846,7 @@ func TestStockDetailExposesRemainingLotTraceWithoutChangingMainBalance(t *testin
 	var sibling int64
 	if err := a.db.QueryRow(`
 INSERT INTO product_skus(item_id,brand_id,brand,name,barcode,content_quantity,active)
-VALUES($1,$2,'Marca B','Pacote alternativo',$3,2,true) RETURNING id`, itemID,brandID,t.Name()+"-detail-sibling").Scan(&sibling); err != nil {
+VALUES($1,$2,'Marca B','Pacote alternativo',$3,2,true) RETURNING id`, itemID, brandID, t.Name()+"-detail-sibling").Scan(&sibling); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.db.QueryRow(`
@@ -841,7 +892,6 @@ WHERE ml.movement_id=$1`, entry.MovementID).Scan(&lotID); err != nil {
 	}
 }
 
-
 func TestLegacyCanonicalMovementIsNotReinterpretedAsPresentation(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
@@ -850,13 +900,13 @@ func TestLegacyCanonicalMovementIsNotReinterpretedAsPresentation(t *testing.T) {
 	}
 	entry, err := a.createEntry(ctx, movementRequest{
 		OperationID: "legacy-canonical-entry",
-		SKUID: sku, WarehouseID: wh, Quantity: "3", UnitCost: "13.30",
+		SKUID:       sku, WarehouseID: wh, Quantity: "3", UnitCost: "13.30",
 	}, "legacy-canonical-entry-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var qty, cost string
-	if err := a.db.QueryRow(`SELECT quantity::text,unit_cost::text FROM movement_lines WHERE movement_id=$1`, entry.MovementID).Scan(&qty,&cost); err != nil {
+	if err := a.db.QueryRow(`SELECT quantity::text,unit_cost::text FROM movement_lines WHERE movement_id=$1`, entry.MovementID).Scan(&qty, &cost); err != nil {
 		t.Fatal(err)
 	}
 	if qty != "3.000" || cost != "13.3000" {
@@ -871,14 +921,18 @@ func TestPresentationIdempotencyDoesNotDuplicateLotsOrAllocations(t *testing.T) 
 		t.Fatal(err)
 	}
 	req := movementRequest{
-		OperationID: "presentation-idempotent-entry",
+		OperationID:       "presentation-idempotent-entry",
 		QuantitySemantics: presentationQuantitySemantics,
-		SKUID: sku, WarehouseID: wh, Quantity: "2", UnitCost: "20",
+		SKUID:             sku, WarehouseID: wh, Quantity: "2", UnitCost: "20",
 	}
 	first, err := a.createEntry(ctx, req, "presentation-idempotent-entry-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	second, err := a.createEntry(ctx, req, "presentation-idempotent-entry-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if first.MovementID != second.MovementID {
 		t.Fatal("idempotent entry returned different movement")
 	}
@@ -887,20 +941,26 @@ func TestPresentationIdempotencyDoesNotDuplicateLotsOrAllocations(t *testing.T) 
 SELECT count(*)
 FROM stock_lots l
 JOIN movement_lines ml ON ml.id=l.source_movement_line_id
-WHERE ml.movement_id=$1`, first.MovementID).Scan(&lots); err != nil { t.Fatal(err) }
+WHERE ml.movement_id=$1`, first.MovementID).Scan(&lots); err != nil {
+		t.Fatal(err)
+	}
 	if lots != 1 {
 		t.Fatalf("idempotent entry created %d lots want 1", lots)
 	}
 
 	exitReq := movementRequest{
-		OperationID: "presentation-idempotent-exit",
+		OperationID:       "presentation-idempotent-exit",
 		QuantitySemantics: presentationQuantitySemantics,
-		SKUID: sku, WarehouseID: wh, Quantity: "1",
+		SKUID:             sku, WarehouseID: wh, Quantity: "1",
 	}
 	exit1, err := a.createExit(ctx, exitReq, "presentation-idempotent-exit-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	exit2, err := a.createExit(ctx, exitReq, "presentation-idempotent-exit-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if exit1.MovementID != exit2.MovementID {
 		t.Fatal("idempotent exit returned different movement")
 	}
@@ -910,7 +970,9 @@ WHERE ml.movement_id=$1`, first.MovementID).Scan(&lots); err != nil { t.Fatal(er
 SELECT count(*),COALESCE(sum(a.quantity),0)::text
 FROM stock_lot_allocations a
 JOIN movement_lines ml ON ml.id=a.movement_line_id
-WHERE ml.movement_id=$1`, exit1.MovementID).Scan(&allocations,&allocated); err != nil { t.Fatal(err) }
+WHERE ml.movement_id=$1`, exit1.MovementID).Scan(&allocations, &allocated); err != nil {
+		t.Fatal(err)
+	}
 	if allocations != 1 || allocated != "2.000" {
 		t.Fatalf("idempotent exit allocations=%d qty=%s", allocations, allocated)
 	}
@@ -928,18 +990,28 @@ func TestLotAllocationFailureRollsBackWholeExit(t *testing.T) {
 		t.Fatal(err)
 	}
 	var beforeMovements, beforeLines int
-	if err := a.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&beforeMovements); err != nil { t.Fatal(err) }
-	if err := a.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&beforeLines); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&beforeMovements); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&beforeLines); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := a.createExit(ctx, movementRequest{
 		OperationID: "rollback-lot-exit", SKUID: sku, WarehouseID: wh, Quantity: "2",
-	}, "rollback-lot-exit-hash"); err == nil || !strings.Contains(err.Error(),"lot allocation") {
+	}, "rollback-lot-exit-hash"); err == nil || !strings.Contains(err.Error(), "lot allocation") {
 		t.Fatalf("expected lot allocation failure, got %v", err)
 	}
 	var afterMovements, afterLines, exitOps int
-	if err := a.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&afterMovements); err != nil { t.Fatal(err) }
-	if err := a.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&afterLines); err != nil { t.Fatal(err) }
-	if err := a.db.QueryRow(`SELECT count(*) FROM movements WHERE operation_id='rollback-lot-exit'`).Scan(&exitOps); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&afterMovements); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&afterLines); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`SELECT count(*) FROM movements WHERE operation_id='rollback-lot-exit'`).Scan(&exitOps); err != nil {
+		t.Fatal(err)
+	}
 	if afterMovements != beforeMovements || afterLines != beforeLines || exitOps != 0 {
 		t.Fatalf("failed exit left partial data movements %d->%d lines %d->%d op=%d", beforeMovements, afterMovements, beforeLines, afterLines, exitOps)
 	}
@@ -951,33 +1023,51 @@ func TestLotChoiceDoesNotChangeWeightedAverageCost(t *testing.T) {
 	e1, err := a.createEntry(ctx, movementRequest{
 		OperationID: "cost-lot-entry-1", SKUID: sku, WarehouseID: wh, Quantity: "10", UnitCost: "10",
 	}, "cost-lot-entry-1-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	e2, err := a.createEntry(ctx, movementRequest{
 		OperationID: "cost-lot-entry-2", SKUID: sku, WarehouseID: wh, Quantity: "10", UnitCost: "20",
 	}, "cost-lot-entry-2-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	var lot1, lot2 int64
-	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, e1.MovementID).Scan(&lot1); err != nil { t.Fatal(err) }
-	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, e2.MovementID).Scan(&lot2); err != nil { t.Fatal(err) }
-	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-31' WHERE id=$1`, lot1); err != nil { t.Fatal(err) }
-	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-11-30' WHERE id=$1`, lot2); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, e1.MovementID).Scan(&lot1); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow(`SELECT l.id FROM stock_lots l JOIN movement_lines ml ON ml.id=l.source_movement_line_id WHERE ml.movement_id=$1`, e2.MovementID).Scan(&lot2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-12-31' WHERE id=$1`, lot1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.Exec(`UPDATE stock_lots SET expires_at='2026-11-30' WHERE id=$1`, lot2); err != nil {
+		t.Fatal(err)
+	}
 
 	exit, err := a.createExit(ctx, movementRequest{
 		OperationID: "cost-lot-exit", SKUID: sku, WarehouseID: wh, Quantity: "5",
 	}, "cost-lot-exit-hash")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	var exitCost string
 	var chosenLot int64
 	if err := a.db.QueryRow(`
 SELECT ml.unit_cost::text,a.stock_lot_id
 FROM movement_lines ml
 JOIN stock_lot_allocations a ON a.movement_line_id=ml.id
-WHERE ml.movement_id=$1`, exit.MovementID).Scan(&exitCost,&chosenLot); err != nil { t.Fatal(err) }
+WHERE ml.movement_id=$1`, exit.MovementID).Scan(&exitCost, &chosenLot); err != nil {
+		t.Fatal(err)
+	}
 	if chosenLot != lot2 || exitCost != "15.0000" {
 		t.Fatalf("lot/cost coupling detected chosen=%d want=%d exit_cost=%s want=15.0000", chosenLot, lot2, exitCost)
 	}
 	s, err := getStockSnapshot(ctx, a.db, sku, wh)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if s.Quantity != "15.000" || s.AvgCost != "15.0000" {
 		t.Fatalf("post-exit avg changed qty=%s avg=%s", s.Quantity, s.AvgCost)
 	}
@@ -987,22 +1077,29 @@ func TestCanonicalWarehouseCanDeactivateAfterCrossSKUParentNetZero(t *testing.T)
 	a, skuA, wh, _ := newStockTestApp(t)
 	ctx := context.Background()
 	var itemID int64
-	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuA).Scan(&itemID); err != nil { t.Fatal(err) }
+	if err := a.db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, skuA).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
 	var skuB int64
 	if err := a.db.QueryRow(`
 INSERT INTO product_skus(item_id,brand,name,barcode,active)
-VALUES($1,'Outra','Outra apresentação',$2,true) RETURNING id`, itemID, t.Name()+"-sibling").Scan(&skuB); err != nil { t.Fatal(err) }
+VALUES($1,'Outra','Outra apresentação',$2,true) RETURNING id`, itemID, t.Name()+"-sibling").Scan(&skuB); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.createEntry(ctx, movementRequest{
 		OperationID: "warehouse-parent-net-entry", SKUID: skuA, WarehouseID: wh, Quantity: "10", UnitCost: "1",
-	}, "warehouse-parent-net-entry-hash"); err != nil { t.Fatal(err) }
+	}, "warehouse-parent-net-entry-hash"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.createExit(ctx, movementRequest{
 		OperationID: "warehouse-parent-net-exit", SKUID: skuB, WarehouseID: wh, Quantity: "10",
-	}, "warehouse-parent-net-exit-hash"); err != nil { t.Fatal(err) }
+	}, "warehouse-parent-net-exit-hash"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.db.Exec(`UPDATE warehouses SET active=false WHERE id=$1`, wh); err != nil {
 		t.Fatalf("canonical zero-balance warehouse should deactivate: %v", err)
 	}
 }
-
 
 func TestBrandStockIdentitySharesPresentationsButIsolatesBrands(t *testing.T) {
 	a, payol1, whFrom, whTo := newStockTestApp(t)
@@ -1026,55 +1123,65 @@ func TestBrandStockIdentitySharesPresentationsButIsolatesBrands(t *testing.T) {
 	var payol10, caete1 int64
 	if err := a.db.QueryRow(`
 INSERT INTO product_skus(item_id,brand_id,name,barcode,content_quantity,active)
-VALUES($1,$2,'Payol 10 kg',$3,10,true) RETURNING id`, itemID,payolBrand,t.Name()+"-payol10").Scan(&payol10); err != nil {
+VALUES($1,$2,'Payol 10 kg',$3,10,true) RETURNING id`, itemID, payolBrand, t.Name()+"-payol10").Scan(&payol10); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.db.QueryRow(`
 INSERT INTO product_skus(item_id,brand_id,name,barcode,content_quantity,active)
-VALUES($1,$2,'Caete 1 kg',$3,1,true) RETURNING id`, itemID,caeteBrand,t.Name()+"-caete1").Scan(&caete1); err != nil {
+VALUES($1,$2,'Caete 1 kg',$3,1,true) RETURNING id`, itemID, caeteBrand, t.Name()+"-caete1").Scan(&caete1); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := a.createEntry(ctx,movementRequest{
-		OperationID:"brand-payol-entry",QuantitySemantics:presentationQuantitySemantics,
-		SKUID:payol10,WarehouseID:whFrom,Quantity:"1",UnitCost:"50",
-	},"brand-payol-entry-hash"); err != nil { t.Fatal(err) }
-	if _, err := a.createEntry(ctx,movementRequest{
-		OperationID:"brand-caete-entry",QuantitySemantics:presentationQuantitySemantics,
-		SKUID:caete1,WarehouseID:whFrom,Quantity:"50",UnitCost:"5",
-	},"brand-caete-entry-hash"); err != nil { t.Fatal(err) }
-
-	if _, err := a.createExit(ctx,movementRequest{
-		OperationID:"brand-payol-exit",QuantitySemantics:presentationQuantitySemantics,
-		SKUID:payol1,WarehouseID:whFrom,Quantity:"3",
-	},"brand-payol-exit-hash"); err != nil {
-		t.Fatalf("same-brand presentation must consume shared Payol balance: %v",err)
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "brand-payol-entry", QuantitySemantics: presentationQuantitySemantics,
+		SKUID: payol10, WarehouseID: whFrom, Quantity: "1", UnitCost: "50",
+	}, "brand-payol-entry-hash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.createEntry(ctx, movementRequest{
+		OperationID: "brand-caete-entry", QuantitySemantics: presentationQuantitySemantics,
+		SKUID: caete1, WarehouseID: whFrom, Quantity: "50", UnitCost: "5",
+	}, "brand-caete-entry-hash"); err != nil {
+		t.Fatal(err)
 	}
 
-	payol, err := getStockSnapshot(ctx,a.db,payol1,whFrom)
-	if err != nil { t.Fatal(err) }
-	caete, err := getStockSnapshot(ctx,a.db,caete1,whFrom)
-	if err != nil { t.Fatal(err) }
-	if payol.Quantity!="7.000" || caete.Quantity!="50.000" {
-		t.Fatalf("brand isolation failed: Payol=%s Caete=%s",payol.Quantity,caete.Quantity)
+	if _, err := a.createExit(ctx, movementRequest{
+		OperationID: "brand-payol-exit", QuantitySemantics: presentationQuantitySemantics,
+		SKUID: payol1, WarehouseID: whFrom, Quantity: "3",
+	}, "brand-payol-exit-hash"); err != nil {
+		t.Fatalf("same-brand presentation must consume shared Payol balance: %v", err)
 	}
 
-	if _, err := a.createExit(ctx,movementRequest{
-		OperationID:"brand-payol-too-much",QuantitySemantics:presentationQuantitySemantics,
-		SKUID:payol1,WarehouseID:whFrom,Quantity:"8",
-	},"brand-payol-too-much-hash"); !errors.Is(err,errInsufficientStock) {
-		t.Fatalf("Payol must not consume Caete balance: %v",err)
+	payol, err := getStockSnapshot(ctx, a.db, payol1, whFrom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caete, err := getStockSnapshot(ctx, a.db, caete1, whFrom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payol.Quantity != "7.000" || caete.Quantity != "50.000" {
+		t.Fatalf("brand isolation failed: Payol=%s Caete=%s", payol.Quantity, caete.Quantity)
 	}
 
-	if _, err := a.createTransfer(ctx,movementRequest{
-		OperationID:"brand-payol-transfer",QuantitySemantics:presentationQuantitySemantics,
-		SKUID:payol1,FromWarehouseID:whFrom,ToWarehouseID:whTo,Quantity:"2",
-	},"brand-payol-transfer-hash"); err != nil { t.Fatal(err) }
+	if _, err := a.createExit(ctx, movementRequest{
+		OperationID: "brand-payol-too-much", QuantitySemantics: presentationQuantitySemantics,
+		SKUID: payol1, WarehouseID: whFrom, Quantity: "8",
+	}, "brand-payol-too-much-hash"); !errors.Is(err, errInsufficientStock) {
+		t.Fatalf("Payol must not consume Caete balance: %v", err)
+	}
 
-	fromPayol, _ := getStockSnapshot(ctx,a.db,payol10,whFrom)
-	toPayol, _ := getStockSnapshot(ctx,a.db,payol1,whTo)
-	fromCaete, _ := getStockSnapshot(ctx,a.db,caete1,whFrom)
-	if fromPayol.Quantity!="5.000" || toPayol.Quantity!="2.000" || fromCaete.Quantity!="50.000" {
-		t.Fatalf("transfer crossed brand boundary: Payol from=%s to=%s Caete=%s",fromPayol.Quantity,toPayol.Quantity,fromCaete.Quantity)
+	if _, err := a.createTransfer(ctx, movementRequest{
+		OperationID: "brand-payol-transfer", QuantitySemantics: presentationQuantitySemantics,
+		SKUID: payol1, FromWarehouseID: whFrom, ToWarehouseID: whTo, Quantity: "2",
+	}, "brand-payol-transfer-hash"); err != nil {
+		t.Fatal(err)
+	}
+
+	fromPayol, _ := getStockSnapshot(ctx, a.db, payol10, whFrom)
+	toPayol, _ := getStockSnapshot(ctx, a.db, payol1, whTo)
+	fromCaete, _ := getStockSnapshot(ctx, a.db, caete1, whFrom)
+	if fromPayol.Quantity != "5.000" || toPayol.Quantity != "2.000" || fromCaete.Quantity != "50.000" {
+		t.Fatalf("transfer crossed brand boundary: Payol from=%s to=%s Caete=%s", fromPayol.Quantity, toPayol.Quantity, fromCaete.Quantity)
 	}
 }

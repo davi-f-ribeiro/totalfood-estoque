@@ -92,8 +92,8 @@ func createFiscalTestSKU(t *testing.T, a *app, login loginData, itemName, skuNam
 		t.Fatalf("item status=%d body=%s", itemResp.Code, itemResp.Body.String())
 	}
 	itemID := jsonID(t, itemResp.Body.Bytes())
-	brandID := createTestBrand(t,a,skuName+" Brand")
-	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), "item_id": itemID, "brand_id":brandID, "content_quantity":"1", "barcode": barcode}, login, "")
+	brandID := createTestBrand(t, a, skuName+" Brand")
+	skuResp := authReq(a, http.MethodPost, "/api/catalog/skus", map[string]any{"operation_id": testOperationID(), "item_id": itemID, "brand_id": brandID, "content_quantity": "1", "barcode": barcode}, login, "")
 	if skuResp.Code != http.StatusCreated {
 		t.Fatalf("sku status=%d body=%s", skuResp.Code, skuResp.Body.String())
 	}
@@ -114,7 +114,7 @@ func TestFiscalManualRejectsDuplicateSKUWithinSameNote(t *testing.T) {
 	beforeDocs := tableCount(t, a, "fiscal_documents")
 	payload := map[string]any{
 		"operation_id": "fiscal-duplicate-sku",
-		"access_key": key,
+		"access_key":   key,
 		"warehouse_id": wh,
 		"lines": []map[string]any{
 			{"sku_id": sku, "quantity": "2", "unit_cost": "10"},
@@ -125,13 +125,20 @@ func TestFiscalManualRejectsDuplicateSKUWithinSameNote(t *testing.T) {
 	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "Um produto não pode aparecer duas vezes") {
 		t.Fatalf("duplicate SKU status=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if got := tableCount(t, a, "movements"); got != beforeMovements { t.Fatalf("duplicate SKU created movement: %d -> %d", beforeMovements, got) }
-	if got := tableCount(t, a, "fiscal_documents"); got != beforeDocs { t.Fatalf("duplicate SKU created fiscal document: %d -> %d", beforeDocs, got) }
+	if got := tableCount(t, a, "movements"); got != beforeMovements {
+		t.Fatalf("duplicate SKU created movement: %d -> %d", beforeMovements, got)
+	}
+	if got := tableCount(t, a, "fiscal_documents"); got != beforeDocs {
+		t.Fatalf("duplicate SKU created fiscal document: %d -> %d", beforeDocs, got)
+	}
 	stock, err := getStockSnapshot(context.Background(), a.db, sku, wh)
-	if err != nil { t.Fatal(err) }
-	if stock.Quantity != "0" { t.Fatalf("duplicate SKU changed stock: %+v", stock) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stock.Quantity != "0" {
+		t.Fatalf("duplicate SKU changed stock: %+v", stock)
+	}
 }
-
 
 func TestFiscalManualPresentationConversionUsesCanonicalEngine(t *testing.T) {
 	a, _, wh, _ := newStockTestApp(t)
@@ -143,13 +150,13 @@ func TestFiscalManualPresentationConversionUsesCanonicalEngine(t *testing.T) {
 	}
 	key := validAccessKeyForTest("2326090372088200341665007000039196107125050")
 	payload := map[string]any{
-		"operation_id": "fiscal-presentation-conversion",
-		"access_key": key,
-		"warehouse_id": wh,
+		"operation_id":       "fiscal-presentation-conversion",
+		"access_key":         key,
+		"warehouse_id":       wh,
 		"quantity_semantics": presentationQuantitySemantics,
 		"lines": []map[string]any{{
-			"sku_id": sku,
-			"quantity": "1,0",
+			"sku_id":    sku,
+			"quantity":  "1,0",
 			"unit_cost": "39,90",
 		}},
 	}
@@ -158,7 +165,9 @@ func TestFiscalManualPresentationConversionUsesCanonicalEngine(t *testing.T) {
 		t.Fatalf("presentation fiscal status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	stock, err := getStockSnapshot(context.Background(), a.db, sku, wh)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if stock.Quantity != "3.000" || stock.AvgCost != "13.3000" {
 		t.Fatalf("presentation fiscal stock=%+v", stock)
 	}

@@ -12,15 +12,15 @@ import (
 )
 
 type inventoryListItem struct {
-	ID            int64      `json:"id"`
-	Type          string     `json:"type"`
-	WarehouseID   int64      `json:"warehouse_id"`
-	Warehouse     string     `json:"warehouse"`
-	Responsible  string     `json:"responsible"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
-	Status        string     `json:"status"`
-	Counted       int        `json:"counted"`
-	Total         int        `json:"total"`
+	ID          int64      `json:"id"`
+	Type        string     `json:"type"`
+	WarehouseID int64      `json:"warehouse_id"`
+	Warehouse   string     `json:"warehouse"`
+	Responsible string     `json:"responsible"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	Status      string     `json:"status"`
+	Counted     int        `json:"counted"`
+	Total       int        `json:"total"`
 }
 
 type inventoryListResponse struct {
@@ -175,14 +175,14 @@ LIMIT $7 OFFSET $8`, status, typ, warehouseID, responsible, nullableTime(from), 
 	for rows.Next() {
 		var item inventoryListItem
 		var started sql.NullTime
-		if err := rows.Scan(&item.ID,&item.Type,&item.WarehouseID,&item.Warehouse,&item.Responsible,&started,&item.Status,&item.Counted,&item.Total); err != nil {
+		if err := rows.Scan(&item.ID, &item.Type, &item.WarehouseID, &item.Warehouse, &item.Responsible, &started, &item.Status, &item.Counted, &item.Total); err != nil {
 			return inventoryListResponse{}, err
 		}
 		if started.Valid {
 			t := started.Time
 			item.StartedAt = &t
 		}
-		out.Items = append(out.Items,item)
+		out.Items = append(out.Items, item)
 	}
 	if err := rows.Err(); err != nil {
 		return inventoryListResponse{}, err
@@ -191,7 +191,7 @@ LIMIT $7 OFFSET $8`, status, typ, warehouseID, responsible, nullableTime(from), 
 		out.More = true
 		out.Items = out.Items[:limit]
 	}
-	return out,nil
+	return out, nil
 }
 
 func nullableTime(t *time.Time) any {

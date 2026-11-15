@@ -30,11 +30,11 @@ type fiscalQRRequest struct {
 }
 
 type fiscalConfirmRequest struct {
-	OperationID string             `json:"operation_id"`
-	AccessKey   string             `json:"access_key"`
-	WarehouseID int64              `json:"warehouse_id"`
-	QuantitySemantics string       `json:"quantity_semantics,omitempty"`
-	Lines       []entryLineRequest `json:"lines"`
+	OperationID       string             `json:"operation_id"`
+	AccessKey         string             `json:"access_key"`
+	WarehouseID       int64              `json:"warehouse_id"`
+	QuantitySemantics string             `json:"quantity_semantics,omitempty"`
+	Lines             []entryLineRequest `json:"lines"`
 }
 
 type fiscalFetchResult struct {

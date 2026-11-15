@@ -14,11 +14,11 @@ import (
 )
 
 var (
-	errInventoryWarehouseNotFound   = errors.New("inventory warehouse not found")
-	errInventoryWarehouseInactive   = errors.New("inventory warehouse inactive")
-	errInventoryNoEligibleSKUs      = errors.New("inventory warehouse has no eligible skus")
-	errInventoryNoBlindWarehouse    = errors.New("no warehouse eligible for blind inventory")
-	errInventoryValidationNotFound  = errors.New("inventory validation not found")
+	errInventoryWarehouseNotFound  = errors.New("inventory warehouse not found")
+	errInventoryWarehouseInactive  = errors.New("inventory warehouse inactive")
+	errInventoryNoEligibleSKUs     = errors.New("inventory warehouse has no eligible skus")
+	errInventoryNoBlindWarehouse   = errors.New("no warehouse eligible for blind inventory")
+	errInventoryValidationNotFound = errors.New("inventory validation not found")
 )
 
 type inventoryQueryer interface {
@@ -27,12 +27,12 @@ type inventoryQueryer interface {
 }
 
 type inventoryEligibilityRow struct {
-	SKUID     int64
-	Balance   string
-	SKUActive bool
+	SKUID      int64
+	Balance    string
+	SKUActive  bool
 	ItemActive bool
-	Eligible  bool
-	Reason    string
+	Eligible   bool
+	Reason     string
 }
 
 type inventorySnapshotLine struct {

@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -108,11 +108,11 @@ func completedAdjustmentWithEngineStock(t *testing.T, label, physical string) (i
 	sku := e.sku(t, label+"-sku", true, true)
 	if _, err := e.a.createEntry(ctx, movementRequest{
 		OperationID: "seed-" + label,
-		SKUID: sku,
+		SKUID:       sku,
 		WarehouseID: wh,
-		Quantity: "10",
-		UnitCost: "5",
-		UserID: e.userID,
+		Quantity:    "10",
+		UnitCost:    "5",
+		UserID:      e.userID,
 	}, "seed-"+label); err != nil {
 		t.Fatal(err)
 	}
@@ -283,10 +283,10 @@ func TestInventoryAdjustmentRejectsReductionWhenCurrentStockChanged(t *testing.T
 	ctx := context.Background()
 	if _, err := e.a.createExit(ctx, movementRequest{
 		OperationID: "post-audit-exit",
-		SKUID: sku,
+		SKUID:       sku,
 		WarehouseID: inv.WarehouseID,
-		Quantity: "5",
-		UserID: e.userID,
+		Quantity:    "5",
+		UserID:      e.userID,
 	}, "post-audit-exit"); err != nil {
 		t.Fatal(err)
 	}
@@ -348,10 +348,10 @@ func TestInventoryAdjustmentPositiveFallsBackToLastRealEntryCost(t *testing.T) {
 	ctx := context.Background()
 	if _, err := e.a.createExit(ctx, movementRequest{
 		OperationID: "drain-before-fallback",
-		SKUID: sku,
+		SKUID:       sku,
 		WarehouseID: inv.WarehouseID,
-		Quantity: "10",
-		UserID: e.userID,
+		Quantity:    "10",
+		UserID:      e.userID,
 	}, "drain-before-fallback"); err != nil {
 		t.Fatal(err)
 	}
@@ -378,11 +378,11 @@ func TestInventoryAdjustmentPositiveBlocksWithoutValidCostBasis(t *testing.T) {
 	sku := e.sku(t, "no-cost-sku", true, true)
 	if _, err := e.a.createEntry(ctx, movementRequest{
 		OperationID: "seed-zero-cost",
-		SKUID: sku,
+		SKUID:       sku,
 		WarehouseID: wh,
-		Quantity: "10",
-		UnitCost: "0",
-		UserID: e.userID,
+		Quantity:    "10",
+		UnitCost:    "0",
+		UserID:      e.userID,
 	}, "seed-zero-cost"); err != nil {
 		t.Fatal(err)
 	}
@@ -404,10 +404,10 @@ func TestInventoryAdjustmentPositiveBlocksWithoutValidCostBasis(t *testing.T) {
 	}
 	if _, err := e.a.createExit(ctx, movementRequest{
 		OperationID: "drain-zero-cost",
-		SKUID: sku,
+		SKUID:       sku,
 		WarehouseID: wh,
-		Quantity: "10",
-		UserID: e.userID,
+		Quantity:    "10",
+		UserID:      e.userID,
 	}, "drain-zero-cost"); err != nil {
 		t.Fatal(err)
 	}
@@ -441,16 +441,16 @@ ON CONFLICT DO NOTHING`); err != nil {
 
 	deniedLogin := doLogin(t, e.a, "adjust-denied-"+t.Name(), "secret")
 	rr := authReq(e.a, http.MethodPost,
-		"/api/inventory-validations/"+strconv.FormatInt(inv.ID,10)+"/lines/"+strconv.FormatInt(sku,10)+"/adjust",
-		map[string]any{"operation_id":"adjust-authz"}, deniedLogin, "")
+		"/api/inventory-validations/"+strconv.FormatInt(inv.ID, 10)+"/lines/"+strconv.FormatInt(sku, 10)+"/adjust",
+		map[string]any{"operation_id": "adjust-authz"}, deniedLogin, "")
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("denied adjustment status=%d body=%s", rr.Code, rr.Body.String())
 	}
 
 	ownerLogin := doLogin(t, e.a, "adjust-owner-"+t.Name(), "secret")
 	rr = authReq(e.a, http.MethodPost,
-		"/api/inventory-validations/"+strconv.FormatInt(inv.ID,10)+"/lines/"+strconv.FormatInt(sku,10)+"/adjust",
-		map[string]any{"operation_id":"adjust-authz"}, ownerLogin, "")
+		"/api/inventory-validations/"+strconv.FormatInt(inv.ID, 10)+"/lines/"+strconv.FormatInt(sku, 10)+"/adjust",
+		map[string]any{"operation_id": "adjust-authz"}, ownerLogin, "")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("authorized adjustment status=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -471,10 +471,10 @@ func TestInventoryAdjustmentRejectsInactiveWarehouse(t *testing.T) {
 	ctx := context.Background()
 	if _, err := e.a.createExit(ctx, movementRequest{
 		OperationID: "drain-before-deactivate",
-		SKUID: sku,
+		SKUID:       sku,
 		WarehouseID: inv.WarehouseID,
-		Quantity: "10",
-		UserID: e.userID,
+		Quantity:    "10",
+		UserID:      e.userID,
 	}, "drain-before-deactivate"); err != nil {
 		t.Fatal(err)
 	}

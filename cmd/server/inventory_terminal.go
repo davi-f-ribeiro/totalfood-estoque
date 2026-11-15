@@ -32,22 +32,22 @@ type inventoryCancelRequest struct {
 }
 
 type inventoryHistoryLine struct {
-	SKUID             int64      `json:"sku_id"`
-	Code              string     `json:"code"`
-	Description       string     `json:"description"`
-	Unit              string     `json:"unit"`
-	Barcode           string     `json:"barcode,omitempty"`
-	FirstQuantity     *string    `json:"first_quantity,omitempty"`
-	FirstCountedAt    *time.Time `json:"first_counted_at,omitempty"`
-	FirstCountedBy    string     `json:"first_counted_by,omitempty"`
-	RecountQuantity   *string    `json:"recount_quantity,omitempty"`
-	RecountedAt       *time.Time `json:"recounted_at,omitempty"`
-	RecountedBy       string     `json:"recounted_by,omitempty"`
-	ReferenceQuantity *string    `json:"reference_quantity,omitempty"`
-	EffectiveQuantity *string    `json:"effective_quantity,omitempty"`
-	Difference        *string    `json:"difference,omitempty"`
-	State             *string    `json:"state,omitempty"`
-	AdjustmentMovementID *int64 `json:"adjustment_movement_id,omitempty"`
+	SKUID                int64      `json:"sku_id"`
+	Code                 string     `json:"code"`
+	Description          string     `json:"description"`
+	Unit                 string     `json:"unit"`
+	Barcode              string     `json:"barcode,omitempty"`
+	FirstQuantity        *string    `json:"first_quantity,omitempty"`
+	FirstCountedAt       *time.Time `json:"first_counted_at,omitempty"`
+	FirstCountedBy       string     `json:"first_counted_by,omitempty"`
+	RecountQuantity      *string    `json:"recount_quantity,omitempty"`
+	RecountedAt          *time.Time `json:"recounted_at,omitempty"`
+	RecountedBy          string     `json:"recounted_by,omitempty"`
+	ReferenceQuantity    *string    `json:"reference_quantity,omitempty"`
+	EffectiveQuantity    *string    `json:"effective_quantity,omitempty"`
+	Difference           *string    `json:"difference,omitempty"`
+	State                *string    `json:"state,omitempty"`
+	AdjustmentMovementID *int64     `json:"adjustment_movement_id,omitempty"`
 }
 
 type inventoryHistoryView struct {
@@ -336,10 +336,10 @@ LEFT JOIN users ru ON ru.id=v.responsible_user_id
 LEFT JOIN users cu ON cu.id=v.completed_by_user_id
 LEFT JOIN users xu ON xu.id=v.cancelled_by_user_id
 WHERE v.id=$1`, id).Scan(
-		&out.ID,&out.Type,&out.WarehouseID,&out.Warehouse,&out.Status,
-		&out.ResponsibleBy,&startedAt,&snapshotAt,
-		&out.CompletedBy,&completedAt,&completionNote,
-		&out.CancelledBy,&cancelledAt,&cancellationReason,
+		&out.ID, &out.Type, &out.WarehouseID, &out.Warehouse, &out.Status,
+		&out.ResponsibleBy, &startedAt, &snapshotAt,
+		&out.CompletedBy, &completedAt, &completionNote,
+		&out.CancelledBy, &cancelledAt, &cancellationReason,
 	); errors.Is(err, sql.ErrNoRows) {
 		return inventoryHistoryView{}, errInventoryValidationNotFound
 	} else if err != nil {
@@ -348,12 +348,28 @@ WHERE v.id=$1`, id).Scan(
 	if out.Status != "COMPLETED" && out.Status != "CANCELLED" {
 		return inventoryHistoryView{}, errInventoryTerminal
 	}
-	if startedAt.Valid { t:=startedAt.Time; out.StartedAt=&t }
-	if snapshotAt.Valid { t:=snapshotAt.Time; out.SnapshotAt=&t }
-	if completedAt.Valid { t:=completedAt.Time; out.CompletedAt=&t }
-	if cancelledAt.Valid { t:=cancelledAt.Time; out.CancelledAt=&t }
-	if completionNote.Valid { out.CompletionNote=completionNote.String }
-	if cancellationReason.Valid { out.CancellationReason=cancellationReason.String }
+	if startedAt.Valid {
+		t := startedAt.Time
+		out.StartedAt = &t
+	}
+	if snapshotAt.Valid {
+		t := snapshotAt.Time
+		out.SnapshotAt = &t
+	}
+	if completedAt.Valid {
+		t := completedAt.Time
+		out.CompletedAt = &t
+	}
+	if cancelledAt.Valid {
+		t := cancelledAt.Time
+		out.CancelledAt = &t
+	}
+	if completionNote.Valid {
+		out.CompletionNote = completionNote.String
+	}
+	if cancellationReason.Valid {
+		out.CancellationReason = cancellationReason.String
+	}
 
 	var pending int
 	if err := tx.QueryRowContext(ctx, `
@@ -361,7 +377,7 @@ SELECT count(*) FROM inventory_validation_lines
 WHERE validation_id=$1 AND physical_quantity IS NULL`, id).Scan(&pending); err != nil {
 		return inventoryHistoryView{}, err
 	}
-	out.ReferenceRevealed = !(out.Type=="BLIND" && out.Status=="CANCELLED" && pending>0)
+	out.ReferenceRevealed = !(out.Type == "BLIND" && out.Status == "CANCELLED" && pending > 0)
 
 	rows, err := tx.QueryContext(ctx, `
 SELECT l.sku_id,
@@ -387,32 +403,59 @@ ORDER BY i.name,l.sku_id`, id)
 		return inventoryHistoryView{}, err
 	}
 	defer rows.Close()
-	out.Lines=[]inventoryHistoryLine{}
+	out.Lines = []inventoryHistoryLine{}
 	for rows.Next() {
 		var line inventoryHistoryLine
-		var firstQty,recountQty,reference,effective,difference,state sql.NullString
+		var firstQty, recountQty, reference, effective, difference, state sql.NullString
 		var adjustmentMovementID sql.NullInt64
-		var firstAt,recountAt sql.NullTime
+		var firstAt, recountAt sql.NullTime
 		if err := rows.Scan(
-			&line.SKUID,&line.Code,&line.Description,&line.Unit,&line.Barcode,
-			&firstQty,&firstAt,&line.FirstCountedBy,
-			&recountQty,&recountAt,&line.RecountedBy,
-			&reference,&effective,&difference,&state,&adjustmentMovementID,
+			&line.SKUID, &line.Code, &line.Description, &line.Unit, &line.Barcode,
+			&firstQty, &firstAt, &line.FirstCountedBy,
+			&recountQty, &recountAt, &line.RecountedBy,
+			&reference, &effective, &difference, &state, &adjustmentMovementID,
 		); err != nil {
 			return inventoryHistoryView{}, err
 		}
-		if firstQty.Valid { q:=firstQty.String; line.FirstQuantity=&q }
-		if firstAt.Valid { t:=firstAt.Time; line.FirstCountedAt=&t }
-		if recountQty.Valid { q:=recountQty.String; line.RecountQuantity=&q }
-		if recountAt.Valid { t:=recountAt.Time; line.RecountedAt=&t }
-		if out.ReferenceRevealed {
-			if reference.Valid { q:=reference.String; line.ReferenceQuantity=&q }
-			if effective.Valid { q:=effective.String; line.EffectiveQuantity=&q }
-			if difference.Valid { q:=difference.String; line.Difference=&q }
-			if state.Valid { q:=state.String; line.State=&q }
-			if adjustmentMovementID.Valid { v:=adjustmentMovementID.Int64; line.AdjustmentMovementID=&v }
+		if firstQty.Valid {
+			q := firstQty.String
+			line.FirstQuantity = &q
 		}
-		out.Lines=append(out.Lines,line)
+		if firstAt.Valid {
+			t := firstAt.Time
+			line.FirstCountedAt = &t
+		}
+		if recountQty.Valid {
+			q := recountQty.String
+			line.RecountQuantity = &q
+		}
+		if recountAt.Valid {
+			t := recountAt.Time
+			line.RecountedAt = &t
+		}
+		if out.ReferenceRevealed {
+			if reference.Valid {
+				q := reference.String
+				line.ReferenceQuantity = &q
+			}
+			if effective.Valid {
+				q := effective.String
+				line.EffectiveQuantity = &q
+			}
+			if difference.Valid {
+				q := difference.String
+				line.Difference = &q
+			}
+			if state.Valid {
+				q := state.String
+				line.State = &q
+			}
+			if adjustmentMovementID.Valid {
+				v := adjustmentMovementID.Int64
+				line.AdjustmentMovementID = &v
+			}
+		}
+		out.Lines = append(out.Lines, line)
 	}
 	return out, rows.Err()
 }
