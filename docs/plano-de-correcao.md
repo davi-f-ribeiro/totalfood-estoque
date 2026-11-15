@@ -10,8 +10,8 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 |---|---|---|
 | 1.1 Bootstrap do Diretor com variáveis diferentes no Compose e no código | feito | #30 |
 | 1.2 Limite de login contando acertos e agrupando todos atrás do proxy | feito | #30 (`CLIENT_IP_HEADER`, `TRUSTED_PROXY_HOPS`) |
-| 1.3 Erros do banco identificados pelo texto da mensagem (`strings.Contains(err.Error(), ...)`) | feito: código SQLSTATE e nome exato da constraint (`db_errors.go`); "assets_tag" casava também a validação `assets_tag_check` | PR de higiene do servidor |
-| 1.4 `WriteTimeout` de 10 s para todas as rotas | feito: prazo próprio para relatórios, planejamento e fotos de entrega; a foto ampliava só a leitura, e a resposta podia se perder | PR de higiene do servidor |
+| 1.3 Erros do banco identificados pelo texto da mensagem (`strings.Contains(err.Error(), ...)`) | feito: código SQLSTATE e nome exato da constraint (`db_errors.go`); "assets_tag" casava também a validação `assets_tag_check` | #40 |
+| 1.4 `WriteTimeout` de 10 s para todas as rotas | feito: prazo próprio para relatórios, planejamento e fotos de entrega; a foto ampliava só a leitura, e a resposta podia se perder | #40 |
 | 1.5 Dois arquivos de migration com número 033 | feito: número repetido agora reprova o teste; o 033 fica como exceção registrada | 5S |
 | 1.6 README, `check.sh` e documentação de deploy desatualizados | feito: deploy documentado só para Render + Neon (Cloud Run descartado) | 5S |
 | 1.7 CI verificando só parte dos arquivos JavaScript | feito: `node --check` em todos os JS de `static/` | 5S |
@@ -31,7 +31,7 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | 2.4 Qualquer impressora pega qualquer etiqueta de caixa (sem filtro por depósito) | aberto | — |
 | 2.5 Etiqueta marcada como enviada sem consultar papel, tampa e pausa da Zebra (`~HS`) | aberto | — |
 | 2.6 Fila do ESP exige login e recusa a senha padrão | feito | #27 |
-| 2.6 Operador precisava da senha de administrador do ESP para imprimir | feito: fila sem senha numa aba própria (rede interna fechada, decisão de 15/11) | firmware 1.6.4 |
+| 2.6 Operador precisava da senha de administrador do ESP para imprimir | feito: fila sem senha numa aba própria (rede interna fechada, decisão de 15/11) | #37 (firmware 1.6.4) |
 | 2.6 Porta 9100 aberta sem autenticação | aberto | — |
 | 2.7 Falha de banco na autenticação da impressora respondia 401 | feito | #29 |
 | 2.7 `last_seen_at` só atualiza quando há trabalho; comentário órfão na migration 039; `^CI28` com texto só ASCII | aberto | — |
@@ -46,8 +46,8 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Caixas: aviso fora da tela no celular, dica de KG apagada, espaçamento | feito | #34 |
 | Configuração de impressoras misturada à operação de Caixas | feito | #32 |
 | Menu inferior: ícones faltando e rótulos sobrepostos com 8 itens | feito | #31 |
-| Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | feito | PR de Requisições |
-| Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | feito: `unit=KG` filtra no banco | PR de higiene do servidor |
+| Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | feito | #36 |
+| Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | feito: `unit=KG` filtra no banco | #40 |
 | Menu do celular com 4 atalhos por perfil; abas na tela de Caixas | decisão | — |
 
 ## Outros achados
