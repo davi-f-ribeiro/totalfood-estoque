@@ -19,6 +19,8 @@
 4. A busca e o status exigem autenticação de administrador do ESP. A fila não opera com a senha padrão; configure uma senha própria antes de usar. Acesse **Configurações** e autentique-se antes do primeiro acionamento, retornando à tela principal. Toque **Buscar e imprimir etiquetas**. A busca acontece **apenas ao tocar**.
 5. Confira fila e status no WMS. Em caso de falta de ACK ou reinício, não há reimpressão automática: o trabalho fica incerto e requer decisão do operador.
 
+Para testar a impressora sem mexer no estoque, use **Enviar teste** na mesma seção: entra na fila uma etiqueta "ETIQUETA DE TESTE" só para aquela impressora (`POST /api/print/devices/{id}/test`, admin de depósitos). Depois toque em **Buscar e imprimir etiquetas** no ESP32; a lista mostra a situação do último teste (aguardando, enviado ao USB, sem confirmação). Enquanto um teste daquela impressora não terminar, outro é recusado. No banco, a etiqueta de teste é o trabalho sem caixa (`crate_id` nulo) e sempre tem impressora definida (migration 040).
+
 Na mesma seção ficam a lista de impressoras e o botão **Revogar** (pede um segundo toque). Uma impressora revogada perde o acesso na hora; o nome continua reservado, então um novo acesso precisa de outro nome. A fila de impressão continua na tela de Caixas, que é de operação.
 
 O token é específico de dispositivo, armazenado como hash no servidor e não volta nas consultas de configuração do ESP. O ESP grava o segredo local em Preferences/NVS (proteja acesso físico e admin da rede local).
@@ -34,6 +36,7 @@ O token é específico de dispositivo, armazenado como hash no servidor e não v
 | Parear impressora | `POST /api/print/devices` | sessão, CSRF, admin depósitos |
 | Consultar impressoras | `GET /api/print/devices` | sessão, admin depósitos |
 | Revogar impressora | `POST /api/print/devices/{id}/revoke` | sessão, CSRF, admin depósitos |
+| Etiqueta de teste | `POST /api/print/devices/{id}/test` | sessão, CSRF, admin depósitos |
 | Consultar fila | `GET /api/print/jobs` | sessão, movimento entrada |
 | Reenviar falha/resultado incerto | `POST /api/print/jobs/{id}/retry` | sessão, CSRF, movimento entrada |
 | Reservar trabalho | `POST /api/print/jobs/claim?format=zpl` | Bearer do ESP |

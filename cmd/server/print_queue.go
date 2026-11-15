@@ -14,7 +14,7 @@ import (
 
 type printJob struct {
 	ID         int64  `json:"id"`
-	CrateID    int64  `json:"crate_id"`
+	CrateID    *int64 `json:"crate_id,omitempty"` // nil para etiqueta de teste
 	Revision   int    `json:"revision"`
 	ZPL        string `json:"zpl"`
 	ClaimToken string `json:"claim_token,omitempty"`
@@ -96,6 +96,7 @@ func (a *app) registerPrintHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/print/devices", a.requireAuth("warehouses", "write", a.handlePrintPair))
 	mux.HandleFunc("GET /api/print/devices", a.requireAuth("warehouses", "write", a.handlePrintDevices))
 	mux.HandleFunc("POST /api/print/devices/{id}/revoke", a.requireAuth("warehouses", "write", a.handlePrintRevoke))
+	mux.HandleFunc("POST /api/print/devices/{id}/test", a.requireAuth("warehouses", "write", a.handlePrintTest))
 	mux.HandleFunc("GET /api/print/jobs", a.requireAuth("movement_entry", "write", a.handlePrintJobs))
 	mux.HandleFunc("POST /api/print/jobs/{id}/retry", a.requireAuth("movement_entry", "write", a.handlePrintRetry))
 	mux.HandleFunc("POST /api/print/jobs/claim", a.requirePrinter(a.handlePrintClaim))
@@ -149,8 +150,16 @@ func (a *app) handlePrintPair(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, map[string]any{"id": id, "name": req.Name, "token": token})
 }
 func (a *app) handlePrintDevices(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), `SELECT id,name,active FROM print_devices ORDER BY id`)
+	// last_test_* mostra o último teste de cada impressora, para a tela de
+	// Administração dizer se a etiqueta chegou ao USB.
+	rows, err := a.db.QueryContext(r.Context(), `SELECT d.id,d.name,d.active,t.status,
+  to_char(t.created_at AT TIME ZONE 'America/Fortaleza','DD/MM/YYYY HH24:MI')
+FROM print_devices d
+LEFT JOIN LATERAL (SELECT status,created_at FROM print_jobs
+  WHERE device_id=d.id AND crate_id IS NULL ORDER BY id DESC LIMIT 1) t ON true
+ORDER BY d.id`)
 	if err != nil {
+		log.Printf("printer list failed: %v", err)
 		writeJSONError(w, 500, "Falha ao consultar impressoras.")
 		return
 	}
@@ -160,11 +169,17 @@ func (a *app) handlePrintDevices(w http.ResponseWriter, r *http.Request) {
 		var id int64
 		var name string
 		var active bool
-		if err = rows.Scan(&id, &name, &active); err != nil {
+		var testStatus, testAt sql.NullString
+		if err = rows.Scan(&id, &name, &active, &testStatus, &testAt); err != nil {
+			log.Printf("printer list scan failed: %v", err)
 			writeJSONError(w, 500, "Falha ao consultar impressoras.")
 			return
 		}
-		devices = append(devices, map[string]any{"id": id, "name": name, "active": active})
+		d := map[string]any{"id": id, "name": name, "active": active}
+		if testStatus.Valid {
+			d["last_test_status"], d["last_test_at"] = testStatus.String, testAt.String
+		}
+		devices = append(devices, d)
 	}
 	writeJSON(w, 200, map[string]any{"devices": devices})
 }
@@ -212,6 +227,7 @@ func (a *app) handlePrintClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var job printJob
+	var crateID sql.NullInt64
 	err = tx.QueryRowContext(r.Context(), `WITH next_job AS (
    SELECT id FROM print_jobs WHERE status='PENDING' AND (device_id IS NULL OR device_id=$1)
    ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1
@@ -219,7 +235,10 @@ func (a *app) handlePrintClaim(w http.ResponseWriter, r *http.Request) {
   UPDATE print_jobs j SET status='CLAIMED',device_id=$1,claim_token_hash=$2,claimed_at=now(),
     claim_expires_at=now()+interval '5 minutes'
   FROM next_job n WHERE j.id=n.id RETURNING j.id,j.crate_id,j.revision,j.zpl,j.status`, id, hashToken(token)).
-		Scan(&job.ID, &job.CrateID, &job.Revision, &job.ZPL, &job.Status)
+		Scan(&job.ID, &crateID, &job.Revision, &job.ZPL, &job.Status)
+	if crateID.Valid {
+		job.CrateID = &crateID.Int64
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		if err = tx.Commit(); err != nil {
 			writeJSONError(w, 503, "Fila indisponível.")
@@ -331,8 +350,15 @@ func (a *app) handlePrintRevoke(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 400, "Impressora inválida.")
 		return
 	}
-	result, err := a.db.ExecContext(r.Context(), `UPDATE print_devices SET active=false WHERE id=$1`, id)
+	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
+		writeJSONError(w, 500, "Não foi possível revogar a impressora.")
+		return
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(r.Context(), `UPDATE print_devices SET active=false WHERE id=$1`, id)
+	if err != nil {
+		log.Printf("printer revoke failed: %v", err)
 		writeJSONError(w, 500, "Não foi possível revogar a impressora.")
 		return
 	}
@@ -341,5 +367,104 @@ func (a *app) handlePrintRevoke(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 404, "Impressora não encontrada.")
 		return
 	}
+	// Um teste que ainda não saiu não tem mais quem o imprima.
+	if _, err = tx.ExecContext(r.Context(), `UPDATE print_jobs SET status='CANCELLED',last_error='Impressora revogada'
+  WHERE device_id=$1 AND crate_id IS NULL AND status='PENDING'`, id); err != nil {
+		log.Printf("printer revoke test cancel failed: %v", err)
+		writeJSONError(w, 500, "Não foi possível revogar a impressora.")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		writeJSONError(w, 500, "Não foi possível revogar a impressora.")
+		return
+	}
 	writeJSON(w, 200, map[string]any{"id": id, "status": "revoked"})
+}
+
+// testLabelZPL is a 60x60 mm label that exercises the same path as a crate
+// label: the TotalFood logo from Zebra memory, text and a QR code.
+func testLabelZPL(printer, when string, jobID int64) string {
+	name := printerText(strings.ToUpper(printer), 44)
+	stamp := printerText(when, 20)
+	return fmt.Sprintf(`^XA
+^CI28
+^PW480
+^LL480
+^LH0,0
+^FO160,10^XGR:LOGODP.GRF,1,1^FS
+^FO16,84^GB448,3,3^FS
+^FO16,100^A0N,40,34^FDETIQUETA DE TESTE^FS
+^FO16,154^A0N,24,20^FB448,2,3,L,0^FD%s^FS
+^FO16,214^A0N,22,19^FDFILA TOTALFOOD OK^FS
+^FO16,244^A0N,22,19^FDGERADA EM %s^FS
+^FO16,274^A0N,22,19^FDTRABALHO %d^FS
+^FO315,300^BQN,2,4^FDLA,TESTE-%d^FS
+^FO16,346^GB448,3,3^FS
+^FO16,354^A0N,21,19^FDTOTAL FOOD ALIMENTOS^FS
+^FO16,451^A0N,15,13^FDNAO USAR EM CAIXA^FS
+^PQ1
+^XZ
+`, name, stamp, jobID, jobID)
+}
+
+// handlePrintTest queues one test label for a specific printer. A test for the
+// same printer that has not finished yet blocks another one, so a repeated tap
+// or a lost response never prints twice.
+func (a *app) handlePrintTest(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSONError(w, 400, "Impressora inválida.")
+		return
+	}
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeJSONError(w, 503, "Fila indisponível.")
+		return
+	}
+	defer tx.Rollback()
+	var name, when string
+	var active bool
+	err = tx.QueryRowContext(r.Context(), `SELECT name,active,to_char(now() AT TIME ZONE 'America/Fortaleza','DD/MM/YYYY HH24:MI')
+  FROM print_devices WHERE id=$1 FOR UPDATE`, id).Scan(&name, &active, &when)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSONError(w, 404, "Impressora não encontrada.")
+		return
+	}
+	if err != nil {
+		log.Printf("printer test lookup failed: %v", err)
+		writeJSONError(w, 503, "Fila indisponível.")
+		return
+	}
+	if !active {
+		writeJSONError(w, 409, "Impressora revogada. Crie um acesso novo para testar.")
+		return
+	}
+	var waiting bool
+	if err = tx.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM print_jobs WHERE device_id=$1 AND crate_id IS NULL
+  AND (status='PENDING' OR (status='CLAIMED' AND claim_expires_at>now())))`, id).Scan(&waiting); err != nil {
+		log.Printf("printer test pending check failed: %v", err)
+		writeJSONError(w, 503, "Fila indisponível.")
+		return
+	}
+	if waiting {
+		writeJSONError(w, 409, "Já há uma etiqueta de teste aguardando esta impressora. No ESP32, toque em Buscar e imprimir etiquetas.")
+		return
+	}
+	var jobID int64
+	if err = tx.QueryRowContext(r.Context(), `INSERT INTO print_jobs(crate_id,revision,device_id,zpl,created_by)
+  VALUES(NULL,1,$1,'^XA^XZ',$2) RETURNING id`, id, userFromContext(r.Context()).ID).Scan(&jobID); err != nil {
+		log.Printf("printer test insert failed: %v", err)
+		writeJSONError(w, 503, "Fila indisponível.")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `UPDATE print_jobs SET zpl=$2 WHERE id=$1`, jobID, testLabelZPL(name, when, jobID)); err != nil {
+		log.Printf("printer test label failed: %v", err)
+		writeJSONError(w, 503, "Fila indisponível.")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		writeJSONError(w, 503, "Fila indisponível.")
+		return
+	}
+	writeJSON(w, 201, map[string]any{"id": jobID, "device_id": id, "status": "PENDING"})
 }
