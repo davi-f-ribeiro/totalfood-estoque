@@ -40,7 +40,7 @@ Saldo por SKU e depósito na data de corte, com quantidade, unidade e preço mé
 
 ## Inventário
 
-A conclusão de inventário atualmente não grava ajuste em `movement_lines`. Portanto o relatório representa saldo contábil do ledger, não substitui a contagem física. Alterar a política de ajuste de inventário está fora deste escopo.
+A conclusão de inventário não grava ajuste em `movement_lines`. Desde a migração 030, a divergência pode virar um ajuste explícito (`POST /api/inventory-validations/{id}/lines/{sku_id}/adjust`), gravado como movimento `AJUSTE`: ele entra no saldo e no preço médio do relatório de saldo, mas não aparece nos relatórios de entradas e saídas, que continuam restritos a `ENTRADA` e `SAIDA`. O relatório segue representando o saldo contábil do ledger, não a contagem física.
 
 ## Reutilização obrigatória
 

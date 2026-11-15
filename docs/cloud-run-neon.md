@@ -1,4 +1,14 @@
-# Deploy: PostgreSQL atual -> Neon + Cloud Run
+# Deploy: Render (produção atual) e Cloud Run, com Neon
+
+## Produção atual: Render + Neon
+
+- A aplicação de produção roda no Render (`totalfood-estoque.onrender.com`), com o banco no Neon.
+- As migrations são aplicadas pela própria aplicação ao iniciar (`RUN_MIGRATIONS` no padrão `true`): o `schema_migrations` de produção registra cada migration no horário da implantação correspondente.
+- Instância gratuita: o Render desliga a instância por inatividade e a primeira requisição depois disso pode demorar 50 segundos ou mais. O firmware do ESP32 faz um `GET /health` antes de reservar etiquetas por esse motivo.
+- O Render fica atrás da Cloudflare e não limpa o `X-Forwarded-For` enviado pelo cliente. Para o limite de login usar o IP real, defina `CLIENT_IP_HEADER=True-Client-IP`.
+- O certificado de `*.onrender.com` alterna entre Let's Encrypt e Google Trust Services. Quem acessa por HTTPS com lista própria de raízes (o firmware, em `wms_ca.h`) precisa aceitar as duas cadeias.
+
+As seções sobre Cloud Run abaixo são a proposta original de implantação; confirmar se ainda valem antes de usá-las.
 
 ## Configuração da aplicação
 
