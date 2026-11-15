@@ -18,7 +18,7 @@ func TestCrateLabelZPLFits60mmAndEscapesInput(t *testing.T) {
 	if strings.Count(zpl, "^XA") != 1 || strings.Count(zpl, "^XZ") != 1 {
 		t.Fatal("untrusted product text must not inject commands")
 	}
-	if !strings.Contains(zpl, "^PW480") || !strings.Contains(zpl, "^LL480") || !strings.Contains(zpl, "^FB240,2,4,L,0") {
+	if !strings.Contains(zpl, "^PW480") || !strings.Contains(zpl, "^LL480") || !strings.Contains(zpl, "^FB448,2,3,L,0") {
 		t.Fatal("60mm canvas requires a two-line product field that cannot run beyond the label")
 	}
 	if !strings.Contains(zpl, "19,500 KG") || !strings.Contains(zpl, "CAIXA 1/3") ||
@@ -33,7 +33,7 @@ func TestCrateLabelZPLFits60mmAndEscapesInput(t *testing.T) {
 
 func TestCrateLabelUsesExistingTotalFoodIdentity(t *testing.T) {
 	zpl := crateZPL(crateRow{Product: "Tomate Italiano", Code: "CX-000007", Weight: "19.500", Position: 1, Total: 3, Received: "15/11/2026", OriginLotID: 23, Revision: 2})
-	for _, part := range []string{"^PW480", "^LL480", "^FO264,12^XGR:LOGOCF.GRF,1,1^FS", "^FO16,104^GB448,3,3^FS", "^FO16,310^GB448,3,3^FS", "TOTAL FOOD ALIMENTOS", "CNPJ: 17.053.741/0001-33", "RUA MARIO GUEDES, 50", "CEP 60811-012 - FORTALEZA, CE", "^BQN,2,4", "^FO170,180^A0N,30,26^FD19,500 KG^FS", "^PQ1"} {
+	for _, part := range []string{"^PW480", "^LL480", "^FO160,10^XGR:LOGODP.GRF,1,1^FS", "^FO16,84^GB448,3,3^FS", "^FO16,346^GB448,3,3^FS", "TOTAL FOOD ALIMENTOS", "CNPJ: 17.053.741/0001-33", "RUA MARIO GUEDES, 50", "CEP 60811-012 - FORTALEZA, CE", "^BQN,2,4", "^FO16,242^A0N,28,24^FD19,500 KG^FS", "^PQ1"} {
 		if !strings.Contains(zpl, part) {
 			t.Errorf("missing TotalFood identity %q", part)
 		}

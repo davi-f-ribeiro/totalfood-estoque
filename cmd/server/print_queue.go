@@ -41,7 +41,7 @@ func printerText(s string, max int) string {
 }
 
 // crateZPL follows the existing 60x60mm TotalFood label visual identity.
-// LOGOCF.GRF is provisioned in Zebra volatile memory by the ESP32 firmware.
+// LOGODP.GRF is provisioned in Zebra volatile memory by the ESP32 firmware.
 func crateZPL(c crateRow) string {
 	name := printerText(strings.ToUpper(c.Product), 44)
 	doc := printerText(c.Document, 20)
@@ -55,25 +55,25 @@ func crateZPL(c crateRow) string {
 ^PW480
 ^LL480
 ^LH0,0
-^FX Logo TotalFood igual ao modelo Camara Fria.
-^FO264,12^XGR:LOGOCF.GRF,1,1^FS
-^FO16,16^A0N,31,25^FB240,2,4,L,0^FD%s^FS
-^FO16,104^GB448,3,3^FS
-^FO16,116^A0N,24,20^FDCAIXA %d/%d^FS
-^FO16,148^A0N,27,24^FD%s^FS
-^FO16,182^A0N,24,20^FDPESO LIQ.:^FS
-^FO170,180^A0N,30,26^FD%s KG^FS
-^FO16,220^A0N,21,19^FDENTRADA: %s^FS
-^FO16,250^A0N,21,19^FDLOTE: TF-%d^FS
-^FO16,280^A0N,21,19^FDNF: %s^FS
-^FO315,112^BQN,2,4^FDLA,%s^FS
-^FO16,310^GB448,3,3^FS
-^FX Rodape TotalFood igual aos modelos atuais.
-^FO16,326^A0N,21,19^FDTOTAL FOOD ALIMENTOS^FS
-^FO16,352^A0N,19,17^FDCNPJ: 17.053.741/0001-33^FS
-^FO16,376^A0N,19,17^FDRUA MARIO GUEDES, 50^FS
-^FO16,400^A0N,19,17^FDCEP 60811-012 - FORTALEZA, CE^FS
-^FO16,432^A0N,17,15^FDREV %d^FS
+^FX Logo TotalFood centralizado como no modelo Despacho.
+^FO160,10^XGR:LOGODP.GRF,1,1^FS
+^FO16,84^GB448,3,3^FS
+^FO16,94^A0N,28,23^FB448,2,3,L,0^FD%s^FS
+^FO16,154^A0N,23,19^FDCAIXA %d/%d^FS
+^FO16,183^A0N,24,20^FD%s^FS
+^FO16,214^A0N,23,19^FDPESO LIQ.:^FS
+^FO16,242^A0N,28,24^FD%s KG^FS
+^FO16,276^A0N,19,17^FDENTRADA: %s^FS
+^FO16,299^A0N,19,17^FDLOTE: TF-%d^FS
+^FO16,322^A0N,19,17^FDNF: %s^FS
+^FO315,157^BQN,2,4^FDLA,%s^FS
+^FO16,346^GB448,3,3^FS
+^FX Rodape institucional TotalFood.
+^FO16,354^A0N,21,19^FDTOTAL FOOD ALIMENTOS^FS
+^FO16,379^A0N,18,16^FDCNPJ: 17.053.741/0001-33^FS
+^FO16,402^A0N,18,16^FDRUA MARIO GUEDES, 50^FS
+^FO16,425^A0N,18,16^FDCEP 60811-012 - FORTALEZA, CE^FS
+^FO16,451^A0N,15,13^FDREV %d^FS
 ^PQ1
 ^XZ
 `, name, c.Position, c.Total, code, strings.ReplaceAll(c.Weight, ".", ","), received, c.OriginLotID, doc, code, c.Revision)
