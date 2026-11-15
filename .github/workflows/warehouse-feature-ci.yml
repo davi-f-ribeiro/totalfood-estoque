@@ -40,7 +40,7 @@ jobs:
         with:
           node-version: '22'
       - name: JavaScript syntax
-        run: node --check cmd/server/static/app.js && node --check cmd/server/static/batch.js && node --check cmd/server/static/home.js && node --check cmd/server/static/material_requests.js
+        run: for f in cmd/server/static/*.js; do node --check "$f"; done
       - name: Firmware manual queue protocol checks (static)
         run: python3 -m unittest discover -s firmware/tests -p 'test_*.py' -v
       - name: Go vet
