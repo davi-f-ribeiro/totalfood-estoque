@@ -20,17 +20,42 @@ def function_section(source, marker, next_marker):
 
 
 class ManualQueueSafetyContract(unittest.TestCase):
-    def test_local_trigger_requires_basic_auth_before_print(self):
+    # Decisão do produto (15/11/2026): o ESP fica numa rede interna fechada; buscar
+    # a fila só imprime o que usuários autenticados já lançaram no WMS. A fila
+    # fica numa aba própria (/fila) para ninguém apertar sem querer, e tudo que
+    # altera o equipamento continua exigindo a senha de administrador.
+    def test_queue_trigger_is_open_and_on_its_own_tab(self):
         handler = function_section(INO, "static void handleQueuePull() {", "static void setupWeb()")
-        self.assertIn("if (!requireAuth()) return;", handler)
-        self.assertLess(handler.index("if (!requireAuth()) return;"), handler.index("wmsQueueStart"))
-        self.assertIn('if (cfg.adminPass == "etiqueta")', handler)
+        self.assertNotIn("requireAuth()", handler[:handler.index("wmsQueueStart")])
         self.assertIn('server.on("/api/queue/pull", HTTP_POST, handleQueuePull)', INO)
+        self.assertIn('server.on("/fila",          HTTP_GET,  handleQueuePg)', INO)
+        pages = (ROOT / "etiqueta_zd220" / "web_pages.h").read_text(encoding="utf-8")
+        index = pages[pages.index("static const char PAGE_INDEX_A[]"):pages.index("static const char PAGE_QUEUE_A[]")]
+        queue = pages[pages.index("static const char PAGE_QUEUE_A[]"):pages.index("static const char PAGE_CONFIG_A[]")]
+        self.assertNotIn("wmsPull", index, "o botão da fila não pode ficar na página de impressão manual")
+        self.assertIn('id="wmsPull"', queue)
+        self.assertIn('href="/fila" aria-current="page"', queue)
 
-    def test_local_queue_status_is_authenticated(self):
+    def test_queue_status_is_open(self):
         handler = function_section(INO, "static void handleQueueStatus() {", "static void handleQueuePull()")
-        self.assertIn("if (!requireAuth()) return;", handler)
-        self.assertLess(handler.index("if (!requireAuth()) return;"), handler.index("wmsQueueStatus"))
+        self.assertNotIn("requireAuth()", handler)
+
+    def test_equipment_changes_still_require_admin(self):
+        for marker, end in [
+            ("static void handleConfigPg()", "\n"),
+            ("static void handleTplPg()", "\n"),
+            ("static void handleUpdatePg()", "\n"),
+        ]:
+            line = INO[INO.index(marker):INO.index(end, INO.index(marker))]
+            self.assertIn("requireAuth()", line, marker)
+        for marker, nxt in [
+            ("static void handleQueueDiscard() {", "static void setupWeb()"),
+            ("static void handleSetConfig() {", "static void "),
+            ("static void handleGetConfig() {", "static void "),
+        ]:
+            start = INO.index(marker)
+            body = INO[start:INO.index(nxt, start + len(marker))]
+            self.assertIn("requireAuth()", body, marker)
 
     def test_no_automatic_render_polling(self):
         loop = INO[INO.index("void loop() {"):]

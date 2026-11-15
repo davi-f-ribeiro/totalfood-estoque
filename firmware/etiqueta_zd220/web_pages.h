@@ -86,6 +86,11 @@ textarea.list-edit{font:inherit;font-size:1rem;line-height:1.5;min-height:180px}
 .tabs .tab{flex:1;min-height:44px;padding:8px 12px;background:transparent;border:0;border-radius:var(--radius-sm);color:var(--text-secondary);font-weight:600}
 .tabs .tab:hover{background:var(--surface);border:0}
 .tabs .tab[aria-selected=true]{background:var(--surface);color:var(--brand-primary-active);font-weight:700;box-shadow:0 1px 2px rgba(16,24,40,.06)}
+/* Abas de página (Imprimir etiqueta / Fila TotalFood): navegação sublinhada,
+   diferente do seletor de tipo de etiqueta. */
+.page-tabs{display:flex;margin:-4px 0 20px;border-bottom:1px solid var(--border)}
+.page-tabs a{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;padding:8px 12px;margin-bottom:-1px;border-bottom:3px solid transparent;color:var(--text-secondary);font-weight:600;text-decoration:none;text-align:center}
+.page-tabs a[aria-current=page]{color:var(--brand-primary-active);border-bottom-color:var(--brand-primary);font-weight:700}
 [hidden]{display:none!important}
 </style></head><body>
 <header class="top">
@@ -123,6 +128,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)status()})
 // ----------------------------------------------------------------------------
 static const char PAGE_INDEX_A[] = R"HTML(
 <main>
+<nav class="page-tabs" aria-label="Páginas"><a href="/" aria-current="page">Imprimir etiqueta</a><a href="/fila">Fila TotalFood</a></nav>
 <h1>Imprimir etiqueta</h1>
 <p id="sub" class="hint">Preencha os dados do produto e escolha a quantidade.</p>
 <div class="tabs" role="tablist" aria-label="Tipo de etiqueta">
@@ -139,13 +145,6 @@ static const char PAGE_INDEX_A[] = R"HTML(
     <p id="fb" class="operation-feedback" role="status" aria-live="polite" hidden></p>
   </section>
 </form>
-<section class="panel" aria-labelledby="filaTitle">
-  <h2 id="filaTitle">Fila TotalFood</h2>
-  <p class="hint">Etiquetas do estoque ficam salvas no servidor. Esta busca só acontece ao apertar o botão.</p>
-  <p class="hint">Este botão exige acesso de administrador. Se receber uma mensagem de autenticação, abra <a href="/config">Configurações</a>, entre e volte para imprimir.</p>
-  <button id="wmsPull" type="button" class="block">Buscar e imprimir etiquetas</button>
-  <p id="wmsFeedback" class="operation-feedback" role="status" aria-live="polite" hidden></p>
-</section>
 <nav class="links" aria-label="Administração">
   <a class="text-action" href="/config">Configurações</a>
   <a class="text-action" href="/template">Modelo da etiqueta</a>
@@ -155,23 +154,6 @@ static const char PAGE_INDEX_A[] = R"HTML(
 <script>)HTML";
 
 static const char PAGE_INDEX_B[] = R"HTML(
-let wmsTimer=0;
-async function wmsProgress(){
-  try{
-    const j=await(await fetch('/api/queue/status',{cache:'no-store'})).json();
-    feedback($('wmsFeedback'),j.busy?'loading':'success',j.message+(j.printed?' · '+j.printed+' enviada(s)':''));
-    if(j.busy)wmsTimer=setTimeout(wmsProgress,1200);
-    else{$('wmsPull').disabled=false;status();}
-  }catch(e){$('wmsPull').disabled=false;feedback($('wmsFeedback'),'error','Não foi possível consultar o ESP32.')}
-}
-$('wmsPull').addEventListener('click',async()=>{
-  if(wmsTimer)clearTimeout(wmsTimer);
-  $('wmsPull').disabled=true;
-  feedback($('wmsFeedback'),'loading','Iniciando consulta manual...');
-  const r=await post('/api/queue/pull',{});
-  if(!r.ok){$('wmsPull').disabled=false;feedback($('wmsFeedback'),'error',r.msg);return;}
-  wmsProgress();
-});
 const LABELS={produto:'Produto',val_original:'Validade original',manipulacao:'Manipulação',validade:'Validade',
 peso_liq:'Peso líquido',lote:'Lote',sif:'SIF',responsavel:'Responsável',
 hora_manipulacao:'Hora da manipulação',hora_validade:'Hora da validade',destino:'Destino'};
@@ -241,6 +223,50 @@ $('f').addEventListener('submit',async ev=>{
 });
 
 selectTab(tipo);
+</script></body></html>)HTML";
+
+// ----------------------------------------------------------------------------
+//  Fila TotalFood (aba própria, sem senha: rede interna fechada)
+// ----------------------------------------------------------------------------
+static const char PAGE_QUEUE_A[] = R"HTML(
+<main>
+<nav class="page-tabs" aria-label="Páginas"><a href="/">Imprimir etiqueta</a><a href="/fila" aria-current="page">Fila TotalFood</a></nav>
+<h1>Fila TotalFood</h1>
+<p class="hint">Etiquetas lançadas no estoque (caixas e testes) ficam salvas no servidor. Elas só são impressas quando alguém aperta o botão abaixo.</p>
+<section class="panel" aria-labelledby="filaTitle">
+  <h2 id="filaTitle">Buscar e imprimir</h2>
+  <p class="hint">Imprime, em ordem, todas as etiquetas pendentes desta impressora.</p>
+  <button id="wmsPull" type="button" class="block">Buscar e imprimir etiquetas</button>
+  <p id="wmsFeedback" class="operation-feedback" role="status" aria-live="polite" hidden></p>
+</section>
+<nav class="links" aria-label="Administração">
+  <a class="text-action" href="/config">Configurações</a>
+</nav>
+</main>
+<script>)HTML";
+
+static const char PAGE_QUEUE_B[] = R"HTML(
+let wmsTimer=0;
+async function wmsProgress(){
+  try{
+    const j=await(await fetch('/api/queue/status',{cache:'no-store'})).json();
+    feedback($('wmsFeedback'),j.busy?'loading':'success',j.message+(j.printed?' · '+j.printed+' enviada(s)':''));
+    if(j.busy)wmsTimer=setTimeout(wmsProgress,1200);
+    else{$('wmsPull').disabled=false;status();}
+  }catch(e){$('wmsPull').disabled=false;feedback($('wmsFeedback'),'error','Não foi possível consultar o ESP32.')}
+}
+$('wmsPull').addEventListener('click',async()=>{
+  if(wmsTimer)clearTimeout(wmsTimer);
+  $('wmsPull').disabled=true;
+  feedback($('wmsFeedback'),'loading','Iniciando consulta manual...');
+  const r=await post('/api/queue/pull',{});
+  if(!r.ok){$('wmsPull').disabled=false;feedback($('wmsFeedback'),'error',r.msg);return;}
+  wmsProgress();
+});
+// Se a fila já estiver em andamento (ex.: página recarregada), acompanha.
+fetch('/api/queue/status',{cache:'no-store'}).then(r=>r.json()).then(j=>{
+  if(j.busy){$('wmsPull').disabled=true;wmsProgress();}
+}).catch(()=>{});
 </script></body></html>)HTML";
 
 // ----------------------------------------------------------------------------
