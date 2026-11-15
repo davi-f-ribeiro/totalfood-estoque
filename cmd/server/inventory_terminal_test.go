@@ -335,14 +335,34 @@ func TestInventoryTerminalConcurrency(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(2)
 		errs := make([]error, 2)
-		go func(){defer wg.Done();<-start;_,errs[0]=e.a.completeInventory(context.Background(),inv.ID,e.userID,"")}()
-		go func(){defer wg.Done();<-start;_,errs[1]=e.a.completeInventory(context.Background(),inv.ID,userB,"")}()
-		close(start);wg.Wait()
-		success:=0
-		for _,err:=range errs { if err==nil {success++} }
-		if success!=1 { t.Fatalf("complete race errors=%v success=%d",errs,success) }
-		h,err:=e.a.getInventoryHistory(context.Background(),inv.ID);if err!=nil{t.Fatal(err)}
-		if h.Status!="COMPLETED" || h.CompletedBy=="" || h.CompletedAt==nil {t.Fatalf("history=%+v",h)}
+		go func() {
+			defer wg.Done()
+			<-start
+			_, errs[0] = e.a.completeInventory(context.Background(), inv.ID, e.userID, "")
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, errs[1] = e.a.completeInventory(context.Background(), inv.ID, userB, "")
+		}()
+		close(start)
+		wg.Wait()
+		success := 0
+		for _, err := range errs {
+			if err == nil {
+				success++
+			}
+		}
+		if success != 1 {
+			t.Fatalf("complete race errors=%v success=%d", errs, success)
+		}
+		h, err := e.a.getInventoryHistory(context.Background(), inv.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.Status != "COMPLETED" || h.CompletedBy == "" || h.CompletedAt == nil {
+			t.Fatalf("history=%+v", h)
+		}
 	})
 
 	t.Run("complete vs cancel", func(t *testing.T) {
@@ -352,42 +372,79 @@ func TestInventoryTerminalConcurrency(t *testing.T) {
 		start := make(chan struct{})
 		var wg sync.WaitGroup
 		wg.Add(2)
-		errs := make([]error,2)
-		go func(){defer wg.Done();<-start;_,errs[0]=e.a.completeInventory(context.Background(),inv.ID,e.userID,"")}()
-		go func(){defer wg.Done();<-start;_,errs[1]=e.a.cancelInventory(context.Background(),inv.ID,userB,"Cancelamento concorrente controlado.")}()
-		close(start);wg.Wait()
-		success:=0
-		for _,err:=range errs {if err==nil{success++}}
-		if success!=1 {t.Fatalf("terminal race errors=%v success=%d",errs,success)}
-		h,err:=e.a.getInventoryHistory(context.Background(),inv.ID);if err!=nil{t.Fatal(err)}
-		if h.Status!="COMPLETED" && h.Status!="CANCELLED" {t.Fatalf("status=%s",h.Status)}
+		errs := make([]error, 2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, errs[0] = e.a.completeInventory(context.Background(), inv.ID, e.userID, "")
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, errs[1] = e.a.cancelInventory(context.Background(), inv.ID, userB, "Cancelamento concorrente controlado.")
+		}()
+		close(start)
+		wg.Wait()
+		success := 0
+		for _, err := range errs {
+			if err == nil {
+				success++
+			}
+		}
+		if success != 1 {
+			t.Fatalf("terminal race errors=%v success=%d", errs, success)
+		}
+		h, err := e.a.getInventoryHistory(context.Background(), inv.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if h.Status != "COMPLETED" && h.Status != "CANCELLED" {
+			t.Fatalf("status=%s", h.Status)
+		}
 	})
 
 	t.Run("recount vs complete", func(t *testing.T) {
 		e := newInventoryTestEnv(t)
 		inv, sku := oneReviewInventory(t, e, "race-recount", "10.000", "8.000")
-		review,_:=e.a.getInventoryReviewView(context.Background(),inv.ID)
-		line:=reviewBySKU(t,review)[sku]
-		start:=make(chan struct{})
+		review, _ := e.a.getInventoryReviewView(context.Background(), inv.ID)
+		line := reviewBySKU(t, review)[sku]
+		start := make(chan struct{})
 		var wg sync.WaitGroup
 		wg.Add(2)
-		var recountErr,completeErr error
-		go func(){defer wg.Done();<-start;_,recountErr=e.a.saveInventoryRecount(context.Background(),inv.ID,sku,"10.000",line.Version,e.userID)}()
-		go func(){defer wg.Done();<-start;_,completeErr=e.a.completeInventory(context.Background(),inv.ID,e.userID,"")}()
-		close(start);wg.Wait()
+		var recountErr, completeErr error
+		go func() {
+			defer wg.Done()
+			<-start
+			_, recountErr = e.a.saveInventoryRecount(context.Background(), inv.ID, sku, "10.000", line.Version, e.userID)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, completeErr = e.a.completeInventory(context.Background(), inv.ID, e.userID, "")
+		}()
+		close(start)
+		wg.Wait()
 
 		var recountQty string
-		if err:=e.db.QueryRow(`SELECT quantity::text FROM inventory_validation_recounts WHERE validation_id=$1 AND sku_id=$2`,inv.ID,sku).Scan(&recountQty);err!=nil{
-			t.Fatalf("recount was lost: recountErr=%v completeErr=%v db=%v",recountErr,completeErr,err)
+		if err := e.db.QueryRow(`SELECT quantity::text FROM inventory_validation_recounts WHERE validation_id=$1 AND sku_id=$2`, inv.ID, sku).Scan(&recountQty); err != nil {
+			t.Fatalf("recount was lost: recountErr=%v completeErr=%v db=%v", recountErr, completeErr, err)
 		}
-		if recountQty!="10.000"{t.Fatalf("recount=%s",recountQty)}
+		if recountQty != "10.000" {
+			t.Fatalf("recount=%s", recountQty)
+		}
 		var status string
-		if err:=e.db.QueryRow(`SELECT status FROM inventory_validations WHERE id=$1`,inv.ID).Scan(&status);err!=nil{t.Fatal(err)}
-		if status=="REVIEW" {
-			if !errors.Is(completeErr,errInventoryCannotComplete) {t.Fatalf("review race completeErr=%v recountErr=%v",completeErr,recountErr)}
-			if _,err:=e.a.completeInventory(context.Background(),inv.ID,e.userID,"");err!=nil{t.Fatalf("completion after recount: %v",err)}
-		} else if status!="COMPLETED" {
-			t.Fatalf("invalid terminal race status=%s",status)
+		if err := e.db.QueryRow(`SELECT status FROM inventory_validations WHERE id=$1`, inv.ID).Scan(&status); err != nil {
+			t.Fatal(err)
+		}
+		if status == "REVIEW" {
+			if !errors.Is(completeErr, errInventoryCannotComplete) {
+				t.Fatalf("review race completeErr=%v recountErr=%v", completeErr, recountErr)
+			}
+			if _, err := e.a.completeInventory(context.Background(), inv.ID, e.userID, ""); err != nil {
+				t.Fatalf("completion after recount: %v", err)
+			}
+		} else if status != "COMPLETED" {
+			t.Fatalf("invalid terminal race status=%s", status)
 		}
 	})
 }
@@ -395,147 +452,259 @@ func TestInventoryTerminalConcurrency(t *testing.T) {
 func TestInventoryTerminalHTTPACL(t *testing.T) {
 	e := newInventoryTestEnv(t)
 	inv, _ := oneReviewInventory(t, e, "acl", "10.000", "10.000")
-	var profileID,userID int64
-	if err:=e.db.QueryRow(`SELECT id FROM profiles WHERE name='Estoquista'`).Scan(&profileID);err!=nil{t.Fatal(err)}
-	if _,err:=e.db.Exec(`
+	var profileID, userID int64
+	if err := e.db.QueryRow(`SELECT id FROM profiles WHERE name='Estoquista'`).Scan(&profileID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.db.Exec(`
 INSERT INTO profile_permissions (profile_id,permission_id)
 SELECT $1,id FROM permissions
 WHERE resource='inventory_validation' AND action='read'
-ON CONFLICT DO NOTHING`,profileID);err!=nil{t.Fatal(err)}
-	if err:=e.db.QueryRow(`
+ON CONFLICT DO NOTHING`, profileID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.QueryRow(`
 INSERT INTO users (login,password_hash,profile_id,active,must_change_password)
-VALUES ($1,'test',$2,true,false) RETURNING id`,"terminal-readonly-"+t.Name(),profileID).Scan(&userID);err!=nil{t.Fatal(err)}
-	token,csrf:=inventorySession(t,e.db,userID)
-	mux:=http.NewServeMux();e.a.registerInventoryHandlers(mux)
+VALUES ($1,'test',$2,true,false) RETURNING id`, "terminal-readonly-"+t.Name(), profileID).Scan(&userID); err != nil {
+		t.Fatal(err)
+	}
+	token, csrf := inventorySession(t, e.db, userID)
+	mux := http.NewServeMux()
+	e.a.registerInventoryHandlers(mux)
 
-	completeRec:=httptest.NewRecorder()
-	mux.ServeHTTP(completeRec,inventoryRequest(http.MethodPost,fmt.Sprintf("/api/inventory-validations/%d/complete",inv.ID),`{"completion_note":""}`,token,csrf))
-	if completeRec.Code!=http.StatusForbidden{t.Fatalf("complete status=%d body=%s",completeRec.Code,completeRec.Body.String())}
+	completeRec := httptest.NewRecorder()
+	mux.ServeHTTP(completeRec, inventoryRequest(http.MethodPost, fmt.Sprintf("/api/inventory-validations/%d/complete", inv.ID), `{"completion_note":""}`, token, csrf))
+	if completeRec.Code != http.StatusForbidden {
+		t.Fatalf("complete status=%d body=%s", completeRec.Code, completeRec.Body.String())
+	}
 
-	cancelRec:=httptest.NewRecorder()
-	mux.ServeHTTP(cancelRec,inventoryRequest(http.MethodPost,fmt.Sprintf("/api/inventory-validations/%d/cancel",inv.ID),`{"cancellation_reason":"Motivo autorizado apenas para escrita."}`,token,csrf))
-	if cancelRec.Code!=http.StatusForbidden{t.Fatalf("cancel status=%d body=%s",cancelRec.Code,cancelRec.Body.String())}
+	cancelRec := httptest.NewRecorder()
+	mux.ServeHTTP(cancelRec, inventoryRequest(http.MethodPost, fmt.Sprintf("/api/inventory-validations/%d/cancel", inv.ID), `{"cancellation_reason":"Motivo autorizado apenas para escrita."}`, token, csrf))
+	if cancelRec.Code != http.StatusForbidden {
+		t.Fatalf("cancel status=%d body=%s", cancelRec.Code, cancelRec.Body.String())
+	}
 }
 
 func TestInventoryTerminalAntiMovement(t *testing.T) {
-	e:=newInventoryTestEnv(t)
-	ctx:=context.Background()
+	e := newInventoryTestEnv(t)
+	ctx := context.Background()
 
-	wh1:=e.warehouse(t,"anti-match",true);sku1:=e.sku(t,"anti-match-sku",true,true);e.movementDecimal(t,sku1,wh1,"IN","10.000")
-	matchInv,err:=e.a.createTotalInventory(ctx,e.userID,wh1);if err!=nil{t.Fatal(err)}
-
-	wh2:=e.warehouse(t,"anti-div",true);sku2:=e.sku(t,"anti-div-sku",true,true);e.movementDecimal(t,sku2,wh2,"IN","10.000")
-	divInv,err:=e.a.createTotalInventory(ctx,e.userID,wh2);if err!=nil{t.Fatal(err)}
-
-	wh3:=e.warehouse(t,"anti-open",true);sku3:=e.sku(t,"anti-open-sku",true,true);e.movementDecimal(t,sku3,wh3,"IN","10.000")
-	openInv,err:=e.a.createTotalInventory(ctx,e.userID,wh3);if err!=nil{t.Fatal(err)}
-
-	wh4:=e.warehouse(t,"anti-counting",true);a:=e.sku(t,"anti-counting-a",true,true);b:=e.sku(t,"anti-counting-b",true,true);e.movementDecimal(t,a,wh4,"IN","10.000");e.movementDecimal(t,b,wh4,"IN","10.000")
-	countingInv,err:=e.a.createTotalInventory(ctx,e.userID,wh4);if err!=nil{t.Fatal(err)}
-
-	wh5:=e.warehouse(t,"anti-review",true);sku5:=e.sku(t,"anti-review-sku",true,true);e.movementDecimal(t,sku5,wh5,"IN","10.000")
-	reviewInv,err:=e.a.createTotalInventory(ctx,e.userID,wh5);if err!=nil{t.Fatal(err)}
-
-	var movementsBefore,linesBefore int64
-	var stockBefore string
-	if err:=e.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&movementsBefore);err!=nil{t.Fatal(err)}
-	if err:=e.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&linesBefore);err!=nil{t.Fatal(err)}
-	if err:=e.db.QueryRow(`SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::text FROM movement_lines`).Scan(&stockBefore);err!=nil{t.Fatal(err)}
-
-	countInventoryToReview(t,e,matchInv,map[int64]string{sku1:"10.000"})
-	if _,err:=e.a.completeInventory(ctx,matchInv.ID,e.userID,"");err!=nil{t.Fatal(err)}
-
-	countInventoryToReview(t,e,divInv,map[int64]string{sku2:"8.000"})
-	r2,_:=e.a.getInventoryReviewView(ctx,divInv.ID);l2:=reviewBySKU(t,r2)[sku2]
-	if _,err:=e.a.saveInventoryRecount(ctx,divInv.ID,sku2,"9.000",l2.Version,e.userID);err!=nil{t.Fatal(err)}
-	if _,err:=e.a.completeInventory(ctx,divInv.ID,e.userID,"Divergência confirmada e preservada.");err!=nil{t.Fatal(err)}
-
-	if _,err:=e.a.cancelInventory(ctx,openInv.ID,e.userID,"Cancelamento no estado aberto.");err!=nil{t.Fatal(err)}
-
-	cv,_:=e.a.getInventoryCountingView(ctx,countingInv.ID)
-	if _,_,err:=e.a.saveInventoryCount(ctx,countingInv.ID,cv.Lines[0].SKUID,"10.000",cv.Lines[0].Version,e.userID);err!=nil{t.Fatal(err)}
-	if _,err:=e.a.cancelInventory(ctx,countingInv.ID,e.userID,"Cancelamento durante contagem parcial.");err!=nil{t.Fatal(err)}
-
-	countInventoryToReview(t,e,reviewInv,map[int64]string{sku5:"10.000"})
-	if _,err:=e.a.cancelInventory(ctx,reviewInv.ID,e.userID,"Cancelamento durante revisão formal.");err!=nil{t.Fatal(err)}
-
-	for _,id:=range []int64{matchInv.ID,divInv.ID,openInv.ID,countingInv.ID,reviewInv.ID}{
-		if _,err:=e.a.getInventoryHistory(ctx,id);err!=nil{t.Fatal(err)}
+	wh1 := e.warehouse(t, "anti-match", true)
+	sku1 := e.sku(t, "anti-match-sku", true, true)
+	e.movementDecimal(t, sku1, wh1, "IN", "10.000")
+	matchInv, err := e.a.createTotalInventory(ctx, e.userID, wh1)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	var movementsAfter,linesAfter int64
+	wh2 := e.warehouse(t, "anti-div", true)
+	sku2 := e.sku(t, "anti-div-sku", true, true)
+	e.movementDecimal(t, sku2, wh2, "IN", "10.000")
+	divInv, err := e.a.createTotalInventory(ctx, e.userID, wh2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wh3 := e.warehouse(t, "anti-open", true)
+	sku3 := e.sku(t, "anti-open-sku", true, true)
+	e.movementDecimal(t, sku3, wh3, "IN", "10.000")
+	openInv, err := e.a.createTotalInventory(ctx, e.userID, wh3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wh4 := e.warehouse(t, "anti-counting", true)
+	a := e.sku(t, "anti-counting-a", true, true)
+	b := e.sku(t, "anti-counting-b", true, true)
+	e.movementDecimal(t, a, wh4, "IN", "10.000")
+	e.movementDecimal(t, b, wh4, "IN", "10.000")
+	countingInv, err := e.a.createTotalInventory(ctx, e.userID, wh4)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wh5 := e.warehouse(t, "anti-review", true)
+	sku5 := e.sku(t, "anti-review-sku", true, true)
+	e.movementDecimal(t, sku5, wh5, "IN", "10.000")
+	reviewInv, err := e.a.createTotalInventory(ctx, e.userID, wh5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var movementsBefore, linesBefore int64
+	var stockBefore string
+	if err := e.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&movementsBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&linesBefore); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.db.QueryRow(`SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::text FROM movement_lines`).Scan(&stockBefore); err != nil {
+		t.Fatal(err)
+	}
+
+	countInventoryToReview(t, e, matchInv, map[int64]string{sku1: "10.000"})
+	if _, err := e.a.completeInventory(ctx, matchInv.ID, e.userID, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	countInventoryToReview(t, e, divInv, map[int64]string{sku2: "8.000"})
+	r2, _ := e.a.getInventoryReviewView(ctx, divInv.ID)
+	l2 := reviewBySKU(t, r2)[sku2]
+	if _, err := e.a.saveInventoryRecount(ctx, divInv.ID, sku2, "9.000", l2.Version, e.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.completeInventory(ctx, divInv.ID, e.userID, "Divergência confirmada e preservada."); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := e.a.cancelInventory(ctx, openInv.ID, e.userID, "Cancelamento no estado aberto."); err != nil {
+		t.Fatal(err)
+	}
+
+	cv, _ := e.a.getInventoryCountingView(ctx, countingInv.ID)
+	if _, _, err := e.a.saveInventoryCount(ctx, countingInv.ID, cv.Lines[0].SKUID, "10.000", cv.Lines[0].Version, e.userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.a.cancelInventory(ctx, countingInv.ID, e.userID, "Cancelamento durante contagem parcial."); err != nil {
+		t.Fatal(err)
+	}
+
+	countInventoryToReview(t, e, reviewInv, map[int64]string{sku5: "10.000"})
+	if _, err := e.a.cancelInventory(ctx, reviewInv.ID, e.userID, "Cancelamento durante revisão formal."); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []int64{matchInv.ID, divInv.ID, openInv.ID, countingInv.ID, reviewInv.ID} {
+		if _, err := e.a.getInventoryHistory(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var movementsAfter, linesAfter int64
 	var stockAfter string
 	_ = e.db.QueryRow(`SELECT count(*) FROM movements`).Scan(&movementsAfter)
 	_ = e.db.QueryRow(`SELECT count(*) FROM movement_lines`).Scan(&linesAfter)
 	_ = e.db.QueryRow(`SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::text FROM movement_lines`).Scan(&stockAfter)
-	if movementsBefore!=movementsAfter||linesBefore!=linesAfter||stockBefore!=stockAfter{
-		t.Fatalf("terminal lifecycle changed stock: movements %d->%d lines %d->%d stock %s->%s",movementsBefore,movementsAfter,linesBefore,linesAfter,stockBefore,stockAfter)
+	if movementsBefore != movementsAfter || linesBefore != linesAfter || stockBefore != stockAfter {
+		t.Fatalf("terminal lifecycle changed stock: movements %d->%d lines %d->%d stock %s->%s", movementsBefore, movementsAfter, linesBefore, linesAfter, stockBefore, stockAfter)
 	}
 }
 
 func TestInventoryTerminalMigration018CleanAndIncremental(t *testing.T) {
-	if os.Getenv("TEST_DATABASE_URL")==""{t.Skip("TEST_DATABASE_URL is required")}
-	ctx:=context.Background();migrationsDir:=filepath.Join("..","..","migrations");db:=openTestDatabase(t)
-	baseDir:=t.TempDir()
-	for i:=1;i<=17;i++{
-		matches,err:=filepath.Glob(filepath.Join(migrationsDir,fmt.Sprintf("%03d_*.sql",i)))
-		if err!=nil||len(matches)!=1{t.Fatalf("migration %03d matches=%v err=%v",i,matches,err)}
-		body,err:=os.ReadFile(matches[0]);if err!=nil{t.Fatal(err)}
-		if err:=os.WriteFile(filepath.Join(baseDir,filepath.Base(matches[0])),body,0o600);err!=nil{t.Fatal(err)}
+	if os.Getenv("TEST_DATABASE_URL") == "" {
+		t.Skip("TEST_DATABASE_URL is required")
 	}
-	if err:=runMigrations(ctx,db,baseDir);err!=nil{t.Fatalf("001-017: %v",err)}
+	ctx := context.Background()
+	migrationsDir := filepath.Join("..", "..", "migrations")
+	db := openTestDatabase(t)
+	baseDir := t.TempDir()
+	for i := 1; i <= 17; i++ {
+		matches, err := filepath.Glob(filepath.Join(migrationsDir, fmt.Sprintf("%03d_*.sql", i)))
+		if err != nil || len(matches) != 1 {
+			t.Fatalf("migration %03d matches=%v err=%v", i, matches, err)
+		}
+		body, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(baseDir, filepath.Base(matches[0])), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runMigrations(ctx, db, baseDir); err != nil {
+		t.Fatalf("001-017: %v", err)
+	}
 
 	var movementSchemaBefore string
-	if err:=db.QueryRowContext(ctx,`
+	if err := db.QueryRowContext(ctx, `
 SELECT string_agg(column_name||':'||data_type||':'||is_nullable,',' ORDER BY ordinal_position)
 FROM information_schema.columns
-WHERE table_schema=current_schema() AND table_name='movement_lines'`).Scan(&movementSchemaBefore);err!=nil{t.Fatal(err)}
+WHERE table_schema=current_schema() AND table_name='movement_lines'`).Scan(&movementSchemaBefore); err != nil {
+		t.Fatal(err)
+	}
 
-	mig:=filepath.Join(migrationsDir,"018_inventory_terminal_audit.sql");body,err:=os.ReadFile(mig);if err!=nil{t.Fatal(err)}
-	if strings.Contains(strings.ToLower(string(body)),"movement_lines"){t.Fatal("migration 018 must not touch movement_lines")}
-	inc:=t.TempDir();if err:=os.WriteFile(filepath.Join(inc,filepath.Base(mig)),body,0o600);err!=nil{t.Fatal(err)}
-	if err:=runMigrations(ctx,db,inc);err!=nil{t.Fatalf("incremental 018: %v",err)}
+	mig := filepath.Join(migrationsDir, "018_inventory_terminal_audit.sql")
+	body, err := os.ReadFile(mig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(body)), "movement_lines") {
+		t.Fatal("migration 018 must not touch movement_lines")
+	}
+	inc := t.TempDir()
+	if err := os.WriteFile(filepath.Join(inc, filepath.Base(mig)), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runMigrations(ctx, db, inc); err != nil {
+		t.Fatalf("incremental 018: %v", err)
+	}
 
 	var movementSchemaAfter string
-	if err:=db.QueryRowContext(ctx,`
+	if err := db.QueryRowContext(ctx, `
 SELECT string_agg(column_name||':'||data_type||':'||is_nullable,',' ORDER BY ordinal_position)
 FROM information_schema.columns
-WHERE table_schema=current_schema() AND table_name='movement_lines'`).Scan(&movementSchemaAfter);err!=nil{t.Fatal(err)}
-	if movementSchemaBefore!=movementSchemaAfter{t.Fatal("movement_lines changed by 018")}
+WHERE table_schema=current_schema() AND table_name='movement_lines'`).Scan(&movementSchemaAfter); err != nil {
+		t.Fatal(err)
+	}
+	if movementSchemaBefore != movementSchemaAfter {
+		t.Fatal("movement_lines changed by 018")
+	}
 
-	for _,col:=range []string{"completed_by_user_id","completion_note","cancelled_by_user_id","cancellation_reason"}{
+	for _, col := range []string{"completed_by_user_id", "completion_note", "cancelled_by_user_id", "cancellation_reason"} {
 		var exists bool
-		if err:=db.QueryRowContext(ctx,`
+		if err := db.QueryRowContext(ctx, `
 SELECT EXISTS(
  SELECT 1 FROM information_schema.columns
  WHERE table_schema=current_schema() AND table_name='inventory_validations' AND column_name=$1
-)`,col).Scan(&exists);err!=nil{t.Fatal(err)}
-		if !exists{t.Fatalf("missing column %s",col)}
+)`, col).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Fatalf("missing column %s", col)
+		}
 	}
 
-	cleanDB:=openTestDatabase(t)
-	if err:=runMigrations(ctx,cleanDB,migrationsDir);err!=nil{t.Fatalf("clean 001-018: %v",err)}
+	cleanDB := openTestDatabase(t)
+	if err := runMigrations(ctx, cleanDB, migrationsDir); err != nil {
+		t.Fatalf("clean 001-018: %v", err)
+	}
 }
 
 func TestInventoryTerminalIdempotentRetryDoesNotMaskDifferentIntent(t *testing.T) {
-	e:=newInventoryTestEnv(t)
-	inv,_:=oneReviewInventory(t,e,"idempotent","10.000","10.000")
-	first,err:=e.a.completeInventory(context.Background(),inv.ID,e.userID,"")
-	if err!=nil{t.Fatal(err)}
-	retry,err:=e.a.completeInventory(context.Background(),inv.ID,e.userID,"")
-	if err!=nil{t.Fatalf("identical retry: %v",err)}
-	if first.CompletedAt==nil||retry.CompletedAt==nil||!first.CompletedAt.Equal(*retry.CompletedAt){t.Fatalf("retry changed completed_at: first=%v retry=%v",first.CompletedAt,retry.CompletedAt)}
-	if _,err:=e.a.cancelInventory(context.Background(),inv.ID,e.userID,"Intenção terminal diferente.");!errors.Is(err,errInventoryCannotCancel){t.Fatalf("different terminal intent=%v",err)}
+	e := newInventoryTestEnv(t)
+	inv, _ := oneReviewInventory(t, e, "idempotent", "10.000", "10.000")
+	first, err := e.a.completeInventory(context.Background(), inv.ID, e.userID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, err := e.a.completeInventory(context.Background(), inv.ID, e.userID, "")
+	if err != nil {
+		t.Fatalf("identical retry: %v", err)
+	}
+	if first.CompletedAt == nil || retry.CompletedAt == nil || !first.CompletedAt.Equal(*retry.CompletedAt) {
+		t.Fatalf("retry changed completed_at: first=%v retry=%v", first.CompletedAt, retry.CompletedAt)
+	}
+	if _, err := e.a.cancelInventory(context.Background(), inv.ID, e.userID, "Intenção terminal diferente."); !errors.Is(err, errInventoryCannotCancel) {
+		t.Fatalf("different terminal intent=%v", err)
+	}
 }
 
 func TestInventoryHistoryJSONEarlyBlindOmitsReferenceKeys(t *testing.T) {
-	e:=newInventoryTestEnv(t)
-	_,inv,_:=setupBlindCounting(t,e,2,"987.321")
-	out,err:=e.a.cancelInventory(context.Background(),inv.ID,e.userID,"Cancelamento cego com histórico preservado.")
-	if err!=nil{t.Fatal(err)}
-	body,err:=json.Marshal(out);if err!=nil{t.Fatal(err)}
-	s:=string(body)
-	for _,forbidden:=range []string{"987.321","reference_quantity","effective_quantity","difference","state"}{
-		if strings.Contains(s,forbidden){t.Fatalf("marshaled history leaked %q: %s",forbidden,s)}
+	e := newInventoryTestEnv(t)
+	_, inv, _ := setupBlindCounting(t, e, 2, "987.321")
+	out, err := e.a.cancelInventory(context.Background(), inv.ID, e.userID, "Cancelamento cego com histórico preservado.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(body)
+	for _, forbidden := range []string{"987.321", "reference_quantity", "effective_quantity", "difference", "state"} {
+		if strings.Contains(s, forbidden) {
+			t.Fatalf("marshaled history leaked %q: %s", forbidden, s)
+		}
 	}
 }

@@ -83,17 +83,17 @@ ORDER BY b.name`, itemID, warehouseID)
 		for rows.Next() {
 			var brandID int64
 			var brand, unit, quantity string
-			if err := rows.Scan(&brandID,&brand,&unit,&quantity); err != nil {
+			if err := rows.Scan(&brandID, &brand, &unit, &quantity); err != nil {
 				writeJSONError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
-			brands = append(brands,map[string]any{"brand_id":brandID,"brand":brand,"unit":unit,"quantity":quantity})
+			brands = append(brands, map[string]any{"brand_id": brandID, "brand": brand, "unit": unit, "quantity": quantity})
 		}
 		if err := rows.Err(); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		writeJSON(w,http.StatusOK,map[string]any{"item_id":itemID,"brands":brands})
+		writeJSON(w, http.StatusOK, map[string]any{"item_id": itemID, "brands": brands})
 		return
 	}
 	brandID, brandErr := strconv.ParseInt(rawBrand, 10, 64)
@@ -102,14 +102,14 @@ ORDER BY b.name`, itemID, warehouseID)
 		return
 	}
 	var head struct {
-		ID, BrandID                  int64
+		ID, BrandID                int64
 		Name, Brand, Unit, Minimum string
 	}
 	err = a.db.QueryRowContext(r.Context(), `
 SELECT i.id,b.id,i.name,b.name,i.unit_code,COALESCE(i.minimum_stock::text,'')
 FROM inventory_items i
 JOIN brands b ON b.id=$2
-WHERE i.id=$1`, itemID,brandID).Scan(&head.ID,&head.BrandID,&head.Name,&head.Brand,&head.Unit,&head.Minimum)
+WHERE i.id=$1`, itemID, brandID).Scan(&head.ID, &head.BrandID, &head.Name, &head.Brand, &head.Unit, &head.Minimum)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "Item não encontrado.")
 		return
@@ -127,7 +127,7 @@ JOIN warehouses w ON w.id=ml.warehouse_id
 WHERE ml.item_id=$1 AND s.brand_id=$2
 GROUP BY w.id,w.name
 HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
-ORDER BY w.name`, itemID,brandID)
+ORDER BY w.name`, itemID, brandID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -153,7 +153,7 @@ SELECT s.id,COALESCE(s.name,''),b.name,COALESCE(s.barcode,''),s.content_quantity
 FROM product_skus s
 JOIN brands b ON b.id=s.brand_id
 WHERE s.item_id=$1 AND s.brand_id=$2 AND s.active=true
-ORDER BY s.content_quantity,s.id`, itemID,brandID)
+ORDER BY s.content_quantity,s.id`, itemID, brandID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -163,15 +163,15 @@ ORDER BY s.content_quantity,s.id`, itemID,brandID)
 	for presentationRows.Next() {
 		var skuID int64
 		var sku, brand, barcode, contentQuantity string
-		if err := presentationRows.Scan(&skuID,&sku,&brand,&barcode,&contentQuantity); err != nil {
+		if err := presentationRows.Scan(&skuID, &sku, &brand, &barcode, &contentQuantity); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 		presentations = append(presentations, map[string]any{
-			"sku_id": skuID,
-			"sku": sku,
-			"brand": brand,
-			"barcode": barcode,
+			"sku_id":           skuID,
+			"sku":              sku,
+			"brand":            brand,
+			"barcode":          barcode,
 			"content_quantity": contentQuantity,
 		})
 	}
@@ -199,7 +199,7 @@ JOIN LATERAL (
 WHERE l.item_id=$1
   AND l.brand_id=$2
   AND l.initial_quantity-alloc.allocated > 0
-ORDER BY w.name,(l.expires_at IS NULL),l.expires_at,l.received_at,l.id`, itemID,brandID)
+ORDER BY w.name,(l.expires_at IS NULL),l.expires_at,l.received_at,l.id`, itemID, brandID)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -210,20 +210,20 @@ ORDER BY w.name,(l.expires_at IS NULL),l.expires_at,l.received_at,l.id`, itemID,
 		var lotID, warehouseID int64
 		var warehouse, quantity, manufacturerLot, expiresAt, sourceSKU, sourceBarcode string
 		var legacyOpening bool
-		if err := lotRows.Scan(&lotID,&warehouseID,&warehouse,&quantity,&manufacturerLot,&expiresAt,&sourceSKU,&sourceBarcode,&legacyOpening); err != nil {
+		if err := lotRows.Scan(&lotID, &warehouseID, &warehouse, &quantity, &manufacturerLot, &expiresAt, &sourceSKU, &sourceBarcode, &legacyOpening); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 		lots = append(lots, map[string]any{
-			"id": lotID,
-			"warehouse_id": warehouseID,
-			"warehouse": warehouse,
-			"quantity": quantity,
+			"id":               lotID,
+			"warehouse_id":     warehouseID,
+			"warehouse":        warehouse,
+			"quantity":         quantity,
 			"manufacturer_lot": manufacturerLot,
-			"expires_at": expiresAt,
-			"source_sku": sourceSKU,
-			"source_barcode": sourceBarcode,
-			"legacy_opening": legacyOpening,
+			"expires_at":       expiresAt,
+			"source_sku":       sourceSKU,
+			"source_barcode":   sourceBarcode,
+			"legacy_opening":   legacyOpening,
 		})
 	}
 	if err := lotRows.Err(); err != nil {
@@ -250,5 +250,3 @@ GROUP BY i.id,i.name,i.unit_code,i.minimum_stock
 HAVING sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) > 0
 ORDER BY i.name`
 }
-
-func normalizeOpText(v string) string { return strings.TrimSpace(v) }

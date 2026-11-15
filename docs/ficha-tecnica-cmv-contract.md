@@ -51,7 +51,7 @@ Todas sob `costs`. Escrita exige `costs/write`.
 - `GET/POST /api/customers`, `PATCH /api/customers/{id}`
 - `GET/POST /api/recipes`, `GET/PATCH /api/recipes/{id}`
 
-`PATCH` exige `version` e troca ingredientes e preços da ficha de forma atômica. Versão antiga devolve 409 com a mensagem padrão de edição concorrente.
+`PATCH` exige `version` e troca os ingredientes da ficha de forma atômica (os preços por cliente saíram com a migração 033). Versão antiga devolve 409 com a mensagem padrão de edição concorrente.
 
 ## Gates
 

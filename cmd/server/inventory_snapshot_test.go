@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -185,7 +185,7 @@ func openInventorySecondConnection(t *testing.T, primary *sql.DB) *sql.DB {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	db, err := openDatabase(ctx, config{
-		DatabaseURL: os.Getenv("TEST_DATABASE_URL"),
+		DatabaseURL:  os.Getenv("TEST_DATABASE_URL"),
 		MaxOpenConns: 1,
 		MaxIdleConns: 1,
 		ConnMaxLife:  30 * time.Minute,
@@ -397,7 +397,6 @@ SELECT EXISTS (
 		t.Fatal("migration 015 did not create snapshot_at")
 	}
 }
-
 
 func TestInventorySnapshotDoesNotBlockOperationalExit(t *testing.T) {
 	e := newInventoryTestEnv(t)

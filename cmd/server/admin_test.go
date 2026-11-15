@@ -167,7 +167,6 @@ func createTestUserWithProfileID(t *testing.T, a *app, login, pass string, profi
 	return id
 }
 
-
 func TestAdminUserUpdateWithPasswordIsAtomic(t *testing.T) {
 	a, _, _, _ := newStockTestApp(t)
 	directorID := createTestUser(t, a, "atomic-dir", "secret", "Diretor", true)

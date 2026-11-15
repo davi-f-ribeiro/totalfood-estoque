@@ -86,7 +86,6 @@ func TestAssetsPostgreSQLFlowAuthorizationAndIdempotency(t *testing.T) {
 	assertCount(t, db, `SELECT count(*) FROM asset_events WHERE asset_id=$1`, 4, assetID)
 }
 
-
 func TestAssetPatchCannotBypassOperationalEventHistory(t *testing.T) {
 	a, _, wh1, wh2 := newStockTestApp(t)
 	director := createTestUser(t, a, "asset-patch-director", "secret", "Diretor", true)
@@ -102,9 +101,9 @@ func TestAssetPatchCannotBypassOperationalEventHistory(t *testing.T) {
 
 	rr := authReq(a, http.MethodPost, "/api/assets", map[string]any{
 		"asset_type_id": typeA,
-		"tag": "PAT-PATCH-1",
-		"status": "ATIVO",
-		"warehouse_id": wh1,
+		"tag":           "PAT-PATCH-1",
+		"status":        "ATIVO",
+		"warehouse_id":  wh1,
 	}, login, "")
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create status=%d body=%s", rr.Code, rr.Body.String())
@@ -117,10 +116,10 @@ func TestAssetPatchCannotBypassOperationalEventHistory(t *testing.T) {
 
 	rr = authReq(a, http.MethodPatch, "/api/assets/"+itoa(assetID), map[string]any{
 		"asset_type_id": typeB,
-		"tag": "PAT-PATCH-2",
-		"status": "EM_MANUTENCAO",
-		"warehouse_id": wh2,
-		"version": crudVersion(t, a, "assets", assetID),
+		"tag":           "PAT-PATCH-2",
+		"status":        "EM_MANUTENCAO",
+		"warehouse_id":  wh2,
+		"version":       crudVersion(t, a, "assets", assetID),
 	}, login, "")
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("operational fields accepted by generic patch: status=%d body=%s", rr.Code, rr.Body.String())
@@ -138,8 +137,8 @@ func TestAssetPatchCannotBypassOperationalEventHistory(t *testing.T) {
 
 	rr = authReq(a, http.MethodPatch, "/api/assets/"+itoa(assetID), map[string]any{
 		"asset_type_id": typeB,
-		"tag": "PAT-PATCH-2",
-		"version": crudVersion(t, a, "assets", assetID),
+		"tag":           "PAT-PATCH-2",
+		"version":       crudVersion(t, a, "assets", assetID),
 	}, login, "")
 	if rr.Code != http.StatusOK {
 		t.Fatalf("cadastral patch status=%d body=%s", rr.Code, rr.Body.String())

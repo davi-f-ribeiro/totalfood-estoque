@@ -33,7 +33,7 @@ func TestDeployConfigNamesOnlyVariablesTheServerReads(t *testing.T) {
 	}
 
 	bootstrap := regexp.MustCompile(`BOOTSTRAP_[A-Z_]+`)
-	for _, doc := range []string{"compose.yaml", "README.md", filepath.Join("docs", "cloud-run-neon.md")} {
+	for _, doc := range []string{"compose.yaml", "README.md", filepath.Join("docs", "deploy-render-neon.md")} {
 		text, err := os.ReadFile(filepath.Join(root, doc))
 		if err != nil {
 			t.Fatal(err)

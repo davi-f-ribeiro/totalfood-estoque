@@ -79,6 +79,10 @@ Reserve sempre com transação e `FOR UPDATE SKIP LOCKED`, ACK é idempotente. L
 - Workflow `crates-ui-ci` valida os fluxos de recebimento, falha após commit sem confirmação, reenvio idempotente, busca manual, pesagem, transferência e pareamento em Chromium a 390 e 1440 px. Gera screenshots como artefato.
 - Execução local do teste visual: `NODE_PATH=/caminho/node_modules CHROME_BIN=/caminho/chrome node scripts/crates-playwright-e2e.cjs`. O teste usa API simulada e arquivos JS/CSS reais, não consulta o Neon nem substitui os testes PostgreSQL.
 - Teste de etiqueta ZPL confirma 60 x 60 mm (480 dots), quebra do nome em duas linhas, peso, QR/ID, lote interno, NF, versão e neutralização de comandos ZPL injetados por dados.
+- Prévia da etiqueta de caixa (60×60 mm):
+
+  ![Etiqueta de caixa 60×60 mm: logo, produto, caixa, código CX, peso líquido, QR, entrada, lote, NF e rodapé institucional](etiqueta-caixa-preview.png)
+
 - Etiqueta de caixas reutiliza o cabeçalho com logo centralizado `LOGODP.GRF`, separadores e rodapé institucional dos modelos existentes (Câmara Fria/Despacho). A fila envia ZPL pronto; o firmware já carrega o logo na memória da Zebra ao conectar. Etiquetas antigas já enfileiradas não são modificadas automaticamente.
 - Validar tela a 390 px e fluxo real com impressora Zebra ZD220, ESP32-S3 N16R8, USB, OTA, ausência de papel/USB, falha HTTPS e render com início frio.
 

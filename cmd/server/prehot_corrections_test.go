@@ -31,7 +31,7 @@ func TestPreHotStockGeneralAvailabilityAndPassword(t *testing.T) {
 		var id int64
 		var name, unit, min, qty string
 		var below bool
-		if err := rows.Scan(&id,&name,&unit,&min,&qty,&below); err != nil {
+		if err := rows.Scan(&id, &name, &unit, &min, &qty, &below); err != nil {
 			t.Fatal(err)
 		}
 		if name == "Arroz" {

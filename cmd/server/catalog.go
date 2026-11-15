@@ -302,7 +302,7 @@ ORDER BY s.active DESC,b.name,s.content_quantity,s.id`, itemID)
 		var id, parentID, brandID, version int64
 		var name, brand, barcode, contentQuantity string
 		var active, hasHistory bool
-		if err := rows.Scan(&id,&parentID,&name,&brand,&brandID,&barcode,&contentQuantity,&active,&version,&hasHistory); err != nil {
+		if err := rows.Scan(&id, &parentID, &name, &brand, &brandID, &barcode, &contentQuantity, &active, &version, &hasHistory); err != nil {
 			writeJSONError(w, 500, "Erro interno.")
 			return
 		}
@@ -426,7 +426,7 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogSKURequest(&req)
-	if req.ItemID<=0 || req.BrandID<=0 || req.Barcode=="" || !positiveDecimal(req.ContentQuantity) {
+	if req.ItemID <= 0 || req.BrandID <= 0 || req.Barcode == "" || !positiveDecimal(req.ContentQuantity) {
 		writeJSONError(w, http.StatusBadRequest, "Preencha o item, a marca, quanto vem em cada embalagem e o código de barras.")
 		return
 	}
@@ -440,22 +440,22 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 	}
 	hash := catalogRequestHash(userFromContext(r.Context()).ID, "product_skus", req)
 	res, err := a.createCatalogRecord(r.Context(), "product_skus", req.OperationID, hash, func(tx *sql.Tx) (int64, error) {
-		var itemName,brandName,unit string
-		if err:=tx.QueryRowContext(r.Context(), `
+		var itemName, brandName, unit string
+		if err := tx.QueryRowContext(r.Context(), `
 SELECT i.name,b.name,i.unit_code
 FROM inventory_items i
 JOIN brands b ON b.id=$2
-WHERE i.id=$1 AND i.active=true AND b.active=true`,req.ItemID,req.BrandID).Scan(&itemName,&brandName,&unit); errors.Is(err, sql.ErrNoRows) {
+WHERE i.id=$1 AND i.active=true AND b.active=true`, req.ItemID, req.BrandID).Scan(&itemName, &brandName, &unit); errors.Is(err, sql.ErrNoRows) {
 			return 0, catalogDomainError{http.StatusBadRequest, "Item ou marca inválidos."}
 		} else if err != nil {
 			return 0, err
 		}
 		name := req.Name
-		if name=="" {
-			name=productDisplayName(itemName,brandName,req.ContentQuantity,unit)
+		if name == "" {
+			name = productDisplayName(itemName, brandName, req.ContentQuantity, unit)
 		}
 		var id int64
-		err := tx.QueryRowContext(r.Context(), `INSERT INTO product_skus (item_id,brand_id,name,barcode,content_quantity,active,operation_id,request_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, req.ItemID,req.BrandID,name,req.Barcode,req.ContentQuantity,active,req.OperationID,hash).Scan(&id)
+		err := tx.QueryRowContext(r.Context(), `INSERT INTO product_skus (item_id,brand_id,name,barcode,content_quantity,active,operation_id,request_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, req.ItemID, req.BrandID, name, req.Barcode, req.ContentQuantity, active, req.OperationID, hash).Scan(&id)
 		return id, err
 	})
 	if err != nil {
@@ -477,12 +477,12 @@ func (a *app) handleUpdateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogSKURequest(&req)
-	if req.Barcode=="" || req.Version<=0 || req.OperationID!="" {
-		writeJSONError(w,http.StatusBadRequest,"Dados inválidos. Confira os campos e tente de novo.")
+	if req.Barcode == "" || req.Version <= 0 || req.OperationID != "" {
+		writeJSONError(w, http.StatusBadRequest, "Dados inválidos. Confira os campos e tente de novo.")
 		return
 	}
-	var currentItem,currentBrand,currentVersion int64
-	var currentUnit,targetUnit,currentContentQuantity,currentName,currentItemName,currentBrandName string
+	var currentItem, currentBrand, currentVersion int64
+	var currentUnit, targetUnit, currentContentQuantity, currentName, currentItemName, currentBrandName string
 	var hasHistory bool
 	err := a.db.QueryRowContext(r.Context(), `
 SELECT s.item_id,s.brand_id,s.version,src.unit_code,s.content_quantity::text,COALESCE(s.name,''),src.name,b.name,
@@ -490,7 +490,7 @@ SELECT s.item_id,s.brand_id,s.version,src.unit_code,s.content_quantity::text,COA
 FROM product_skus s
 JOIN inventory_items src ON src.id=s.item_id
 JOIN brands b ON b.id=s.brand_id
-WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,&currentContentQuantity,&currentName,&currentItemName,&currentBrandName,&hasHistory)
+WHERE s.id=$1`, id).Scan(&currentItem, &currentBrand, &currentVersion, &currentUnit, &currentContentQuantity, &currentName, &currentItemName, &currentBrandName, &hasHistory)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusNotFound, "Produto não encontrado.")
 		return
@@ -503,21 +503,25 @@ WHERE s.id=$1`,id).Scan(&currentItem,&currentBrand,&currentVersion,&currentUnit,
 		writeConcurrentEditError(w)
 		return
 	}
-	if req.ItemID<=0 { req.ItemID=currentItem }
-	if req.BrandID<=0 { req.BrandID=currentBrand }
+	if req.ItemID <= 0 {
+		req.ItemID = currentItem
+	}
+	if req.BrandID <= 0 {
+		req.BrandID = currentBrand
+	}
 	if req.ContentQuantity == "" {
 		req.ContentQuantity = currentContentQuantity
 	}
-	nameProvided := req.Name!=""
+	nameProvided := req.Name != ""
 	if !positiveDecimal(req.ContentQuantity) {
 		writeJSONError(w, http.StatusBadRequest, "Digite quanto vem em cada embalagem, maior que zero.")
 		return
 	}
-	var targetItemName,targetBrandName string
+	var targetItemName, targetBrandName string
 	if err := a.db.QueryRowContext(r.Context(), `
 SELECT i.unit_code,i.name,b.name
 FROM inventory_items i JOIN brands b ON b.id=$2
-WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&targetItemName,&targetBrandName); errors.Is(err, sql.ErrNoRows) {
+WHERE i.id=$1`, req.ItemID, req.BrandID).Scan(&targetUnit, &targetItemName, &targetBrandName); errors.Is(err, sql.ErrNoRows) {
 		writeJSONError(w, http.StatusBadRequest, "Item de destino não encontrado.")
 		return
 	} else if err != nil {
@@ -525,15 +529,15 @@ WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&targetItemName,&targetB
 		return
 	}
 	if !nameProvided {
-		legacyGenerated := productDisplayName(currentItemName,currentBrandName,currentContentQuantity,currentUnit)
-		if currentName==legacyGenerated {
-			req.Name=productDisplayName(targetItemName,targetBrandName,req.ContentQuantity,targetUnit)
+		legacyGenerated := productDisplayName(currentItemName, currentBrandName, currentContentQuantity, currentUnit)
+		if currentName == legacyGenerated {
+			req.Name = productDisplayName(targetItemName, targetBrandName, req.ContentQuantity, targetUnit)
 		} else {
-			req.Name=currentName
+			req.Name = currentName
 		}
 	}
-	if hasHistory && (currentItem!=req.ItemID || currentBrand!=req.BrandID) {
-		writeJSONError(w,http.StatusConflict,"Item e marca não podem mudar porque este produto já tem histórico.")
+	if hasHistory && (currentItem != req.ItemID || currentBrand != req.BrandID) {
+		writeJSONError(w, http.StatusConflict, "Item e marca não podem mudar porque este produto já tem histórico.")
 		return
 	}
 	active := true
@@ -545,7 +549,7 @@ WHERE i.id=$1`,req.ItemID,req.BrandID).Scan(&targetUnit,&targetItemName,&targetB
 UPDATE product_skus
 SET item_id=$1,brand_id=$2,name=$3,barcode=$4,content_quantity=$5,active=$6,version=version+1
 WHERE id=$7 AND version=$8
-RETURNING version`,req.ItemID,req.BrandID,req.Name,req.Barcode,req.ContentQuantity,active,id,req.Version).Scan(&newVersion)
+RETURNING version`, req.ItemID, req.BrandID, req.Name, req.Barcode, req.ContentQuantity, active, id, req.Version).Scan(&newVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeConcurrentEditError(w)
 		return
@@ -554,7 +558,7 @@ RETURNING version`,req.ItemID,req.BrandID,req.Name,req.Barcode,req.ContentQuanti
 		writeCatalogSKUError(w, err, "catalog sku update failed")
 		return
 	}
-	writeJSON(w,http.StatusOK,map[string]any{"id":id,"item_id":req.ItemID,"brand_id":req.BrandID,"moved":currentItem!=req.ItemID || currentBrand!=req.BrandID,"version":newVersion})
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "item_id": req.ItemID, "brand_id": req.BrandID, "moved": currentItem != req.ItemID || currentBrand != req.BrandID, "version": newVersion})
 }
 
 func writeCatalogItemError(w http.ResponseWriter, err error, logPrefix string) {
@@ -599,10 +603,6 @@ func normalizeCatalogSKURequest(req *catalogSKURequest) {
 
 func validItemReq(req catalogItemRequest) bool {
 	return req.Name != "" && req.CategoryID > 0 && req.UnitCode != "" && nonNegativeDecimal(req.MinimumStock)
-}
-
-func validSKUReq(req catalogSKURequest) bool {
-	return req.ItemID > 0 && req.Name != "" && req.Barcode != "" && positiveDecimal(req.ContentQuantity)
 }
 
 func cleanBarcode(v string) string {
