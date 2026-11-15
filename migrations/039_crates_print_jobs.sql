@@ -65,4 +65,6 @@ CREATE INDEX idx_print_jobs_claim ON print_jobs(id) WHERE status='PENDING';
 CREATE INDEX idx_print_jobs_claim_expiration ON print_jobs(claim_expires_at) WHERE status='CLAIMED';
 
 -- Uma movimentação genérica não pode consumir silenciosamente um lote rastreado
--- por caixas: a baixa deve indicar qual caixa teve seu peso reduzido.
+-- por caixas: a baixa deve indicar qual caixa teve seu peso reduzido. A regra
+-- não é uma constraint desta migration: fica em allocateLots (stock_engine.go),
+-- que ignora lotes com caixa (NOT EXISTS em stock_crates) na alocação FEFO.

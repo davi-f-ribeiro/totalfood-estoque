@@ -156,11 +156,29 @@ func (a *app) handlePrintPair(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 201, map[string]any{"id": id, "name": req.Name, "token": token})
 }
+
+// expireStalePrintClaims marca como incerta toda reserva vencida. Uma etiqueta
+// que perdeu a confirmação não é reenviada às cegas: o operador decide.
+// Roda ao buscar a fila e também ao listar a fila, as impressoras e ao criar
+// teste, porque no Render gratuito não há processo em segundo plano: sem isso,
+// uma reserva vencida ficava "reservada" até alguma impressora buscar a fila.
+func expireStalePrintClaims(ctx context.Context, db interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}) error {
+	_, err := db.ExecContext(ctx, `UPDATE print_jobs SET status='UNCERTAIN',
+  last_error='Tempo de confirmação esgotado' WHERE status='CLAIMED' AND claim_expires_at<now()`)
+	return err
+}
+
 func (a *app) handlePrintDevices(w http.ResponseWriter, r *http.Request) {
+	if err := expireStalePrintClaims(r.Context(), a.db); err != nil {
+		log.Printf("printer list expire failed: %v", err)
+	}
 	// last_test_* mostra o último teste de cada impressora, para a tela de
 	// Administração dizer se a etiqueta chegou ao USB.
 	rows, err := a.db.QueryContext(r.Context(), `SELECT d.id,d.name,d.active,t.status,
-  to_char(t.created_at AT TIME ZONE 'America/Fortaleza','DD/MM/YYYY HH24:MI')
+  to_char(t.created_at AT TIME ZONE 'America/Fortaleza','DD/MM/YYYY HH24:MI'),
+  to_char(d.last_seen_at AT TIME ZONE 'America/Fortaleza','DD/MM/YYYY HH24:MI')
 FROM print_devices d
 LEFT JOIN LATERAL (SELECT status,created_at FROM print_jobs
   WHERE device_id=d.id AND crate_id IS NULL ORDER BY id DESC LIMIT 1) t ON true
@@ -176,8 +194,8 @@ ORDER BY d.id`)
 		var id int64
 		var name string
 		var active bool
-		var testStatus, testAt sql.NullString
-		if err = rows.Scan(&id, &name, &active, &testStatus, &testAt); err != nil {
+		var testStatus, testAt, seenAt sql.NullString
+		if err = rows.Scan(&id, &name, &active, &testStatus, &testAt, &seenAt); err != nil {
 			log.Printf("printer list scan failed: %v", err)
 			writeJSONError(w, 500, "Falha ao consultar impressoras.")
 			return
@@ -186,11 +204,17 @@ ORDER BY d.id`)
 		if testStatus.Valid {
 			d["last_test_status"], d["last_test_at"] = testStatus.String, testAt.String
 		}
+		if seenAt.Valid {
+			d["last_seen_at"] = seenAt.String
+		}
 		devices = append(devices, d)
 	}
 	writeJSON(w, 200, map[string]any{"devices": devices})
 }
 func (a *app) handlePrintJobs(w http.ResponseWriter, r *http.Request) {
+	if err := expireStalePrintClaims(r.Context(), a.db); err != nil {
+		log.Printf("print queue expire failed: %v", err)
+	}
 	rows, err := a.db.QueryContext(r.Context(), `SELECT j.id,j.crate_id,j.revision,j.status,c.box_position,c.box_total,
    i.name FROM print_jobs j JOIN stock_crates c ON c.id=j.crate_id JOIN product_skus s ON s.id=c.sku_id
    JOIN inventory_items i ON i.id=s.item_id ORDER BY j.id DESC LIMIT 100`)
@@ -221,10 +245,13 @@ func (a *app) handlePrintClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	// A job that lost its confirmation is not blindly sent again.
-	_, err = tx.ExecContext(r.Context(), `UPDATE print_jobs SET status='UNCERTAIN',
-  last_error='Tempo de confirmação esgotado' WHERE status='CLAIMED' AND claim_expires_at<now()`)
-	if err != nil {
+	if err = expireStalePrintClaims(r.Context(), tx); err != nil {
+		writeJSONError(w, 503, "Fila indisponível.")
+		return
+	}
+	// Visto por último a cada busca, com ou sem etiqueta na fila: é o sinal de
+	// que o ESP alcança o servidor.
+	if _, err = tx.ExecContext(r.Context(), `UPDATE print_devices SET last_seen_at=now() WHERE id=$1`, id); err != nil {
 		writeJSONError(w, 503, "Fila indisponível.")
 		return
 	}
@@ -256,10 +283,6 @@ func (a *app) handlePrintClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("printer claim db error: %v", err)
-		writeJSONError(w, 503, "Fila indisponível.")
-		return
-	}
-	if _, err = tx.ExecContext(r.Context(), `UPDATE print_devices SET last_seen_at=now() WHERE id=$1`, id); err != nil {
 		writeJSONError(w, 503, "Fila indisponível.")
 		return
 	}
@@ -446,9 +469,14 @@ func (a *app) handlePrintTest(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 409, "Impressora revogada. Crie um acesso novo para testar.")
 		return
 	}
+	if err = expireStalePrintClaims(r.Context(), tx); err != nil {
+		log.Printf("printer test expire failed: %v", err)
+		writeJSONError(w, 503, "Fila indisponível.")
+		return
+	}
 	var waiting bool
 	if err = tx.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM print_jobs WHERE device_id=$1 AND crate_id IS NULL
-  AND (status='PENDING' OR (status='CLAIMED' AND claim_expires_at>now())))`, id).Scan(&waiting); err != nil {
+  AND status IN ('PENDING','CLAIMED'))`, id).Scan(&waiting); err != nil {
 		log.Printf("printer test pending check failed: %v", err)
 		writeJSONError(w, 503, "Fila indisponível.")
 		return

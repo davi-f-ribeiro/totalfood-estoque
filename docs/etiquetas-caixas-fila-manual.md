@@ -46,7 +46,7 @@ O token é específico de dispositivo, armazenado como hash no servidor e não v
 
 Ao tocar no botão, o ESP primeiro consulta o estado do servidor em `GET /health`. Se o Render demorar, pode repetir essa consulta de leitura uma vez antes de reservar qualquer etiqueta.
 
-A reserva tem vencimento em **5 minutos**. ACK de envio USB ou registro explícito de resultado incerto pode chegar após o vencimento se o trabalho ainda não tiver sido reenviado manualmente. A autenticação de cada operação é feita pelo token de dispositivo e token da reserva. Reinício no estado CLAIMED não descarta o token: o ESP informa estado **UNCERTAIN** ao servidor e não repete a impressão. Se o envio USB foi tentado e não há confirmação segura, também é marcado UNCERTAIN.
+A reserva tem vencimento em **5 minutos**. Reserva vencida vira **UNCERTAIN** ("Tempo de confirmação esgotado") na próxima busca de qualquer impressora e também ao abrir a fila em Caixas, a lista de impressoras ou ao enviar um teste; no Render gratuito não há processo em segundo plano para isso. Em **Administração → Impressoras de etiquetas**, cada impressora ativa mostra quando buscou a fila pela última vez (`last_seen_at`, atualizado a cada busca, mesmo com a fila vazia). ACK de envio USB ou registro explícito de resultado incerto pode chegar após o vencimento se o trabalho ainda não tiver sido reenviado manualmente. A autenticação de cada operação é feita pelo token de dispositivo e token da reserva. Reinício no estado CLAIMED não descarta o token: o ESP informa estado **UNCERTAIN** ao servidor e não repete a impressão. Se o envio USB foi tentado e não há confirmação segura, também é marcado UNCERTAIN.
 
 ### Acesso à fila no ESP
 
