@@ -9,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 INO = (ROOT / "etiqueta_zd220" / "etiqueta_zd220.ino").read_text(encoding="utf-8")
 WORKER = (ROOT / "etiqueta_zd220" / "wms_queue.cpp").read_text(encoding="utf-8")
+CA = (ROOT / "etiqueta_zd220" / "wms_ca.h").read_text(encoding="utf-8")
 SERVER = (ROOT.parents[0] / "cmd" / "server" / "print_queue.go").read_text(encoding="utf-8")
 
 
@@ -46,12 +47,12 @@ class ManualQueueSafetyContract(unittest.TestCase):
         config = function_section(WORKER, "static void configureHTTP", "static bool warmUpWMS")
         timeout = config.split("http.setTimeout(", 1)[1].split(")", 1)[0]
         self.assertLessEqual(int(timeout), 65535)
-        warmup = function_section(WORKER, "static bool warmUpWMS", "static bool sendResult")
+        warmup = function_section(WORKER, "static bool warmUpWMS", "static int sendResult")
         self.assertIn('url+"/health"', warmup)
         self.assertIn("http.GET()", warmup)
         self.assertNotIn("http.POST(", warmup)
         worker = function_section(WORKER, "static void queueWorker", "bool wmsQueueStart")
-        self.assertLess(worker.index("warmUpWMS(cloudURL)"), worker.index("/api/print/jobs/claim"))
+        self.assertLess(worker.index("warmUpWMS(cloudURL,why)"), worker.index("/api/print/jobs/claim"))
 
     def test_persist_before_usb_and_reconcile_after_reboot(self):
         self.assertIn('prefs.putString("state","CLAIMED")', WORKER)
@@ -68,6 +69,51 @@ class ManualQueueSafetyContract(unittest.TestCase):
         self.assertIn("claim_token_hash=NULL", SERVER)
         self.assertIn('status IN (\'UNCERTAIN\',\'FAILED\')', SERVER)
         self.assertIn('/api/print/jobs/{id}/uncertain', SERVER)
+
+    def test_pending_confirmation_cleared_only_on_success_or_final_answer(self):
+        final = function_section(WORKER, "static bool finalAnswer", "static void clearPending")
+        self.assertIn("return code==400||code==401||code==409;", final)
+        finish = function_section(WORKER, "static bool finishPending", "static void queueWorker")
+        after_send = finish[finish.index("int code=sendResult("):]
+        self.assertIn("if(code==200){clearPending(prefs);return true;}", after_send)
+        final_branch_end = after_send.index("if(finalAnswer(code)){")
+        retry_tail = after_send[after_send.index("}", after_send.index("return false;", final_branch_end)) + 1:]
+        # Network errors, 5xx, 403 and 429 must keep the record for another try.
+        self.assertNotIn("clearPending", retry_tail)
+        self.assertIn("return false;", retry_tail)
+
+    def test_unconfirmable_local_record_does_not_block_forever(self):
+        finish = function_section(WORKER, "static bool finishPending", "static void queueWorker")
+        invalid = finish[:finish.index("int code=sendResult(")]
+        self.assertIn("claim.length()<32", invalid)
+        self.assertIn("clearPending(prefs);", invalid)
+
+    def test_discard_is_authenticated_and_never_runs_with_the_worker(self):
+        handler = function_section(INO, "static void handleQueueDiscard() {", "static void setupWeb()")
+        self.assertLess(handler.index("if (!requireAuth()) return;"), handler.index("wmsQueueDiscardPending"))
+        self.assertLess(handler.index("wmsQueueBusy()"), handler.index("wmsQueueDiscardPending"))
+        self.assertIn('server.on("/api/queue/discard", HTTP_POST, handleQueueDiscard)', INO)
+        discard = function_section(WORKER, "int wmsQueueDiscardPending()", "bool wmsQueueStart")
+        self.assertIn("if(queueActive)return -1;", discard)
+        self.assertIn('prefs.begin("wms-ack",false)', discard)
+
+    def test_server_answers_401_only_for_unknown_or_revoked_device(self):
+        auth = function_section(SERVER, "func (a *app) requirePrinter", "func printerID")
+        self.assertLess(auth.index("errors.Is(err, sql.ErrNoRows)"), auth.index("writeJSONError(w, 401, \"Impressora não autorizada.\")\n\t\t\treturn\n\t\t}\n\t\tif err != nil"))
+        self.assertIn("writeJSONError(w, 503,", auth)
+
+    def test_trusts_every_root_render_issues_from(self):
+        # Render alternates Let's Encrypt and Google Trust Services (WR1 and WE1).
+        for root in ("ISRG Root X1", "ISRG Root X2", "GTS Root R1", "GTS Root R4"):
+            self.assertIn(root, CA)
+        self.assertGreaterEqual(CA.count("-----BEGIN CERTIFICATE-----"), 5)
+
+    def test_failure_message_names_the_cause(self):
+        worker = function_section(WORKER, "static void queueWorker", "bool wmsQueueStart")
+        self.assertIn("TotalFood sem resposta (\"+why+\")", worker)
+        failure = function_section(WORKER, "static String requestFailure", "static bool warmUpWMS")
+        self.assertIn("client.lastError(", failure)
+        self.assertIn("HTTPClient::errorToString(", failure)
 
 
 if __name__ == "__main__":

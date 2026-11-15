@@ -38,7 +38,7 @@
 #include "web_pages.h"
 #include "logo_png.h"
 
-#define FW_VERSION    "1.6.1"
+#define FW_VERSION    "1.6.3"
 #define AP_NAME       "Etiqueta-Setup"
 #define AP_PASSWORD   "etiqueta"          // senha do Wi-Fi do portal cativo (mín. 8)
 #define ADMIN_USER    "admin"
@@ -924,6 +924,20 @@ static void handleQueuePull() {
   sendMsg(202, true, "Buscando etiquetas. Acompanhe o progresso aqui.");
 }
 
+// Releases a confirmation the WMS will not accept, so the queue is not blocked
+// until the firmware is flashed again. The label itself must be checked in the WMS.
+static void handleQueueDiscard() {
+  if (!requireAuth()) return;
+  if (updating || wmsQueueBusy()) {
+    sendMsg(409, false, "Aguarde a fila terminar antes de descartar.");
+    return;
+  }
+  int r = wmsQueueDiscardPending();
+  if (r < 0) { sendMsg(500, false, "Não foi possível abrir o registro de confirmação."); return; }
+  sendMsg(200, true, r ? "Confirmação pendente descartada. Confira a etiqueta no WMS antes de reenviar."
+                       : "Não havia confirmação pendente.");
+}
+
 static void setupWeb() {
   server.on("/",              HTTP_GET,  handleIndex);
   server.on("/config",        HTTP_GET,  handleConfigPg);
@@ -935,6 +949,7 @@ static void setupWeb() {
   server.on("/api/print",     HTTP_POST, handlePrint);
   server.on("/api/queue/pull", HTTP_POST, handleQueuePull);
   server.on("/api/queue/status", HTTP_GET, handleQueueStatus);
+  server.on("/api/queue/discard", HTTP_POST, handleQueueDiscard);
   server.on("/api/raw",       HTTP_POST, handleRaw);
   server.on("/api/status",    HTTP_GET,  handleStatus);
   server.on("/health",        HTTP_GET,  handleStatus);

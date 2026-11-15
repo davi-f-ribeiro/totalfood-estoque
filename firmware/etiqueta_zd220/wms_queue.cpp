@@ -52,20 +52,32 @@ static void configureHTTP(HTTPClient& http,WiFiClientSecure& client,const String
  http.setTimeout(65000); // HTTPClient::setTimeout takes uint16_t in ESP32 core 3.0.5.
  http.setReuse(false);
 }
+// Short, operator-readable cause of a failed request: HTTP status, or the
+// HTTPClient error plus the TLS error (certificate problems show up here).
+static String requestFailure(int status,WiFiClientSecure& client){
+ if(status>0)return "HTTP "+String(status);
+ String why=HTTPClient::errorToString(status);
+ char tls[72]={0};
+ if(client.lastError(tls,sizeof(tls))!=0&&tls[0])why+=" / TLS: "+String(tls);
+ return why.substring(0,110);
+}
 // Wake Render using a read-only request before reserving a label.
-static bool warmUpWMS(const String& url){
+// On failure, why holds the cause shown to the operator.
+static bool warmUpWMS(const String& url,String& why){
  for(int attempt=0;attempt<2;attempt++){
   WiFiClientSecure client;
   HTTPClient http;
   configureHTTP(http,client,url+"/health");
   const int status=http.GET();
+  if(status!=200)why=requestFailure(status,client);
   http.end();
   if(status==200)return true;
   if((status>0&&status<500)||WiFi.status()!=WL_CONNECTED)return false;
  }
  return false;
 }
-static bool sendResult(const String& url,const String& token,uint64_t id,const String& claimToken,const String& state){
+// Returns the HTTP status of the confirmation, or a negative HTTPClient error.
+static int sendResult(const String& url,const String& token,uint64_t id,const String& claimToken,const String& state){
  WiFiClientSecure client;
  HTTPClient http;
  String endpoint=url+"/api/print/jobs/"+String((unsigned long)id)+(state=="SENT"?"/ack":state=="FAILED"?"/fail":"/uncertain");
@@ -78,27 +90,38 @@ static bool sendResult(const String& url,const String& token,uint64_t id,const S
  body+="}";
  int code=http.POST(body);
  http.end();
- return code==200;
+ return code;
 }
+// Answers after which the WMS will never accept this confirmation: malformed
+// request (400), device unknown or revoked (401), job no longer reserved by this
+// claim (409: operator retry, cancellation or re-pairing). Network errors, 5xx,
+// 403 and 429 keep the record for another try.
+static bool finalAnswer(int code){return code==400||code==401||code==409;}
+static void clearPending(Preferences& prefs){prefs.remove("state");prefs.remove("job");prefs.remove("claim");}
 static bool finishPending(Preferences& prefs){
  String state=prefs.getString("state","");
  if(state=="")return true;
  uint32_t id=prefs.getUInt("job",0);
  String claim=prefs.getString("claim","");
+ // A record that can never be confirmed must not block the queue forever.
+ // The server lease still expires to UNCERTAIN for the operator to review.
+ if((state!="CLAIMED"&&state!="SENT"&&state!="FAILED"&&state!="UNCERTAIN")||!id||claim.length()<32){
+  clearPending(prefs);
+  queueMessage("Registro local invalido descartado. Confira a fila no WMS.");
+  return false;
+ }
  // Reset after claiming, but before saving a USB result, is always uncertain.
- // Keep durable claim metadata until the server acknowledges the uncertainty.
- if(state!="CLAIMED"&&state!="SENT"&&state!="FAILED"&&state!="UNCERTAIN"){
-  queueMessage("Estado de impressao desconhecido; confira a fila.");
-  return false;
- }
- if(!id||claim.length()<32){queueMessage("Confirmacao local invalida; verifique a fila.");return false;}
+ // Keep durable claim metadata until the server answers.
  String outcome=state=="CLAIMED"?"UNCERTAIN":state;
- if(!sendResult(cloudURL,cloudToken,id,claim,outcome)){
-  queueMessage("Sem confirmação do servidor. Toque novamente sem reimprimir.");
+ int code=sendResult(cloudURL,cloudToken,id,claim,outcome);
+ if(code==200){clearPending(prefs);return true;}
+ if(finalAnswer(code)){
+  clearPending(prefs);
+  queueMessage("WMS recusou a confirmacao (HTTP "+String(code)+"). Confira a fila antes de reenviar.");
   return false;
  }
- prefs.remove("state");prefs.remove("job");prefs.remove("claim");
- return true;
+ queueMessage("Sem confirmação do servidor. Toque novamente sem reimprimir.");
+ return false;
 }
 static void queueWorker(void*){
  Preferences prefs;
@@ -111,8 +134,9 @@ static void queueWorker(void*){
   prefs.end();queueActive=false;vTaskDelete(nullptr);return;
  }
  queueMessage("Conectando ao TotalFood. A primeira consulta pode demorar...");
- if(!warmUpWMS(cloudURL)){
-  queueMessage("Servidor TotalFood indisponível. Tente novamente.");
+ String why;
+ if(!warmUpWMS(cloudURL,why)){
+  queueMessage("TotalFood sem resposta ("+why+"). Tente de novo.");
   prefs.end();queueActive=false;vTaskDelete(nullptr);return;
  }
  // A reboot may have interrupted USB sending. Reconcile without reprinting
@@ -142,7 +166,11 @@ static void queueWorker(void*){
    break;
   }
   if(code!=200){
-   http.end();queueMessage("Servidor indisponível ou credenciais inválidas.");break;
+   String why=requestFailure(code,client);
+   http.end();
+   queueMessage(code==401?"Impressora nao autorizada no WMS (HTTP 401). Confira o token.":
+                          "Falha ao buscar a fila ("+why+"). Tente de novo.");
+   break;
   }
   String jobID=http.header("X-Print-Job-ID");
   String claimToken=http.header("X-Print-Claim");
@@ -195,6 +223,18 @@ static void queueWorker(void*){
  prefs.end();
  queueActive=false;
  vTaskDelete(nullptr);
+}
+// Operator-confirmed discard of a pending confirmation. Called from the web
+// handler on the loop task; never while the worker is running.
+int wmsQueueDiscardPending(){
+ if(queueActive)return -1;
+ Preferences prefs;
+ if(!prefs.begin("wms-ack",false))return -2;
+ bool had=prefs.getString("state","")!="";
+ clearPending(prefs);
+ prefs.end();
+ if(had)queueMessage("Confirmacao pendente descartada pelo administrador.");
+ return had?1:0;
 }
 bool wmsQueueStart(const String& baseURL,const String& bearerToken){
  if(queueActive||WiFi.status()!=WL_CONNECTED||!usbPrinterReady()||

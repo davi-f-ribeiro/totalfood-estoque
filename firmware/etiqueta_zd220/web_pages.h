@@ -286,7 +286,12 @@ static const char PAGE_CONFIG_A[] = R"HTML(
 <button class="block">Salvar e reiniciar</button>
 <p id="fb" class="operation-feedback" role="status" aria-live="polite" hidden></p>
 </form>
-<section class="panel" style="margin-top:24px"><h2>Destinos do despacho</h2>
+<section class="panel" style="margin-top:24px"><h2>Confirmação pendente da fila</h2>
+  <p class="hint">Use só se a página inicial avisar que o WMS recusou ou não recebeu a confirmação da última etiqueta. Antes, confira no WMS se ela saiu.</p>
+  <button type="button" class="secondary" id="wmsDiscard">Descartar confirmação pendente</button>
+  <p id="fbDiscard" class="operation-feedback" role="status" aria-live="polite" hidden></p>
+</section>
+<section class="panel"><h2>Destinos do despacho</h2>
   <label>Destinos sugeridos
     <textarea id="destinos" class="list-edit" spellcheck="false"></textarea>
     <span class="hint">Um destino por linha. Aparecem como sugestão no campo Destino. Destinos novos digitados na impressão entram aqui sozinhos.</span></label>
@@ -325,6 +330,10 @@ async function load(){
   try{const d=await (await fetch('/api/destinos')).json();$('destinos').value=d.destinos.join('\n')}
   catch(e){feedback($('fbDest'),'error','Não foi possível carregar os destinos. Recarregue a página.')}
 }
+$('wmsDiscard').addEventListener('click',async()=>{
+  if(!confirm('Descartar a confirmação pendente? A etiqueta não será reimpressa.'))return;
+  feedback($('fbDiscard'),'loading','Descartando…');
+  const j=await post('/api/queue/discard',{});feedback($('fbDiscard'),j.ok?'success':'error',j.msg)});
 $('saveDest').addEventListener('click',async()=>{
   feedback($('fbDest'),'loading','Salvando…');
   const j=await post('/api/destinos',{lista:$('destinos').value});feedback($('fbDest'),j.ok?'success':'error',j.msg)});

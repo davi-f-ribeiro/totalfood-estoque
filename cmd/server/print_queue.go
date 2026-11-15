@@ -115,8 +115,15 @@ func (a *app) requirePrinter(next http.HandlerFunc) http.HandlerFunc {
 		}
 		var id int64
 		err := a.db.QueryRowContext(r.Context(), `SELECT id FROM print_devices WHERE token_hash=$1 AND active=true`, hashToken(token)).Scan(&id)
-		if err != nil {
+		// 401 is final for the ESP32: it discards a pending confirmation. A database
+		// failure must stay retryable, so it never answers 401.
+		if errors.Is(err, sql.ErrNoRows) {
 			writeJSONError(w, 401, "Impressora não autorizada.")
+			return
+		}
+		if err != nil {
+			log.Printf("printer auth lookup failed: %v", err)
+			writeJSONError(w, 503, "Fila indisponível.")
 			return
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), printerCtxKey{}, id)))
