@@ -195,6 +195,18 @@ function renderDetail(r){
   }));
   top.append(actions);
  }
+ // Itens sem peso padrão (hortifruti, proteína): a conta exata não fecha. Depois de
+ // conferir as entregas, a cozinha pode aceitar o que chegou e encerrar a requisição.
+ if(r.closed_at)top.append(el('p','Encerrada por '+r.closed_by+' em '+stamp(r.closed_at)+', aceitando o que foi entregue.'+(r.close_notes?' '+r.close_notes:''),'material-small'));
+ const allChecked=r.deliveries.length>0&&r.deliveries.every(d=>d.received);
+ if(canReceive&&allChecked&&!r.closed_at&&r.status!=='RECEBIDA'&&r.status!=='CANCELADA'){
+  const obs=el('input');obs.maxLength=500;obs.autocomplete='off';
+  top.append(el('p','O que chegou é diferente do pedido. Se atende, aceite a diferença e encerre a requisição.','material-small'),field('Observação (opcional)',obs),btn('Aceitar e encerrar',async()=>{
+   if(!window.confirm('Aceitar o que foi recebido e encerrar esta requisição? O que faltou não será mais entregue.'))return;
+   await run('/api/material-requests/'+r.id+'/close',{notes:obs.value.trim()},{label:'o encerramento da requisição #'+r.id,loading:'Encerrando a requisição #'+r.id+'…',
+    where:{kind:'detail',key:'request'},success:()=>'Requisição #'+r.id+' encerrada com o que foi recebido.',failure:'Encerramento da requisição #'+r.id+' recusado.'});
+  },false));
+ }
  detailContent.append(top);
  detailContent.append(el('h3','Materiais'));
  r.lines.forEach(line=>{
@@ -216,12 +228,18 @@ function renderDetail(r){
      el('p','Reservado '+number(res.quantity)+' · Saldo separado '+number(res.remaining)+' '+(line?.unit||'')+' · '+res.status,'material-small'));
    if(canFulfill&&res.status==='ATIVA'&&Number(res.remaining)>0){
     const input=numericInput(res.remaining);
+    // Item controlado por caixa (hortifruti): a entrega sai de uma caixa escolhida aqui.
+    const crateSel=el('select'),crateField=field('Caixa de onde sai',crateSel),crateWeights={};crateField.hidden=true;
+    crateSel.append(new Option('Escolha a caixa',''));
+    api('/api/crates?warehouse_id='+res.warehouse_id).then(cs=>{cs.filter(c=>c.sku_id===res.sku_id).forEach(c=>{crateWeights[c.id]=c.weight;crateSel.append(new Option(c.code+', '+number(c.weight)+' kg',c.id))});crateField.hidden=crateSel.options.length<2}).catch(()=>{});
+    crateSel.addEventListener('change',()=>{const w=crateWeights[crateSel.value];if(w)input.value=String(Math.min(Number(w),Number(res.remaining)))});
     const actions=actionRow();
     actions.append(btn('Confirmar entrega',async()=>{
      const where={kind:'detail',key:'res:'+res.id,successKey:'deliveries'};
      if(!validQuantity(input.value)){report(where,'error','Informe a quantidade de '+item+' a entregar, maior que zero e com até 3 casas decimais.');return}
+     if(!crateField.hidden&&!crateSel.value){report(where,'error','Escolha a caixa de onde o material vai sair.');return}
      const q=number(requestDecimal(input.value))+' '+unit;
-     await run('/api/material-requests/'+r.id+'/deliver',{operation_id:newOperationID(),reservation_id:res.id,quantity:requestDecimal(input.value)},
+     await run('/api/material-requests/'+r.id+'/deliver',Object.assign({operation_id:newOperationID(),reservation_id:res.id,quantity:requestDecimal(input.value)},crateSel.value?{crate_id:Number(crateSel.value)}:{}),
       {label:'a entrega de '+q+' de '+item,loading:'Registrando a saída de '+q+' de '+item+'…',where,
        success:d=>'Entrega de '+q+' de '+item+' registrada'+(d.movement_id?' (saída #'+d.movement_id+')':'')+'. Falta a cozinha confirmar o recebimento.',failure:'Entrega de '+item+' recusada.'});
     },false),btn('Liberar reserva',async()=>{
@@ -229,7 +247,7 @@ function renderDetail(r){
      await run('/api/material-requests/'+r.id+'/reservations/'+res.id+'/release',{},{label:'a liberação da reserva de '+item,loading:'Liberando a reserva de '+item+'…',
       where:{kind:'detail',key:'res:'+res.id},success:()=>'Reserva de '+item+' ('+res.brand+') liberada; o saldo voltou a ficar livre.',failure:'Liberação da reserva de '+item+' recusada.'});
     }));
-    card.append(field('Quantidade a entregar',input),actions);
+    card.append(crateField,field('Quantidade a entregar',input),actions);
    }
    detailContent.append(card);
   });

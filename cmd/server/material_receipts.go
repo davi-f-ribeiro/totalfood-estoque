@@ -281,6 +281,15 @@ func (a *app) handleMaterialReconcile(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, matConflict("Requisição cancelada."))
 		return
 	}
+	var closed bool
+	if err = tx.QueryRowContext(ctx, "SELECT closed_at IS NOT NULL FROM material_requests WHERE id=$1", id).Scan(&closed); err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	if closed {
+		a.matRespond(w, matConflict("Requisição encerrada: a diferença já foi aceita."))
+		return
+	}
 	if !d.Received {
 		a.matRespond(w, matConflict("A cozinha ainda não conferiu esta entrega."))
 		return
@@ -321,4 +330,126 @@ func (a *app) handleMaterialReconcile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 201, map[string]any{"id": did, "status": "reconciled", "received_quantity": got, "pending_divergence": left})
+}
+
+// matDeliverFromCrate registra a entrega de uma requisição tirando o peso de uma caixa.
+// A reserva já foi abatida por quem chama; aqui a caixa é travada e conferida.
+func matDeliverFromCrate(ctx context.Context, tx *sql.Tx, crateID, skuID, whID int64, mv movementRequest) (int64, error) {
+	c, err := getCrate(ctx, tx, crateID, true)
+	if errors.Is(err, errNotFound) {
+		return 0, matBad("Caixa não encontrada.")
+	}
+	if err != nil {
+		return 0, err
+	}
+	if c.SKUID != skuID || c.WarehouseID != whID || c.Status != "ACTIVE" {
+		return 0, matConflict("Esta caixa não é do produto e do depósito separados, ou já está vazia.")
+	}
+	if err = ensureCrateNoInFlightLabel(ctx, tx, crateID); err != nil {
+		return 0, matConflict("A etiqueta desta caixa está sendo impressa. Aguarde e tente de novo.")
+	}
+	var fits bool
+	var left string
+	if err = tx.QueryRowContext(ctx, "SELECT $1::numeric<=$2::numeric,($2::numeric-$1::numeric)::numeric(14,3)::text", mv.Quantity, c.Weight).Scan(&fits, &left); err != nil {
+		return 0, err
+	}
+	if !fits {
+		return 0, matConflict("A caixa " + c.Code + " só tem " + c.Weight + " kg.")
+	}
+	mv.Notes += " · " + c.Code
+	return crateConsumeTx(ctx, tx, c, left, mv.Quantity, mv, matHash(mv))
+}
+
+// handleMaterialClose: a cozinha aceita o que foi entregue e encerra a requisição, mesmo
+// com diferença para o pedido ou para o entregue. Não movimenta estoque; libera o que
+// ainda estava reservado. Só depois de todas as entregas terem sido conferidas.
+func (a *app) handleMaterialClose(w http.ResponseWriter, r *http.Request) {
+	id, ok := matPath(w, r, "id")
+	if !ok {
+		return
+	}
+	var req struct {
+		OperationID string `json:"operation_id"`
+		Notes       string `json:"notes"`
+	}
+	if !matDecodeOptional(w, r, &req) {
+		return
+	}
+	req.Notes = strings.TrimSpace(req.Notes)
+	if len(req.Notes) > 500 {
+		writeJSONError(w, 400, "A observação aceita até 500 caracteres.")
+		return
+	}
+	ctx := r.Context()
+	actor := userFromContext(ctx).ID
+	manager, err := a.hasPermission(ctx, actor, "material_fulfillment", "write")
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	defer tx.Rollback()
+	status, owner, _, err := matLocked(ctx, tx, id)
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	if actor != owner && !manager {
+		a.matRespond(w, matErr(403, "Somente o solicitante ou gerente pode encerrar a requisição."))
+		return
+	}
+	if status == "CANCELADA" {
+		a.matRespond(w, matConflict("Requisição cancelada."))
+		return
+	}
+	var closed, anyDelivery, unchecked bool
+	var asked, delivered, received string
+	err = tx.QueryRowContext(ctx, `SELECT r.closed_at IS NOT NULL,
+  EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=r.id),
+  EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=r.id AND received_at IS NULL),
+  COALESCE((SELECT sum(quantity) FROM material_request_lines WHERE request_id=r.id),0)::text,
+  COALESCE((SELECT sum(quantity) FROM material_request_deliveries WHERE request_id=r.id),0)::text,
+  COALESCE((SELECT sum(received_quantity) FROM material_request_deliveries WHERE request_id=r.id),0)::text
+  FROM material_requests r WHERE r.id=$1`, id).Scan(&closed, &anyDelivery, &unchecked, &asked, &delivered, &received)
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	if closed || status == "RECEBIDA" {
+		writeJSON(w, 200, map[string]any{"id": id, "status": "RECEBIDA"})
+		return
+	}
+	if !anyDelivery {
+		a.matRespond(w, matConflict("Ainda não há entrega para aceitar. Para desistir do pedido, use Cancelar."))
+		return
+	}
+	if unchecked {
+		a.matRespond(w, matConflict("Confira o recebimento de cada entrega antes de encerrar."))
+		return
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE material_requests SET closed_by=$2,closed_at=now(),close_notes=$3 WHERE id=$1", id, actor, req.Notes); err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	detail := fmt.Sprintf("Aceita com diferença: pedido %s, entregue %s, recebido %s", asked, delivered, received)
+	if req.Notes != "" {
+		detail += ". " + req.Notes
+	}
+	if err = matEvent(ctx, tx, id, actor, "ENCERRADA", detail); err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	if err = matRefresh(ctx, tx, id); err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"id": id, "status": "RECEBIDA"})
 }

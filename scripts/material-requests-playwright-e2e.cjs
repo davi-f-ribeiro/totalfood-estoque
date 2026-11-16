@@ -65,6 +65,7 @@ async function main(){
     return respond(route,201,{...state.deliverOps.get(body.operation_id),status:'confirmed'});
    }
    if(p==='/api/material-requests/1/deliveries/40/receive'){state.received.add(40);return respond(route,200,{id:40,status:'confirmed'})}
+   if(p==='/api/crates')return respond(route,200,[]);
    return respond(route,404,{error:'Unknown route '+p});
   });
   const inViewport=sel=>page.locator(sel).first().evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=-1&&r.bottom<=innerHeight+1});
