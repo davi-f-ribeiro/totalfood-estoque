@@ -21,38 +21,39 @@ var uiFS embed.FS
 var uiTemplates = template.Must(template.ParseFS(uiFS, "templates/*.html"))
 
 type uiData struct {
-	Title              string
-	User               authUser
-	CSRF               string
-	Page               string
-	Error              string
-	CanStock           bool
-	CanEntry           bool
-	CanExit            bool
-	CanTransfer        bool
-	CanReports         bool
-	CanCatalog         bool
-	CanAssets          bool
-	CanCosts           bool
-	CanCostsWrite      bool
-	CanPlanning        bool
-	CanMaterialRead    bool
-	CanMaterialWrite   bool
-	CanMaterialFulfill bool
-	CanMaterialReceive bool
-	CanPlanningWrite   bool
-	CanLogistics       bool
-	CanLogisticsWrite  bool
-	CanDispatch        bool
-	CanDispatchWrite   bool
-	CanDelivery        bool
-	CanInventory       bool
-	CanInventoryWrite  bool
-	CanStockAdjustment bool
-	CanAdmin           bool
-	CanUserAdmin       bool
-	CanProfileAdmin    bool
-	CanWarehouseAdmin  bool
+	Title                string
+	User                 authUser
+	CSRF                 string
+	Page                 string
+	Error                string
+	CanStock             bool
+	CanEntry             bool
+	CanExit              bool
+	CanTransfer          bool
+	CanReports           bool
+	CanCatalog           bool
+	CanAssets            bool
+	CanCosts             bool
+	CanCostsWrite        bool
+	CanPlanning          bool
+	CanMaterialRead      bool
+	CanMaterialWrite     bool
+	CanMaterialFulfill   bool
+	CanMaterialReceive   bool
+	CanMaterialReconcile bool
+	CanPlanningWrite     bool
+	CanLogistics         bool
+	CanLogisticsWrite    bool
+	CanDispatch          bool
+	CanDispatchWrite     bool
+	CanDelivery          bool
+	CanInventory         bool
+	CanInventoryWrite    bool
+	CanStockAdjustment   bool
+	CanAdmin             bool
+	CanUserAdmin         bool
+	CanProfileAdmin      bool
+	CanWarehouseAdmin    bool
 }
 
 func (a *app) registerUIHandlers(mux *http.ServeMux) {
@@ -185,33 +186,34 @@ WHERE pp.profile_id=$1`, u.ProfileID)
 	canWarehouseAdmin := has("warehouses", "write")
 	return uiData{
 		Title: title, User: u, CSRF: csrf, Page: page,
-		CanStock:           has("stock", "read"),
-		CanEntry:           has("movement_entry", "write"),
-		CanExit:            has("movement_exit", "write"),
-		CanTransfer:        has("movement_transfer", "write"),
-		CanReports:         has("operations", "read"),
-		CanCatalog:         has("catalog", "read"),
-		CanAssets:          has("assets", "read"),
-		CanCosts:           has("costs", "read"),
-		CanCostsWrite:      has("costs", "write"),
-		CanPlanning:        has("planning", "read"),
-		CanMaterialRead:    has("material_requests", "read"),
-		CanMaterialWrite:   has("material_requests", "write"),
-		CanMaterialFulfill: has("material_fulfillment", "write"),
-		CanMaterialReceive: has("material_receipts", "write"),
-		CanPlanningWrite:   has("planning", "write"),
-		CanLogistics:       has("logistics", "read"),
-		CanLogisticsWrite:  has("logistics", "write"),
-		CanDispatch:        has("dispatch", "read"),
-		CanDispatchWrite:   has("dispatch", "write"),
-		CanDelivery:        has("delivery", "read"),
-		CanInventory:       has("inventory_validation", "read"),
-		CanInventoryWrite:  has("inventory_validation", "write"),
-		CanStockAdjustment: has("stock_adjustment", "write"),
-		CanAdmin:           canUserAdmin || canProfileAdmin || canWarehouseAdmin,
-		CanUserAdmin:       canUserAdmin,
-		CanProfileAdmin:    canProfileAdmin,
-		CanWarehouseAdmin:  canWarehouseAdmin,
+		CanStock:             has("stock", "read"),
+		CanEntry:             has("movement_entry", "write"),
+		CanExit:              has("movement_exit", "write"),
+		CanTransfer:          has("movement_transfer", "write"),
+		CanReports:           has("operations", "read"),
+		CanCatalog:           has("catalog", "read"),
+		CanAssets:            has("assets", "read"),
+		CanCosts:             has("costs", "read"),
+		CanCostsWrite:        has("costs", "write"),
+		CanPlanning:          has("planning", "read"),
+		CanMaterialRead:      has("material_requests", "read"),
+		CanMaterialWrite:     has("material_requests", "write"),
+		CanMaterialFulfill:   has("material_fulfillment", "write"),
+		CanMaterialReceive:   has("material_receipts", "write"),
+		CanMaterialReconcile: has("material_divergences", "write"),
+		CanPlanningWrite:     has("planning", "write"),
+		CanLogistics:         has("logistics", "read"),
+		CanLogisticsWrite:    has("logistics", "write"),
+		CanDispatch:          has("dispatch", "read"),
+		CanDispatchWrite:     has("dispatch", "write"),
+		CanDelivery:          has("delivery", "read"),
+		CanInventory:         has("inventory_validation", "read"),
+		CanInventoryWrite:    has("inventory_validation", "write"),
+		CanStockAdjustment:   has("stock_adjustment", "write"),
+		CanAdmin:             canUserAdmin || canProfileAdmin || canWarehouseAdmin,
+		CanUserAdmin:         canUserAdmin,
+		CanProfileAdmin:      canProfileAdmin,
+		CanWarehouseAdmin:    canWarehouseAdmin,
 	}, nil
 }
 

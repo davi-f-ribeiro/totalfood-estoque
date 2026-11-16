@@ -93,3 +93,4 @@ Próximos passos: abrir com dados reais as telas listadas em L13 e a Contagem (L
 | Healthcheck do Compose usa `wget`, que a imagem final não tem | feito: `/app/estoque healthcheck` |
 | Abrir o sistema em outra aba derrubava o envio da primeira com 403 (o token CSRF era sorteado a cada página carregada), e a tela mostrava "Você não tem permissão" para qualquer 403 | feito: token fixo por sessão (`csrfForSession`), a tela mostra o motivo que o servidor devolve; teste `TestCSRFTokenSurvivesOpeningAnotherPage` |
 | `resetProductionAccess` tinha teste, mas nada na aplicação a chamava | feito: removida (5S) |
+| Requisições: a cozinha só conseguia confirmar a entrega inteira (auditoria de 16/11/2026) | feito: recebimento parcial com motivo, situação "Recebida com divergência" e conciliação por Gerente ou Diretor, sem movimentar estoque (migration 041; `docs/requisicoes-materiais.md`); teste `TestMaterialPartialReceiptDivergenceAndReconciliation` |

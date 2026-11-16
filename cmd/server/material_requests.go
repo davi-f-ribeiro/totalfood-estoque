@@ -115,6 +115,7 @@ func (a *app) registerMaterialHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/material-requests/{id}/deliver", a.requireAuth("material_fulfillment", "write", a.handleMaterialDeliver))
 	mux.HandleFunc("POST /api/material-requests/{id}/reservations/{reservation_id}/release", a.requireAuth("material_fulfillment", "write", a.handleMaterialRelease))
 	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/receive", a.requireAuth("material_receipts", "write", a.handleMaterialReceive))
+	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile", a.requireAuth("material_divergences", "write", a.handleMaterialReconcile))
 	mux.HandleFunc("POST /api/material-requests/{id}/cancel", a.requireAuth("material_requests", "write", a.handleMaterialCancel))
 }
 func matEvent(ctx context.Context, tx *sql.Tx, id, actor int64, action, detail string) error {
@@ -372,22 +373,50 @@ func (a *app) handleMaterialDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	deliveries := []map[string]any{}
-	rows, err = a.db.QueryContext(ctx, "SELECT d.id,d.reservation_id,d.quantity::text,d.movement_id,d.delivered_at,d.received_at IS NOT NULL,COALESCE(del.login,''),COALESCE(rec.login,'') FROM material_request_deliveries d LEFT JOIN users del ON del.id=d.delivered_by LEFT JOIN users rec ON rec.id=d.received_by WHERE d.request_id=$1 ORDER BY d.id", id)
+	rows, err = a.db.QueryContext(ctx, "SELECT d.id,d.reservation_id,d.quantity::text,d.movement_id,d.delivered_at,d.received_at IS NOT NULL,COALESCE(del.login,''),COALESCE(rec.login,''),COALESCE(d.received_quantity::text,''),(d.quantity-COALESCE(d.received_quantity,d.quantity))::numeric(14,3)::text,d.divergence_reason FROM material_request_deliveries d LEFT JOIN users del ON del.id=d.delivered_by LEFT JOIN users rec ON rec.id=d.received_by WHERE d.request_id=$1 ORDER BY d.id", id)
 	if err != nil {
 		a.matRespond(w, err)
 		return
 	}
 	for rows.Next() {
 		var did, rid, movementID int64
-		var qty, deliverer, receiver string
+		var qty, deliverer, receiver, got, pendingDiv, reason string
 		var at time.Time
 		var received bool
-		if err = rows.Scan(&did, &rid, &qty, &movementID, &at, &received, &deliverer, &receiver); err != nil {
+		if err = rows.Scan(&did, &rid, &qty, &movementID, &at, &received, &deliverer, &receiver, &got, &pendingDiv, &reason); err != nil {
 			rows.Close()
 			a.matRespond(w, err)
 			return
 		}
-		deliveries = append(deliveries, map[string]any{"id": did, "reservation_id": rid, "quantity": qty, "movement_id": movementID, "delivered_at": at, "received": received, "delivered_by": deliverer, "received_by": receiver})
+		deliveries = append(deliveries, map[string]any{"id": did, "reservation_id": rid, "quantity": qty, "movement_id": movementID, "delivered_at": at, "received": received, "delivered_by": deliverer, "received_by": receiver,
+			"received_quantity": got, "pending_divergence": pendingDiv, "divergence_reason": reason, "receipts": []map[string]any{}})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	// Histórico de conferências e conciliações de cada entrega.
+	rows, err = a.db.QueryContext(ctx, "SELECT rc.delivery_id,rc.kind,rc.quantity::text,rc.notes,rc.occurred_at,u.login FROM material_request_receipts rc JOIN material_request_deliveries d ON d.id=rc.delivery_id JOIN users u ON u.id=rc.actor_id WHERE d.request_id=$1 ORDER BY rc.id", id)
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	for rows.Next() {
+		var did int64
+		var kind, qty, notes, who string
+		var at time.Time
+		if err = rows.Scan(&did, &kind, &qty, &notes, &at, &who); err != nil {
+			rows.Close()
+			a.matRespond(w, err)
+			return
+		}
+		for _, dv := range deliveries {
+			if dv["id"] == did {
+				dv["receipts"] = append(dv["receipts"].([]map[string]any), map[string]any{"kind": kind, "quantity": qty, "notes": notes, "at": at, "by": who})
+			}
+		}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -510,7 +539,7 @@ func (a *app) handleMaterialReserve(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, err)
 		return
 	}
-	if status == "CANCELADA" || status == "RECEBIDA" || status == "ENTREGUE" {
+	if status == "CANCELADA" || matReceiptDone(status) || status == "ENTREGUE" {
 		a.matRespond(w, matConflict("Esta requisição não aceita novas separações."))
 		return
 	}
@@ -598,8 +627,8 @@ func matRefresh(ctx context.Context, tx *sql.Tx, id int64) error {
 	if err != nil {
 		return err
 	}
-	var allDelivered, anyDelivered, anyHeld, allReceived bool
-	err = tx.QueryRowContext(ctx, "SELECT $1::numeric=$2::numeric,$2::numeric>0,EXISTS(SELECT 1 FROM material_request_reservations res JOIN material_request_lines l ON l.id=res.request_line_id WHERE l.request_id=$3 AND res.status='ATIVA' AND res.remaining_quantity>0),NOT EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=$3 AND received_at IS NULL)", total, delivered, id).Scan(&allDelivered, &anyDelivered, &anyHeld, &allReceived)
+	var allDelivered, anyDelivered, anyHeld, allReceived, divergent bool
+	err = tx.QueryRowContext(ctx, "SELECT $1::numeric=$2::numeric,$2::numeric>0,EXISTS(SELECT 1 FROM material_request_reservations res JOIN material_request_lines l ON l.id=res.request_line_id WHERE l.request_id=$3 AND res.status='ATIVA' AND res.remaining_quantity>0),NOT EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=$3 AND received_at IS NULL),EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=$3 AND received_quantity<quantity)", total, delivered, id).Scan(&allDelivered, &anyDelivered, &anyHeld, &allReceived, &divergent)
 	if err != nil {
 		return err
 	}
@@ -615,6 +644,9 @@ func matRefresh(ctx context.Context, tx *sql.Tx, id int64) error {
 	}
 	if allDelivered && allReceived {
 		status = "RECEBIDA"
+		if divergent { // falta conciliar o que a cozinha não recebeu
+			status = "RECEBIDA_COM_DIVERGENCIA"
+		}
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE material_requests SET status=$2,updated_at=now() WHERE id=$1", id, status)
 	return err
@@ -663,7 +695,7 @@ func (a *app) handleMaterialDeliver(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, err)
 		return
 	}
-	if status == "CANCELADA" || status == "RECEBIDA" || status == "ENTREGUE" {
+	if status == "CANCELADA" || matReceiptDone(status) || status == "ENTREGUE" {
 		a.matRespond(w, matConflict("Esta requisição não aceita novas entregas."))
 		return
 	}
@@ -746,7 +778,7 @@ func (a *app) handleMaterialRelease(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, err)
 		return
 	}
-	if status == "CANCELADA" || status == "RECEBIDA" {
+	if status == "CANCELADA" || matReceiptDone(status) {
 		a.matRespond(w, matConflict("Requisição encerrada."))
 		return
 	}
@@ -784,77 +816,6 @@ func (a *app) handleMaterialRelease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"id": rid, "status": "confirmed"})
-}
-func (a *app) handleMaterialReceive(w http.ResponseWriter, r *http.Request) {
-	id, ok := matPath(w, r, "id")
-	if !ok {
-		return
-	}
-	did, ok := matPath(w, r, "delivery_id")
-	if !ok {
-		return
-	}
-	ctx := r.Context()
-	actor := userFromContext(ctx).ID
-	manager, err := a.hasPermission(ctx, actor, "material_fulfillment", "write")
-	if err != nil {
-		a.matRespond(w, err)
-		return
-	}
-	tx, err := a.db.BeginTx(ctx, nil)
-	if err != nil {
-		a.matRespond(w, err)
-		return
-	}
-	defer tx.Rollback()
-	status, owner, _, err := matLocked(ctx, tx, id)
-	if err != nil {
-		a.matRespond(w, err)
-		return
-	}
-
-	if actor != owner && !manager {
-		a.matRespond(w, matErr(403, "Somente o solicitante ou gerente pode confirmar recebimento."))
-		return
-	}
-	if status == "CANCELADA" {
-		a.matRespond(w, matConflict("Requisição cancelada."))
-		return
-	}
-	var reqID int64
-	var received bool
-	err = tx.QueryRowContext(ctx, "SELECT request_id,received_at IS NOT NULL FROM material_request_deliveries WHERE id=$1 FOR UPDATE", did).Scan(&reqID, &received)
-	if errors.Is(err, sql.ErrNoRows) {
-		a.matRespond(w, matMissing())
-		return
-	}
-	if err != nil {
-		a.matRespond(w, err)
-		return
-	}
-	if reqID != id {
-		a.matRespond(w, matMissing())
-		return
-	}
-	if !received {
-		if _, err = tx.ExecContext(ctx, "UPDATE material_request_deliveries SET received_by=$2,received_at=now() WHERE id=$1", did, actor); err != nil {
-			a.matRespond(w, err)
-			return
-		}
-		if err = matEvent(ctx, tx, id, actor, "RECEBIDA", fmt.Sprintf("Entrega %d conferida", did)); err != nil {
-			a.matRespond(w, err)
-			return
-		}
-	}
-	if err = matRefresh(ctx, tx, id); err != nil {
-		a.matRespond(w, err)
-		return
-	}
-	if err = tx.Commit(); err != nil {
-		a.matRespond(w, err)
-		return
-	}
-	writeJSON(w, 200, map[string]any{"id": did, "status": "confirmed"})
 }
 func (a *app) handleMaterialCancel(w http.ResponseWriter, r *http.Request) {
 	id, ok := matPath(w, r, "id")
