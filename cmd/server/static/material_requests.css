@@ -44,3 +44,5 @@
 /* Aviso de uma ação no detalhe, dentro do cartão em que se agiu. */
 [data-detail-note]{margin-top:8px}
 .material-retry-inline{margin-left:8px}
+/* Divergência de recebimento: quanto falta, escrito (guia de estilo, seção 4, Situação). */
+.material-divergence{margin:4px 0;color:var(--danger);font-weight:600}

@@ -5,6 +5,7 @@ const $=id=>document.getElementById(id);
 const canWrite=root.dataset.canWrite==='1',canFulfill=root.dataset.canFulfill==='1',canReceive=root.dataset.canReceive==='1';
 const status=$('materialStatus'),pendingBox=$('materialPending'),list=$('materialList'),detail=$('materialDetail'),detailContent=$('materialDetailContent');
 const serviceLabel={cafe:'Café da manhã',almoco:'Almoço',jantar:'Jantar'};
+const statusText=s=>s==='RECEBIDA_COM_DIVERGENCIA'?'RECEBIDA COM DIVERGÊNCIA':String(s||'').replaceAll('_',' ');
 let draft=[],current=0,busy=false,pending=null,searchSequence=0,searchTimer=0;
 const pendingKey='material-request:pending:'+document.querySelector('meta[name="current-user-id"]')?.content;
 const offline=window.OfflineStore?new OfflineStore():null;
@@ -128,7 +129,7 @@ async function refresh(){
    b.textContent='';
    const h=el('strong','#'+r.id+' · '+r.unit_name);
    const sub=el('small',day(r.production_date)+' · '+(serviceLabel[r.service]||r.service)+' · '+r.items+' materiais');
-   const state=el('span',r.status.replaceAll('_',' '),'material-tag');
+   const state=el('span',statusText(r.status),'material-tag');
    b.append(h,sub,state);b.setAttribute('aria-current',String(current===r.id));list.append(b);
   });
   if(current)await openReq(current,false);
@@ -200,7 +201,7 @@ function renderDetail(r){
   const card=el('article',null,'material-line-details');card.dataset.noteKey='line:'+line.id;
   card.append(el('strong',line.item),el('p','Solicitado '+number(line.quantity)+' '+line.unit+' · Separado '+number(line.reserved)+' · Entregue '+number(line.delivered),'material-small'));
   const available=Number(line.quantity)-Number(line.reserved)-Number(line.delivered);
-  if(canFulfill&&available>0.0001&&r.status!=='CANCELADA'&&r.status!=='RECEBIDA'){
+  if(canFulfill&&available>0.0001&&r.status!=='CANCELADA'&&r.status!=='RECEBIDA'&&r.status!=='RECEBIDA_COM_DIVERGENCIA'){
    const wrap=el('div');card.append(btn('Separar material',()=>chooseReserve(line,wrap)));card.append(wrap);
   }
   detailContent.append(card);
@@ -237,14 +238,43 @@ function renderDetail(r){
   const dh=el('div');dh.dataset.noteKey='deliveries';dh.append(el('h3','Entregas e recebimento'));detailContent.append(dh);
   r.deliveries.forEach(d=>{
    const card=el('article',null,'material-delivery');card.dataset.noteKey='delivery:'+d.id;
+   const pendingDiv=Number(d.pending_divergence)||0;
    card.append(el('strong','Entrega #'+d.id+' · '+number(d.quantity)+' unidades-base'),
-     el('p','Saída #'+d.movement_id+' · '+stamp(d.delivered_at)+' · '+d.delivered_by,'material-small'),
-     el('p',d.received?'Recebimento confirmado por '+d.received_by:'Aguardando recebimento','material-small'));
+     el('p','Saída #'+d.movement_id+' · '+stamp(d.delivered_at)+' · '+d.delivered_by,'material-small'));
+   if(!d.received)card.append(el('p','Aguardando recebimento','material-small'));
+   else if(pendingDiv<=0&&(d.receipts||[]).length<2)card.append(el('p','Recebimento confirmado por '+d.received_by,'material-small'));
+   else card.append(el('p','Recebido '+number(d.received_quantity)+' de '+number(d.quantity)+', conferido por '+d.received_by,'material-small'));
+   if(d.received&&pendingDiv>0){
+    card.append(el('p','Faltam '+number(d.pending_divergence)+' para receber','material-divergence'));
+    if(d.divergence_reason)card.append(el('p','Motivo informado: '+d.divergence_reason,'material-small'));
+   }
+   (d.receipts||[]).filter(x=>x.kind==='CONCILIACAO').forEach(x=>card.append(el('p','Recebido depois: '+number(x.quantity)+', registrado por '+x.by+' em '+stamp(x.at)+(x.notes?'. '+x.notes:''),'material-small')));
    if(canReceive&&!d.received){
-    card.append(btn('Confirmar recebimento',async()=>{
-     if(!window.confirm('Você recebeu o material desta entrega?'))return;
-     await run('/api/material-requests/'+r.id+'/deliveries/'+d.id+'/receive',{},{label:'o recebimento da entrega #'+d.id,loading:'Confirmando o recebimento da entrega #'+d.id+'…',
-      where:{kind:'detail',key:'delivery:'+d.id},success:()=>'Recebimento da entrega #'+d.id+' confirmado.',failure:'Recebimento da entrega #'+d.id+' recusado.'});
+    // A cozinha informa quanto recebeu. Menos que o entregue pede o motivo e deixa a
+    // diferença como divergência, até o restante chegar e ser confirmado aqui mesmo.
+    const got=numericInput(d.quantity),why=el('input');why.maxLength=500;why.autocomplete='off';
+    const where={kind:'detail',key:'delivery:'+d.id};
+    card.append(field('Quantidade recebida',got),field('Motivo da diferença (só se recebeu menos)',why),btn('Confirmar recebimento',async()=>{
+     const raw=String(got.value||'').trim().replace(',','.');
+     if(!/^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$/.test(raw)){report(where,'error','Informe a quantidade recebida, com até 3 casas decimais.');return}
+     const q=Number(raw),total=Number(d.quantity);
+     if(q>total){report(where,'error','A quantidade recebida não pode ser maior que a entregue ('+number(d.quantity)+').');return}
+     const partial=q<total,reason=why.value.trim();
+     if(partial&&!reason){report(where,'error','Informe o motivo da diferença entre o entregue e o recebido.');return}
+     if(!window.confirm(partial?'Confirmar o recebimento de '+number(raw)+' de '+number(d.quantity)+'? A diferença fica pendente até o restante chegar.':'Você recebeu o material desta entrega?'))return;
+     await run('/api/material-requests/'+r.id+'/deliveries/'+d.id+'/receive',partial?{received_quantity:raw,reason}:{received_quantity:raw},{label:'o recebimento da entrega #'+d.id,loading:'Confirmando o recebimento da entrega #'+d.id+'…',
+      where,success:x=>partial?'Recebimento de '+number(raw)+' de '+number(d.quantity)+' registrado. Faltam '+number(x.pending_divergence)+'; confirme aqui quando o restante chegar.':'Recebimento da entrega #'+d.id+' confirmado.',failure:'Recebimento da entrega #'+d.id+' recusado.'});
+    },false));
+   }
+   if(canReceive&&d.received&&pendingDiv>0&&r.status!=='CANCELADA'){
+    const more=numericInput(d.pending_divergence),obs=el('input');obs.maxLength=500;obs.autocomplete='off';
+    const where={kind:'detail',key:'delivery:'+d.id};
+    card.append(field('Quantidade recebida depois',more),field('Observação',obs),btn('Confirmar recebimento do restante',async()=>{
+     if(!validQuantity(more.value)){report(where,'error','Informe a quantidade recebida depois, maior que zero e com até 3 casas decimais.');return}
+     const q=requestDecimal(more.value);
+     if(Number(q)>pendingDiv){report(where,'error','Só faltam '+number(d.pending_divergence)+' para receber nesta entrega.');return}
+     await run('/api/material-requests/'+r.id+'/deliveries/'+d.id+'/reconcile',{operation_id:newOperationID(),quantity:q,notes:obs.value.trim()},{label:'o recebimento do restante da entrega #'+d.id,loading:'Registrando o recebimento do restante da entrega #'+d.id+'…',
+      where,success:x=>Number(x.pending_divergence)>0?'Recebimento de '+number(q)+' registrado. Ainda faltam '+number(x.pending_divergence)+'.':'Entrega #'+d.id+' recebida por inteiro.',failure:'Recebimento do restante da entrega #'+d.id+' recusado.'});
     },false));
    }
    detailContent.append(card);
