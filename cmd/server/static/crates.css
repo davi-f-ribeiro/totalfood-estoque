@@ -25,3 +25,11 @@
 #crateTransferForm h3{margin-top:0}
 /* Aviso dentro da lista de busca (nenhum produto, fora de KG): mesmo recuo das opções. */
 .crates-main .lookup .hint{margin:0;padding:10px 12px}
+/* Caixas ativas: lista de linhas (guia de estilo, seção 4). */
+.crate-active-summary{margin:8px 0 0;color:var(--text-muted)}
+.crate-active-list{display:grid;margin-top:8px;border-top:2px solid var(--text-primary)}
+.crate-active-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:56px;padding:8px 4px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent;color:var(--text-primary);font-weight:400;text-align:left}
+.crate-active-row:hover{background:var(--surface-secondary)}
+.crate-active-row>span{display:grid;gap:2px;min-width:0}
+.crate-active-row small{color:var(--text-muted);font-size:.875rem}
+.crate-active-row>strong{white-space:nowrap;font-variant-numeric:tabular-nums}

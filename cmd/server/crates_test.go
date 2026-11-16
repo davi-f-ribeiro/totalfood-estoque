@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -267,5 +268,57 @@ func TestCrateWeighedToZeroQueuesNoLabel(t *testing.T) {
 	}
 	if total != 1 || pending != 0 || cancelled != 1 || reason.String != "Caixa vazia" {
 		t.Fatalf("print jobs after emptying: total=%d pending=%d cancelled=%d reason=%q, want 1/0/1/Caixa vazia", total, pending, cancelled, reason.String)
+	}
+}
+
+// Caixas ativas aparecem na lista com peso e depósito; caixa zerada sai da lista.
+// Item sem marca (marca 0) é mostrado como "Sem marca", nunca com o nome interno.
+func TestActiveCratesListAndUnbrandedLabel(t *testing.T) {
+	a, _, _, _ := newStockTestApp(t)
+	db := a.db
+	createTestUser(t, a, "crates-list-director", "secret", "Diretor", true)
+	director := doLogin(t, a, "crates-list-director", "secret")
+	sku := crateTestSKU(t, db)
+	var wh, item int64
+	if err := db.QueryRow(`SELECT id FROM warehouses WHERE name='VR'`).Scan(&wh); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT item_id FROM product_skus WHERE id=$1`, sku).Scan(&item); err != nil {
+		t.Fatal(err)
+	}
+	receive := crateReceiveRequest{OperationID: "crate-list-receipt", SKUID: sku, WarehouseID: wh, UnitCost: "2",
+		DocumentNumber: "888", SupplierName: "CEASA", Weights: []string{"7.500", "3.000"}}
+	if rr := authReq(a, http.MethodPost, "/api/crates/receive", receive, director, ""); rr.Code != 200 {
+		t.Fatalf("receive=%d %s", rr.Code, rr.Body.String())
+	}
+	list := func(query string) []map[string]any {
+		t.Helper()
+		rr := authReq(a, http.MethodGet, "/api/crates"+query, nil, director, "")
+		if rr.Code != 200 {
+			t.Fatalf("list%s=%d %s", query, rr.Code, rr.Body.String())
+		}
+		var out []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	rows := list(fmt.Sprintf("?item_id=%d&warehouse_id=%d", item, wh))
+	if len(rows) != 2 || rows[0]["weight"] != "7.500" || rows[0]["warehouse"] != "VR" || rows[0]["code"] == "" {
+		t.Fatalf("active crates=%+v", rows)
+	}
+	if other := list(fmt.Sprintf("?item_id=%d&warehouse_id=%d", item, wh+1000)); len(other) != 0 {
+		t.Fatalf("crates listed for another warehouse: %+v", other)
+	}
+	id := int64(rows[1]["id"].(float64))
+	if rr := authReq(a, http.MethodPost, fmt.Sprintf("/api/crates/%d/weigh", id), crateWeighRequest{OperationID: "crate-list-zero", Weight: "0"}, director, ""); rr.Code != 200 {
+		t.Fatalf("weigh to zero=%d %s", rr.Code, rr.Body.String())
+	}
+	if rows = list(fmt.Sprintf("?item_id=%d", item)); len(rows) != 1 {
+		t.Fatalf("emptied crate still listed: %+v", rows)
+	}
+	detail := authReq(a, http.MethodGet, fmt.Sprintf("/api/stock/detail/%d", item), nil, director, "")
+	if detail.Code != 200 || !strings.Contains(detail.Body.String(), `"brand":"Sem marca"`) || strings.Contains(detail.Body.String(), "LEGACY_UNASSIGNED") {
+		t.Fatalf("stock detail brand label=%d %s", detail.Code, detail.Body.String())
 	}
 }

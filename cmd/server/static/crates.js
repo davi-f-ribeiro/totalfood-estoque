@@ -77,6 +77,7 @@ function lookupHint(found){
 async function warehouses(){
  try{
   const rows=await api('/api/warehouses');for(const id of ['crateWarehouse','crateTransferWarehouse']){const s=$(id);if(!s)continue;s.replaceChildren();for(const w of rows){const o=document.createElement('option');o.value=w.id;o.textContent=w.name;s.append(o);}}
+  const f=$('crateActiveWarehouse');if(f)for(const w of rows){const o=document.createElement('option');o.value=w.id;o.textContent=w.name;f.append(o);}
  }catch(e){noteIn('crateReceiveStatus','error',uiErrorMessage(e,'Não foi possível carregar os depósitos.'))}
 }
 function displayCrates(rows){
@@ -92,7 +93,7 @@ function displayCrates(rows){
 }
 async function sendReceipt(body){
  const out=await api('/api/crates/receive',{method:'POST',body:JSON.stringify(body),timeoutMs:30000});
- clearPending('receive');displayCrates(out.crates||[]);noteIn('crateReceiveStatus','success','Entrada registrada e etiquetas adicionadas à fila.');await jobs();
+ clearPending('receive');displayCrates(out.crates||[]);noteIn('crateReceiveStatus','success','Entrada registrada e etiquetas adicionadas à fila.');await jobs();activeCrates();
 }
 $('crateReceiveForm').addEventListener('submit',async e=>{
  e.preventDefault();
@@ -155,7 +156,7 @@ $('crateWeighForm').addEventListener('submit',async e=>{
    const c=await api('/api/crates/'+currentCrate.id+'/weigh',{method:'POST',body:JSON.stringify(body),timeoutMs:30000});
    clearPending(key);currentCrate=c;
    $('crateCurrent').textContent=c.code+' · '+c.product+' · Peso atual '+displayDecimal(c.weight)+' kg';
-   noteIn('crateWeighStatus','success',c.status==='EMPTY'?'Pesagem registrada. A caixa ficou vazia e não precisa de etiqueta nova.':'Pesagem registrada. Nova etiqueta adicionada à fila.');await jobs();
+   noteIn('crateWeighStatus','success',c.status==='EMPTY'?'Pesagem registrada. A caixa ficou vazia e não precisa de etiqueta nova.':'Pesagem registrada. Nova etiqueta adicionada à fila.');await jobs();activeCrates();
   }catch(err){
    if(definitiveWriteError(err)){clearPending(key);noteIn('crateWeighStatus','error',uiErrorMessage(err,'Pesagem recusada.'));}
    else noteIn('crateWeighStatus','error','Confirmação não recebida. Reenvie a mesma pesagem, sem alterá-la.');
@@ -196,15 +197,40 @@ $('crateTransferForm')?.addEventListener('submit',async e=>{
    const c=await api('/api/crates/'+currentCrate.id+'/transfer',{method:'POST',body:JSON.stringify(body),timeoutMs:30000});
    clearPending(key);currentCrate=c;
    $('crateCurrent').textContent=c.code+' · '+c.product+' · '+displayDecimal(c.weight)+' kg · Depósito '+c.warehouse_id;
-   noteIn('crateTransferStatus','success','Caixa transferida sem alterar sua identificação.');
+   noteIn('crateTransferStatus','success','Caixa transferida sem alterar sua identificação.');activeCrates();
   }catch(err){
    if(definitiveWriteError(err)){clearPending(key);noteIn('crateTransferStatus','error',uiErrorMessage(err,'Transferência recusada.'));}
    else noteIn('crateTransferStatus','error','Confirmação não recebida. Reenvie a mesma transferência sem modificá-la.');
   }
  });
 });
+// Caixas ativas: o que existe com peso, por depósito. Tocar em uma caixa abre a
+// pesagem/transferência dela, sem precisar digitar o código.
+async function activeCrates(){
+ const box=$('crateActiveList');if(!box)return;
+ const wh=$('crateActiveWarehouse').value;
+ let rows;
+ try{rows=await api('/api/crates'+(wh?'?warehouse_id='+encodeURIComponent(wh):''));}
+ catch(err){noteIn('crateActiveStatus','error',uiErrorMessage(err,'Não foi possível carregar as caixas ativas.'));return}
+ noteIn('crateActiveStatus','','');box.replaceChildren();
+ const total=rows.reduce((s,c)=>s+(Number(c.weight)||0),0);
+ $('crateActiveSummary').textContent=rows.length?rows.length+(rows.length===1?' caixa, ':' caixas, ')+displayDecimal(total.toFixed(3))+' kg':'Nenhuma caixa ativa'+(wh?' neste depósito.':'.');
+ for(const c of rows){
+  const b=document.createElement('button');b.type='button';b.className='crate-active-row';
+  const a=document.createElement('span'),name=document.createElement('strong'),meta=document.createElement('small'),w=document.createElement('strong');
+  name.textContent=c.product;meta.textContent=c.code+', '+c.warehouse+', recebida em '+c.received+(c.total>1?', caixa '+c.position+' de '+c.total:'');
+  a.append(name,meta);w.textContent=displayDecimal(c.weight)+' kg';b.append(a,w);
+  b.addEventListener('click',async()=>{
+   $('crateFind').value=c.code;
+   try{await loadCrate(c.id);noteIn('crateFindStatus','','');$('crateDetail').scrollIntoView({block:'center'});}
+   catch(err){noteIn('crateFindStatus','error',uiErrorMessage(err,'Não foi possível consultar a caixa.'))}
+  });
+  box.append(b);
+ }
+}
+$('crateActiveWarehouse')?.addEventListener('change',()=>activeCrates());
 $('crateQueueRefresh').addEventListener('click',()=>jobs());
-warehouses();jobs();
+warehouses();jobs();activeCrates();
 const requested=new URLSearchParams(location.search).get('crate');
 if(requested){const id=idFromCode(requested);if(id){$('crateFind').value=requested;loadCrate(id).catch(()=>{})}}
 })();

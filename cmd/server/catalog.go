@@ -285,7 +285,7 @@ func (a *app) handleCatalogItemSKUs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := a.db.QueryContext(r.Context(), `
-SELECT s.id,s.item_id,COALESCE(s.name,''),b.name,s.brand_id,COALESCE(s.barcode,''),
+SELECT s.id,s.item_id,COALESCE(s.name,''),CASE WHEN b.id=0 THEN 'Sem marca' ELSE b.name END,s.brand_id,COALESCE(s.barcode,''),
        s.content_quantity::text,s.active,s.version,
        EXISTS(SELECT 1 FROM movement_lines mh WHERE mh.sku_id=s.id) AS has_history
 FROM product_skus s
