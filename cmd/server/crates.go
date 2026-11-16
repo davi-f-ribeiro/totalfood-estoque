@@ -375,7 +375,15 @@ func (a *app) handleCrateWeigh(w http.ResponseWriter, r *http.Request) {
 		crateError(w, err)
 		return
 	}
-	if err = enqueueCrateLabel(r.Context(), tx, id, movementReq.UserID); err != nil {
+	// Caixa zerada não ganha etiqueta nova: não há o que identificar. A etiqueta que ainda
+	// estava na fila, com o peso antigo, é cancelada para não ser impressa.
+	if equalCrateWeights(req.Weight, "0") {
+		_, err = tx.ExecContext(r.Context(), `UPDATE print_jobs SET status='CANCELLED',last_error='Caixa vazia'
+  WHERE crate_id=$1 AND status='PENDING'`, id)
+	} else {
+		err = enqueueCrateLabel(r.Context(), tx, id, movementReq.UserID)
+	}
+	if err != nil {
 		crateError(w, err)
 		return
 	}

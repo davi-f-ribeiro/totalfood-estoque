@@ -6,7 +6,7 @@
 - Cada caixa recebe um ID imutável `CX-000001` e uma posição X/Y no recebimento. Peso líquido inicial e atual são armazenados com três casas decimais.
 - NF e fornecedor são vinculados ao movimento. O lote interno é o ID original de `stock_lots`; o lote de origem informado pelo vendedor é armazenado separadamente e pode ficar ausente. O ID interno não prova por si só a rastreabilidade de origem.
 - A tela **/crates** lê o QR Code via câmera usando o scanner já disponível no WMS (com fallback manual).
-- A pesagem de retorno com peso inferior realiza SAÍDA vinculada ao lote **específico** da caixa. Aumento de peso exige nova entrada/correção auditável, não está permitido no fluxo de retorno.
+- A pesagem de retorno com peso inferior realiza SAÍDA vinculada ao lote **específico** da caixa. Aumento de peso exige nova entrada/correção auditável, não está permitido no fluxo de retorno. Pesagem que zera a caixa registra a saída e marca a caixa como vazia, mas **não** gera etiqueta nova; a etiqueta que ainda estava na fila é cancelada ("Caixa vazia").
 - A transferência da caixa realiza TRANSFERÊNCIA real entre depósitos, conserva o ID e o lote de recebimento, porém aponta a caixa para um lote de estoque no depósito de destino. O consumo posterior considera esse lote.
 - Saídas e transferências genéricas não podem alocar um lote atualmente associado a caixas rastreadas; use a operação individual.
 - A fila de impressão é persistente no Postgres; nenhuma chamada automática sai do ESP para o Render. Trabalhos antigos ainda pendentes são cancelados ao gerar nova revisão.
