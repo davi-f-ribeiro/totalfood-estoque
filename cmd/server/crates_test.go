@@ -221,3 +221,51 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return b
 }
+
+// Zerar o peso esvazia a caixa: nenhuma etiqueta nova entra na fila e a que ainda
+// estava pendente, com o peso antigo, é cancelada.
+func TestCrateWeighedToZeroQueuesNoLabel(t *testing.T) {
+	db := openTestDatabase(t)
+	if err := runMigrations(context.Background(), db, filepath.Join("..", "..", "migrations")); err != nil {
+		t.Fatal(err)
+	}
+	a := &app{db: db}
+	user := crateTestUser(t, db)
+	sku := crateTestSKU(t, db)
+	var wh int64
+	if err := db.QueryRow(`SELECT id FROM warehouses WHERE name='VR'`).Scan(&wh); err != nil {
+		t.Fatal(err)
+	}
+	userCtx := context.WithValue(context.Background(), authCtxKey, authUser{ID: user})
+	receive := crateReceiveRequest{OperationID: "crate-zero-receipt", SKUID: sku, WarehouseID: wh, UnitCost: "2",
+		DocumentNumber: "777", SupplierName: "CEASA", Weights: []string{"5.000"}}
+	rr := crateTestRequest(t, a.handleCrateReceive, "POST", "/api/crates/receive", receive, userCtx)
+	if rr.Code != 200 {
+		t.Fatalf("receive status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var crateID int64
+	if err := db.QueryRow(`SELECT id FROM stock_crates WHERE sku_id=$1`, sku).Scan(&crateID); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/crates/%d/weigh", crateID),
+		bytes.NewReader(mustJSON(t, crateWeighRequest{OperationID: "crate-zero-weigh", Weight: "0"}))).WithContext(userCtx)
+	req.SetPathValue("id", fmt.Sprint(crateID))
+	wrec := httptest.NewRecorder()
+	a.handleCrateWeigh(wrec, req)
+	if wrec.Code != 200 {
+		t.Fatalf("weigh to zero: %d %s", wrec.Code, wrec.Body.String())
+	}
+	var out crateRow
+	if err := json.Unmarshal(wrec.Body.Bytes(), &out); err != nil || out.Status != "EMPTY" {
+		t.Fatalf("crate status=%q error=%v", out.Status, err)
+	}
+	var total, pending, cancelled int
+	var reason sql.NullString
+	if err := db.QueryRow(`SELECT count(*), count(*) FILTER (WHERE status='PENDING'), count(*) FILTER (WHERE status='CANCELLED'),
+  max(last_error) FILTER (WHERE status='CANCELLED') FROM print_jobs WHERE crate_id=$1`, crateID).Scan(&total, &pending, &cancelled, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || pending != 0 || cancelled != 1 || reason.String != "Caixa vazia" {
+		t.Fatalf("print jobs after emptying: total=%d pending=%d cancelled=%d reason=%q, want 1/0/1/Caixa vazia", total, pending, cancelled, reason.String)
+	}
+}

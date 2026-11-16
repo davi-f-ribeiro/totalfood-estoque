@@ -155,7 +155,7 @@ $('crateWeighForm').addEventListener('submit',async e=>{
    const c=await api('/api/crates/'+currentCrate.id+'/weigh',{method:'POST',body:JSON.stringify(body),timeoutMs:30000});
    clearPending(key);currentCrate=c;
    $('crateCurrent').textContent=c.code+' · '+c.product+' · Peso atual '+displayDecimal(c.weight)+' kg';
-   noteIn('crateWeighStatus','success','Pesagem registrada. Nova etiqueta adicionada à fila.');await jobs();
+   noteIn('crateWeighStatus','success',c.status==='EMPTY'?'Pesagem registrada. A caixa ficou vazia e não precisa de etiqueta nova.':'Pesagem registrada. Nova etiqueta adicionada à fila.');await jobs();
   }catch(err){
    if(definitiveWriteError(err)){clearPending(key);noteIn('crateWeighStatus','error',uiErrorMessage(err,'Pesagem recusada.'));}
    else noteIn('crateWeighStatus','error','Confirmação não recebida. Reenvie a mesma pesagem, sem alterá-la.');
