@@ -60,7 +60,7 @@ async function main(){
      const n=state.deliveries.length;state.deliverOps.set(body.operation_id,{id:40+n,movement_id:900+n});
      const r=state.reservations.find(x=>x.id===body.reservation_id);r.remaining=String(Number(r.remaining)-Number(body.quantity));if(Number(r.remaining)<=0)r.status='CONSUMIDA';
      const made=state.deliverOps.get(body.operation_id);
-     state.deliveries.push({id:made.id,quantity:body.quantity,movement_id:made.movement_id,delivered_at:'2026-11-15T11:00:00Z',delivered_by:'Bruno',crates:(body.crate_ids||[]).map(id=>({id,code:'CX-00000'+id,quantity:state.crates.find(c=>c.id===id).weight}))});
+     state.deliveries.push({id:made.id,reservation_id:body.reservation_id,quantity:body.quantity,movement_id:made.movement_id,delivered_at:'2026-11-15T11:00:00Z',delivered_by:'Bruno',crates:(body.crate_ids||[]).map(id=>({id,code:'CX-00000'+id,quantity:state.crates.find(c=>c.id===id).weight}))});
      if(body.crate_ids)state.crates=state.crates.filter(c=>!body.crate_ids.includes(c.id));
     }
     if(state.failDeliver){state.failDeliver=false;return respond(route,503,{error:'Resposta perdida após gravar'})}
@@ -113,6 +113,10 @@ async function main(){
   assert.equal(delivers[0].body.operation_id,delivers[1].body.operation_id,'Reenvio precisa usar o mesmo operation_id');
   assert.equal(state.deliveries.length,1,'Reenvio não pode duplicar a entrega');
   await topHidden();
+
+  // A entrega diz o que é: material, quantidade com unidade, marca e depósito.
+  await page.locator('[data-note-key="delivery:40"] strong',{hasText:'Feijão carioca, 4 KG'}).waitFor();
+  await page.locator('[data-note-key="delivery:40"]',{hasText:'Kicaldo, Feijão 1 kg, Câmara Fria'}).waitFor();
 
   // Receber: aviso no cartão da entrega.
   await page.locator('[data-note-key="delivery:40"] button',{hasText:'Confirmar recebimento'}).click();
