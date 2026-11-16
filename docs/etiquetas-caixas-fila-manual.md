@@ -31,6 +31,7 @@ O token é específico de dispositivo, armazenado como hash no servidor e não v
 |---|---|---|
 | Entrada identificada | `POST /api/crates/receive` | sessão, CSRF, movimento entrada |
 | Consulta caixa | `GET /api/crates/{id}` | sessão, estoque leitura |
+| Caixas ativas | `GET /api/crates?warehouse_id=&item_id=` | sessão, leitura de estoque. Lista as caixas com peso; a tela Caixas mostra a lista por depósito e o detalhe do Estoque mostra as caixas do item |
 | Pesagem retorno | `POST /api/crates/{id}/weigh` | sessão, CSRF, movimento saída |
 | Transferência caixa | `POST /api/crates/{id}/transfer` | sessão, CSRF, movimento transferência |
 | Parear impressora | `POST /api/print/devices` | sessão, CSRF, admin depósitos |

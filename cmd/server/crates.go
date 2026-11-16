@@ -82,6 +82,7 @@ func sumCrateWeights(weights []string) (string, error) {
 func (a *app) registerCrateHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /crates", a.uiPage("crates", "Caixas de hortifruti", "movement_entry", "write"))
 	mux.HandleFunc("POST /api/crates/receive", a.requireAuth("movement_entry", "write", a.handleCrateReceive))
+	mux.HandleFunc("GET /api/crates", a.requireAuth("stock", "read", a.handleCrateList))
 	mux.HandleFunc("GET /api/crates/{id}", a.requireAuth("stock", "read", a.handleCrateGet))
 	mux.HandleFunc("POST /api/crates/{id}/weigh", a.requireAuth("movement_exit", "write", a.handleCrateWeigh))
 	mux.HandleFunc("POST /api/crates/{id}/transfer", a.requireAuth("movement_transfer", "write", a.handleCrateTransfer))
@@ -223,6 +224,45 @@ func getCrate(ctx context.Context, tx *sql.Tx, id int64, lock bool) (crateRow, e
 		err = errNotFound
 	}
 	return c, err
+}
+
+// handleCrateList lista as caixas ativas (com peso), por depósito e/ou item.
+// É o que a tela de Caixas e o detalhe do Estoque mostram em "Caixas ativas".
+func (a *app) handleCrateList(w http.ResponseWriter, r *http.Request) {
+	warehouseID, _ := strconv.ParseInt(r.URL.Query().Get("warehouse_id"), 10, 64)
+	itemID, _ := strconv.ParseInt(r.URL.Query().Get("item_id"), 10, 64)
+	if warehouseID < 0 || itemID < 0 {
+		writeJSONError(w, 400, "Filtro inválido.")
+		return
+	}
+	rows, err := a.db.QueryContext(r.Context(), `SELECT c.id,s.item_id,i.name,c.warehouse_id,w.name,c.current_weight::text,c.box_position,c.box_total,
+ COALESCE(m.document_number,''),to_char(m.occurred_at AT TIME ZONE 'America/Fortaleza','DD/MM/YYYY')
+ FROM stock_crates c JOIN product_skus s ON s.id=c.sku_id JOIN inventory_items i ON i.id=s.item_id
+ JOIN warehouses w ON w.id=c.warehouse_id JOIN movements m ON m.id=c.entry_movement_id
+ WHERE c.status='ACTIVE' AND ($1::bigint=0 OR c.warehouse_id=$1) AND ($2::bigint=0 OR s.item_id=$2)
+ ORDER BY i.name,c.id LIMIT 1000`, warehouseID, itemID)
+	if err != nil {
+		crateError(w, err)
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, item, wh int64
+		var product, whName, weight, doc, received string
+		var pos, total int
+		if err = rows.Scan(&id, &item, &product, &wh, &whName, &weight, &pos, &total, &doc, &received); err != nil {
+			crateError(w, err)
+			return
+		}
+		out = append(out, map[string]any{"id": id, "code": crateCode(id), "item_id": item, "product": product, "warehouse_id": wh, "warehouse": whName,
+			"weight": weight, "position": pos, "total": total, "document": doc, "received": received})
+	}
+	if err = rows.Err(); err != nil {
+		crateError(w, err)
+		return
+	}
+	writeJSON(w, 200, out)
 }
 func (a *app) handleCrateGet(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

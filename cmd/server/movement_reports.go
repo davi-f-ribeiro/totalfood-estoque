@@ -101,7 +101,7 @@ type balanceReportRow struct {
 
 func (a *app) listBalanceReport(ctx context.Context, before time.Time, warehouseID int64) ([]balanceReportRow, error) {
 	rows, err := a.db.QueryContext(ctx, `
-SELECT i.name,b.name,w.id,w.name,
+SELECT i.name,CASE WHEN b.id=0 THEN 'Sem marca' ELSE b.name END,w.id,w.name,
        COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)::text,
        i.unit_code,
        CASE WHEN COALESCE(sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END),0)=0 THEN '0'

@@ -64,7 +64,7 @@ func (a *app) handleStockDetail(w http.ResponseWriter, r *http.Request) {
 	if rawBrand == "" {
 		warehouseID, _ := strconv.ParseInt(r.URL.Query().Get("warehouse_id"), 10, 64)
 		rows, err := a.db.QueryContext(r.Context(), `
-SELECT b.id,b.name,i.unit_code,
+SELECT b.id,CASE WHEN b.id=0 THEN 'Sem marca' ELSE b.name END,i.unit_code,
        sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text
 FROM movement_lines ml
 JOIN product_skus s ON s.id=ml.sku_id
@@ -106,7 +106,7 @@ ORDER BY b.name`, itemID, warehouseID)
 		Name, Brand, Unit, Minimum string
 	}
 	err = a.db.QueryRowContext(r.Context(), `
-SELECT i.id,b.id,i.name,b.name,i.unit_code,COALESCE(i.minimum_stock::text,'')
+SELECT i.id,b.id,i.name,CASE WHEN b.id=0 THEN 'Sem marca' ELSE b.name END,i.unit_code,COALESCE(i.minimum_stock::text,'')
 FROM inventory_items i
 JOIN brands b ON b.id=$2
 WHERE i.id=$1`, itemID, brandID).Scan(&head.ID, &head.BrandID, &head.Name, &head.Brand, &head.Unit, &head.Minimum)
@@ -149,7 +149,7 @@ ORDER BY w.name`, itemID, brandID)
 	}
 
 	presentationRows, err := a.db.QueryContext(r.Context(), `
-SELECT s.id,COALESCE(s.name,''),b.name,COALESCE(s.barcode,''),s.content_quantity::text
+SELECT s.id,COALESCE(s.name,''),CASE WHEN b.id=0 THEN 'Sem marca' ELSE b.name END,COALESCE(s.barcode,''),s.content_quantity::text
 FROM product_skus s
 JOIN brands b ON b.id=s.brand_id
 WHERE s.item_id=$1 AND s.brand_id=$2 AND s.active=true

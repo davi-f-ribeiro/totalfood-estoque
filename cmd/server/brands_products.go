@@ -197,7 +197,7 @@ RETURNING version`, req.Name, active, id, req.Version).Scan(&version)
 func (a *app) handleCatalogProducts(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	rows, err := a.db.QueryContext(r.Context(), `
-SELECT s.id,s.item_id,i.name,s.brand_id,b.name,s.content_quantity::text,
+SELECT s.id,s.item_id,i.name,s.brand_id,CASE WHEN b.id=0 THEN 'Sem marca' ELSE b.name END,s.content_quantity::text,
        COALESCE(s.barcode,''),COALESCE(s.name,''),s.active,s.version,i.unit_code,
        EXISTS(SELECT 1 FROM movement_lines ml WHERE ml.sku_id=s.id)
 FROM product_skus s

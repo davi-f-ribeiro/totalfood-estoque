@@ -70,6 +70,14 @@
     </form>{{end}}
    </div>
   </section>
+  <section class="panel" aria-labelledby="activeTitle">
+   <h2 id="activeTitle">Caixas ativas</h2>
+   <p class="hint">Caixas com peso em estoque. Toque em uma caixa para pesar ou transferir.</p>
+   <label>Depósito<select id="crateActiveWarehouse"><option value="">Todos os depósitos</option></select></label>
+   <p id="crateActiveSummary" class="crate-active-summary" aria-live="polite"></p>
+   <p id="crateActiveStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
+   <div id="crateActiveList" class="crate-active-list"></div>
+  </section>
   <section class="panel" aria-labelledby="queueTitle">
    <h2 id="queueTitle">Fila de impressão</h2>
    <p class="hint">As etiquetas aguardam no servidor. No ESP32, pressione <strong>Buscar e imprimir etiquetas</strong>.</p>
