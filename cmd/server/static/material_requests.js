@@ -263,14 +263,18 @@ function renderDetail(r){
   r.deliveries.forEach(d=>{
    const card=el('article',null,'material-delivery');card.dataset.noteKey='delivery:'+d.id;
    const pendingDiv=Number(d.pending_divergence)||0;
-   card.append(el('strong','Entrega #'+d.id+' · '+number(d.quantity)+' unidades-base'),
-     el('p','Saída #'+d.movement_id+' · '+stamp(d.delivered_at)+' · '+d.delivered_by,'material-small'));
+   // A entrega diz o que é: material, quantidade com unidade, marca/apresentação e depósito.
+   const dres=r.reservations.find(x=>x.id===d.reservation_id),dline=dres?r.lines.find(x=>x.id===dres.line_id):null;
+   const dunit=dline?.unit||'unidades-base',dwhat=dline?dline.item:'';
+   card.append(el('strong',dwhat?dwhat+', '+number(d.quantity)+' '+dunit:'Entrega #'+d.id+' · '+number(d.quantity)+' '+dunit));
+   if(dres)card.append(el('p',[dres.brand,dres.sku,dres.warehouse].filter(Boolean).join(', '),'material-small'));
+   card.append(el('p','Entrega #'+d.id+', saída #'+d.movement_id+', '+stamp(d.delivered_at)+', por '+d.delivered_by,'material-small'));
    if((d.crates||[]).length)card.append(el('p','Caixas: '+d.crates.map(c=>c.code+' ('+number(c.quantity)+' kg)').join(', '),'material-small'));
    if(!d.received)card.append(el('p','Aguardando recebimento','material-small'));
    else if(pendingDiv<=0&&(d.receipts||[]).length<2)card.append(el('p','Recebimento confirmado por '+d.received_by,'material-small'));
-   else card.append(el('p','Recebido '+number(d.received_quantity)+' de '+number(d.quantity)+', conferido por '+d.received_by,'material-small'));
+   else card.append(el('p','Recebido '+number(d.received_quantity)+' de '+number(d.quantity)+(dline?' '+dunit:'')+', conferido por '+d.received_by,'material-small'));
    if(d.received&&pendingDiv>0){
-    card.append(el('p','Faltam '+number(d.pending_divergence)+' para receber','material-divergence'));
+    card.append(el('p','Faltam '+number(d.pending_divergence)+(dline?' '+dunit:'')+' para receber','material-divergence'));
     if(d.divergence_reason)card.append(el('p','Motivo informado: '+d.divergence_reason,'material-small'));
    }
    (d.receipts||[]).filter(x=>x.kind==='CONCILIACAO').forEach(x=>card.append(el('p','Recebido depois: '+number(x.quantity)+', registrado por '+x.by+' em '+stamp(x.at)+(x.notes?'. '+x.notes:''),'material-small')));
@@ -279,14 +283,14 @@ function renderDetail(r){
     // diferença como divergência, até o restante chegar e ser confirmado aqui mesmo.
     const got=numericInput(d.quantity),why=el('input');why.maxLength=500;why.autocomplete='off';
     const where={kind:'detail',key:'delivery:'+d.id};
-    card.append(field('Quantidade recebida',got),field('Motivo da diferença (só se recebeu menos)',why),btn('Confirmar recebimento',async()=>{
+    card.append(field('Quantidade recebida'+(dline?' ('+dunit+')':''),got),field('Motivo da diferença (só se recebeu menos)',why),btn('Confirmar recebimento',async()=>{
      const raw=String(got.value||'').trim().replace(',','.');
      if(!/^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$/.test(raw)){report(where,'error','Informe a quantidade recebida, com até 3 casas decimais.');return}
      const q=Number(raw),total=Number(d.quantity);
      if(q>total){report(where,'error','A quantidade recebida não pode ser maior que a entregue ('+number(d.quantity)+').');return}
      const partial=q<total,reason=why.value.trim();
      if(partial&&!reason){report(where,'error','Informe o motivo da diferença entre o entregue e o recebido.');return}
-     if(!window.confirm(partial?'Confirmar o recebimento de '+number(raw)+' de '+number(d.quantity)+'? A diferença fica pendente até o restante chegar.':'Você recebeu o material desta entrega?'))return;
+     if(!window.confirm(partial?'Confirmar o recebimento de '+number(raw)+' de '+number(d.quantity)+(dline?' '+dunit+' de '+dwhat:'')+'? A diferença fica pendente até o restante chegar.':(dwhat?'Você recebeu '+number(d.quantity)+' '+dunit+' de '+dwhat+'?':'Você recebeu o material desta entrega?')))return;
      await run('/api/material-requests/'+r.id+'/deliveries/'+d.id+'/receive',partial?{received_quantity:raw,reason}:{received_quantity:raw},{label:'o recebimento da entrega #'+d.id,loading:'Confirmando o recebimento da entrega #'+d.id+'…',
       where,success:x=>partial?'Recebimento de '+number(raw)+' de '+number(d.quantity)+' registrado. Faltam '+number(x.pending_divergence)+'; confirme aqui quando o restante chegar.':'Recebimento da entrega #'+d.id+' confirmado.',failure:'Recebimento da entrega #'+d.id+' recusado.'});
     },false));
@@ -294,7 +298,7 @@ function renderDetail(r){
    if(canReceive&&d.received&&pendingDiv>0&&r.status!=='CANCELADA'){
     const more=numericInput(d.pending_divergence),obs=el('input');obs.maxLength=500;obs.autocomplete='off';
     const where={kind:'detail',key:'delivery:'+d.id};
-    card.append(field('Quantidade recebida depois',more),field('Observação',obs),btn('Confirmar recebimento do restante',async()=>{
+    card.append(field('Quantidade recebida depois'+(dline?' ('+dunit+')':''),more),field('Observação',obs),btn('Confirmar recebimento do restante',async()=>{
      if(!validQuantity(more.value)){report(where,'error','Informe a quantidade recebida depois, maior que zero e com até 3 casas decimais.');return}
      const q=requestDecimal(more.value);
      if(Number(q)>pendingDiv){report(where,'error','Só faltam '+number(d.pending_divergence)+' para receber nesta entrega.');return}
