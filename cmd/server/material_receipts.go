@@ -13,8 +13,8 @@ import (
 )
 
 // Recebimento de requisições. A cozinha confere cada entrega e informa quanto
-// recebeu; se for menos que o entregue, a diferença fica como divergência até a
-// gerência registrar o recebimento do restante (conciliação). Nenhuma destas
+// recebeu; se for menos que o entregue, a diferença fica como divergência até o
+// restante chegar e ser confirmado por quem pode receber (conciliação). Nenhuma destas
 // operações movimenta estoque: a saída é a da entrega.
 
 type materialReceiveInput struct {
@@ -205,7 +205,8 @@ func (a *app) handleMaterialReceive(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleMaterialReconcile registra que parte (ou todo) do que faltava em uma entrega
-// foi recebida depois. Só quem tem material_divergences/write (Diretor e Gerente).
+// foi recebida depois. Vale a mesma regra da conferência: o solicitante ou a gerência,
+// com material_receipts/write. O Estoquista, que entrega, não confirma.
 func (a *app) handleMaterialReconcile(w http.ResponseWriter, r *http.Request) {
 	id, ok := matPath(w, r, "id")
 	if !ok {
@@ -232,15 +233,24 @@ func (a *app) handleMaterialReconcile(w http.ResponseWriter, r *http.Request) {
 	}{req, id, did})
 	ctx := r.Context()
 	actor := userFromContext(ctx).ID
+	manager, err := a.hasPermission(ctx, actor, "material_fulfillment", "write")
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
 		a.matRespond(w, err)
 		return
 	}
 	defer tx.Rollback()
-	status, _, _, err := matLocked(ctx, tx, id)
+	status, owner, _, err := matLocked(ctx, tx, id)
 	if err != nil {
 		a.matRespond(w, err)
+		return
+	}
+	if actor != owner && !manager {
+		a.matRespond(w, matErr(403, "Somente o solicitante ou gerente pode confirmar recebimento."))
 		return
 	}
 	d, err := matLockDelivery(ctx, tx, did)
@@ -282,7 +292,7 @@ func (a *app) handleMaterialReconcile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !fits {
-		a.matRespond(w, matConflict("Só faltam "+d.Pending+" para conciliar nesta entrega. Atualize a página."))
+		a.matRespond(w, matConflict("Só faltam "+d.Pending+" para receber nesta entrega. Atualize a página."))
 		return
 	}
 	var got string

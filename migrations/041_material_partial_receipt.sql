@@ -1,6 +1,6 @@
 -- Recebimento parcial de requisições. A cozinha informa quanto recebeu de cada
--- entrega; o que faltou fica como divergência até a gerência registrar o
--- recebimento do restante. Nada aqui movimenta estoque: a saída continua
+-- entrega; o que faltou fica como divergência até a cozinha (ou a gerência)
+-- confirmar o recebimento do restante. Nada aqui movimenta estoque: a saída continua
 -- sendo a da entrega (material_request_deliveries.movement_id).
 
 ALTER TABLE material_request_deliveries
@@ -46,12 +46,5 @@ ALTER TABLE material_request_events DROP CONSTRAINT material_request_events_acti
 ALTER TABLE material_request_events ADD CONSTRAINT material_request_events_action_check CHECK(action IN
   ('CRIADA','RESERVADA','LIBERADA','ENTREGUE','RECEBIDA','DIVERGENCIA','CONCILIADA','CANCELADA'));
 
--- Conciliar divergência é decisão da gerência: só Diretor e Gerente.
-INSERT INTO permissions(resource,action) VALUES ('material_divergences','write')
-ON CONFLICT (resource,action) DO NOTHING;
-
-INSERT INTO profile_permissions(profile_id,permission_id)
-SELECT p.id,perm.id
-FROM profiles p JOIN permissions perm ON perm.resource='material_divergences' AND perm.action='write'
-WHERE p.name IN ('Diretor','Gerente')
-ON CONFLICT DO NOTHING;
+-- Sem permissão nova: quem confirma o restante é quem já pode receber a entrega
+-- (material_receipts: Cozinha, Gerente e Diretor). O Estoquista entrega e não confirma.

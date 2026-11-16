@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="/static/material_requests.css">
 </head>
 <body>{{template "header" .}}{{template "nav" .}}
-<main class="main materials-main" id="materialsRoot" data-can-write="{{if .CanMaterialWrite}}1{{else}}0{{end}}" data-can-fulfill="{{if .CanMaterialFulfill}}1{{else}}0{{end}}" data-can-receive="{{if .CanMaterialReceive}}1{{else}}0{{end}}" data-can-reconcile="{{if .CanMaterialReconcile}}1{{else}}0{{end}}">
+<main class="main materials-main" id="materialsRoot" data-can-write="{{if .CanMaterialWrite}}1{{else}}0{{end}}" data-can-fulfill="{{if .CanMaterialFulfill}}1{{else}}0{{end}}" data-can-receive="{{if .CanMaterialReceive}}1{{else}}0{{end}}">
   <h1>Requisições de material</h1>
   <p class="hint">Solicite por material. O estoque escolhe a apresentação e confirma a saída física na entrega.</p>
   <div id="materialPending" class="impact-warning" role="status" hidden>

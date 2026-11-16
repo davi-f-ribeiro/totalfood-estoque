@@ -115,7 +115,7 @@ func (a *app) registerMaterialHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/material-requests/{id}/deliver", a.requireAuth("material_fulfillment", "write", a.handleMaterialDeliver))
 	mux.HandleFunc("POST /api/material-requests/{id}/reservations/{reservation_id}/release", a.requireAuth("material_fulfillment", "write", a.handleMaterialRelease))
 	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/receive", a.requireAuth("material_receipts", "write", a.handleMaterialReceive))
-	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile", a.requireAuth("material_divergences", "write", a.handleMaterialReconcile))
+	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile", a.requireAuth("material_receipts", "write", a.handleMaterialReconcile))
 	mux.HandleFunc("POST /api/material-requests/{id}/cancel", a.requireAuth("material_requests", "write", a.handleMaterialCancel))
 }
 func matEvent(ctx context.Context, tx *sql.Tx, id, actor int64, action, detail string) error {

@@ -49,16 +49,18 @@ func materialStatus(t *testing.T, a *app, base string, who loginData) map[string
 }
 
 // Critérios da auditoria de recebimento parcial: a cozinha recebe 180 de uma entrega de
-// 200, os 20 ficam como divergência, a gerência concilia depois, nada disso gera outra
+// 200, os 20 ficam como divergência, a cozinha ou a gerência confirma o restante depois, nada disso gera outra
 // saída de estoque, e repetição ou concorrência não confirmam a mesma quantidade duas vezes.
 func TestMaterialPartialReceiptDivergenceAndReconciliation(t *testing.T) {
 	a, sku, wh, _ := newStockTestApp(t)
 	createTestUser(t, a, "partial-cozinha", "secret", "Cozinha", true)
 	createTestUser(t, a, "partial-estoquista", "secret", "Estoquista", true)
 	createTestUser(t, a, "partial-gerente", "secret", "Gerente", true)
+	createTestUser(t, a, "partial-cozinha-2", "secret", "Cozinha", true)
 	cozinha := doLogin(t, a, "partial-cozinha", "secret")
 	estoquista := doLogin(t, a, "partial-estoquista", "secret")
 	gerente := doLogin(t, a, "partial-gerente", "secret")
+	outraCozinha := doLogin(t, a, "partial-cozinha-2", "secret")
 	ctx := context.Background()
 	if _, err := a.createEntry(ctx, movementRequest{OperationID: "partial-seed", SKUID: sku, WarehouseID: wh, Quantity: "300", UnitCost: "5"}, "partial-seed"); err != nil {
 		t.Fatal(err)
@@ -104,24 +106,25 @@ func TestMaterialPartialReceiptDivergenceAndReconciliation(t *testing.T) {
 		t.Fatalf("after partial receipt: status=%v delivery=%+v", d["status"], del)
 	}
 
-	// Só Diretor e Gerente conciliam.
-	for name, who := range map[string]loginData{"cozinha": cozinha, "estoquista": estoquista} {
+	// O restante é confirmado por quem recebe: a cozinha solicitante ou a gerência.
+	// O Estoquista (que entregou) e outra cozinha não confirmam.
+	for name, who := range map[string]loginData{"estoquista": estoquista, "outra cozinha": outraCozinha} {
 		if rr := authReq(a, http.MethodPost, recon, map[string]any{"operation_id": "partial-denied-" + name, "quantity": "20"}, who, ""); rr.Code != 403 {
 			t.Fatalf("%s reconciled=%d %s", name, rr.Code, rr.Body.String())
 		}
 	}
-	if rr := authReq(a, http.MethodPost, recon, map[string]any{"operation_id": "partial-too-much", "quantity": "25"}, gerente, ""); rr.Code != 409 {
+	if rr := authReq(a, http.MethodPost, recon, map[string]any{"operation_id": "partial-too-much", "quantity": "25"}, cozinha, ""); rr.Code != 409 {
 		t.Fatalf("reconcile above pending=%d %s", rr.Code, rr.Body.String())
 	}
 	first := map[string]any{"operation_id": "partial-recon-1", "quantity": "5", "notes": "Chegou na segunda viagem"}
-	rr = authReq(a, http.MethodPost, recon, first, gerente, "")
+	rr = authReq(a, http.MethodPost, recon, first, cozinha, "")
 	if rr.Code != 201 || materialTestJSON(t, rr.Body.Bytes())["pending_divergence"] != "15.000" {
 		t.Fatalf("first reconcile=%d %s", rr.Code, rr.Body.String())
 	}
-	if rr := authReq(a, http.MethodPost, recon, first, gerente, ""); rr.Code != 200 {
+	if rr := authReq(a, http.MethodPost, recon, first, cozinha, ""); rr.Code != 200 {
 		t.Fatalf("reconcile replay=%d %s", rr.Code, rr.Body.String())
 	}
-	if rr := authReq(a, http.MethodPost, recon, map[string]any{"operation_id": "partial-recon-1", "quantity": "6"}, gerente, ""); rr.Code != 409 {
+	if rr := authReq(a, http.MethodPost, recon, map[string]any{"operation_id": "partial-recon-1", "quantity": "6"}, cozinha, ""); rr.Code != 409 {
 		t.Fatalf("reused operation with other data=%d %s", rr.Code, rr.Body.String())
 	}
 	if d = materialStatus(t, a, base, gerente); d["status"] != "RECEBIDA_COM_DIVERGENCIA" {

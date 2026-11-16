@@ -10,14 +10,14 @@ Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma
 4. Ao **confirmar entrega**, o backend consome a reserva e gera, na mesma transação, uma saída real com a data de produção original, custo médio e alocação FEFO existente. A entrega referencia o `movement_id`.
 5. Cozinha confirma o **recebimento** de cada entrega, informando a quantidade que chegou. Pode haver várias entregas por requisição; somente após atendimento integral e todos os recebimentos confirmados o pedido é marcado `RECEBIDA`.
    - **Recebimento parcial (migration 041):** se a cozinha recebeu menos que o entregue (por exemplo 180 de 200 kg), informa a quantidade e o motivo. A diferença fica como **divergência** na entrega e o pedido aparece como `RECEBIDA_COM_DIVERGENCIA`.
-   - **Conciliação:** quando o restante chega, Gerente ou Diretor registra o recebimento do que faltava, de uma vez ou em partes. Com a divergência zerada, o pedido vira `RECEBIDA`.
+   - **Recebimento do restante:** quando o estoque completa o que faltou, a cozinha solicitante (ou Gerente/Diretor) confirma o recebimento do restante na mesma entrega, de uma vez ou em partes. Com a divergência zerada, o pedido vira `RECEBIDA`. O Estoquista, que entrega, não confirma.
    - Conferir e conciliar **não movimentam estoque**: a saída é a da entrega. Devolução ao estoque e baixa como perda não fazem parte deste fluxo.
 6. Se ainda não houve entrega, o solicitante pode cancelar, liberando todas as reservas. O estoquista também pode liberar reservas não entregues.
 
 ## Perfis
 - Cozinha (criado pela migration 038): ler/criar suas requisições, confirmar recebimentos.
 - Estoquista: ler requisições, separar, liberar e entregar.
-- Gerente e Diretor: todas as ações, inclusive conciliar divergência de recebimento (permissão `material_divergences`, que Estoquista e Cozinha não têm).
+- Gerente e Diretor: todas as ações.
 
 `GET /api/material-requests` só mostra os pedidos próprios para quem não tem a permissão de atendimento. Cada operação exige sessão/CSRF e é auditável.
 
@@ -40,7 +40,7 @@ Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma
 - `POST /api/material-requests/{id}/deliver` — saída física transacional.
 - `POST /api/material-requests/{id}/reservations/{reservation_id}/release` — liberar saldo reservado.
 - `POST /api/material-requests/{id}/deliveries/{delivery_id}/receive` — conferir entrega. Corpo opcional: `received_quantity` (sem ela, recebimento integral) e `reason` (obrigatório quando a quantidade é menor que a entregue).
-- `POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile` — registrar o recebimento do que faltava (`operation_id`, `quantity`, `notes`). Só `material_divergences`.
+- `POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile` — confirmar o recebimento do que faltava (`operation_id`, `quantity`, `notes`). Mesma regra da conferência: `material_receipts`, solicitante ou gerência.
 - `POST /api/material-requests/{id}/cancel` — cancelar antes da primeira entrega.
 
 ## Próximas integrações
