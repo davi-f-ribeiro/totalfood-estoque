@@ -21,6 +21,10 @@ func TestPreHotStockGeneralAvailabilityAndPassword(t *testing.T) {
 	assertStock(t, a, sku, wh1, "20.000", "10.0000")
 	assertStock(t, a, sku, wh2, "0", "0")
 
+	// Mínimo de 50 com 20 em estoque: o servidor diz que faltam 30 (a tela não calcula).
+	if _, err := a.db.ExecContext(ctx, `UPDATE inventory_items SET minimum_stock=50 WHERE name='Arroz'`); err != nil {
+		t.Fatal(err)
+	}
 	rows, err := a.db.QueryContext(ctx, stockRowsSQL(true, false))
 	if err != nil {
 		t.Fatalf("general stock query: %v", err)
@@ -29,15 +33,18 @@ func TestPreHotStockGeneralAvailabilityAndPassword(t *testing.T) {
 	var found bool
 	for rows.Next() {
 		var id int64
-		var name, unit, min, qty string
+		var name, unit, min, qty, shortage string
 		var below bool
-		if err := rows.Scan(&id, &name, &unit, &min, &qty, &below); err != nil {
+		if err := rows.Scan(&id, &name, &unit, &min, &qty, &below, &shortage); err != nil {
 			t.Fatal(err)
 		}
 		if name == "Arroz" {
 			found = true
 			if qty != "20.000" {
 				t.Fatalf("general qty=%s", qty)
+			}
+			if !below || shortage != "30.000" {
+				t.Fatalf("general below=%v shortage=%s, want true and 30.000", below, shortage)
 			}
 		}
 	}

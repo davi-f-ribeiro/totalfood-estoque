@@ -1,96 +1,93 @@
 #pragma once
 
 // Páginas web — identidade visual TotalFood
-// (cores, raios, componentes e textos de docs/guia-de-estilo-frontend.md do
-//  repositório totalfood-estoque).
+// (cores, raio, componentes e textos de docs/guia-de-estilo-frontend.md, versão 2,
+//  seção 8, do repositório totalfood-estoque). O bloco :root é cópia do de app.css.
+//  A fonte Barlow não é embutida: sem ela no aparelho, vale a fonte do sistema.
 //
 // Montagem de cada página no firmware:
 //   HEAD_A + título + HEAD_B + PAGE_x_A + COMMON_JS + PAGE_x_B
 
 static const char HEAD_A[] = R"HTML(<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#4b9f05">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff">
 <link rel="icon" href="/logo.png"><title>)HTML";
 
 static const char HEAD_B[] = R"HTML( · Etiquetas</title>
 <style>
 :root{
---brand-primary:#4b9f05;--brand-primary-hover:#3f8504;--brand-primary-active:#326a03;--brand-primary-soft:#edf7e8;
---text-primary:#171a1f;--text-secondary:#343a40;--text-muted:#667085;
---surface:#fff;--surface-secondary:#f6f7f4;--background:#fafbf7;--border:#d9ded3;
---success:#1f6f43;--warning:#9a6400;--danger:#9b1c1c;--info:#1f5f8b;
---focus-ring:#a8d78f;--success-border:#b8d9b8;--danger-border:#f0c0c0;--info-border:#b8c7d9;--warning-border:#e3c58d;
---success-soft:#edf7e8;--danger-soft:#fff5f5;--info-soft:#f4f8fb;--warning-soft:#fffaf0;
---radius-sm:6px;--radius-md:10px}
+/* Mesmas variáveis e valores de app.css (guia de estilo, seções 2 e 8). Mudou lá, mude aqui. */
+--brand-primary:#80bb04;--brand-primary-hover:#74aa04;--brand-primary-active:#699a03;
+--text-primary:#000;--text-secondary:#3d3d3d;--text-muted:#5c5c5c;
+--surface:#fff;--surface-secondary:#f3f3f3;--background:#fff;--border:#dadada;--border-strong:#8a8a8a;
+--success:#1f6f43;--warning:#8a5a00;--danger:#b42318;
+--radius-sm:4px}
 *{box-sizing:border-box}
-body{margin:0;background:var(--background);color:var(--text-primary);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{margin:0;background:var(--background);color:var(--text-primary);font:16px/1.45 Barlow,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;
 height:64px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border)}
 .brand{display:flex;align-items:center;gap:12px;color:inherit;text-decoration:none;min-width:0}
 .brand img{display:block;height:40px;width:auto}
 .brand-copy{display:flex;flex-direction:column;padding-left:12px;border-left:1px solid var(--border)}
-.brand-copy strong{font-size:1rem;font-weight:700;line-height:1.2}
-.brand-copy small{font-size:.8125rem;font-weight:500;line-height:1.2;color:var(--text-muted)}
-@media(max-width:390px){.brand-copy small{display:none}}
+.brand-copy strong{font-size:1rem;font-weight:600;line-height:1.2}
+.brand-copy small{display:none}
 main{max-width:720px;margin:0 auto;padding:24px 16px 32px}
 @media(max-width:767px){main{padding:16px}}
-h1{font-size:1.25rem;font-weight:700;line-height:1.25;margin:0 0 4px}
-h2{font-size:.9375rem;font-weight:700;line-height:1.3;margin:0 0 12px}
-.hint{font-size:.8125rem;color:var(--text-muted);margin:0 0 16px}
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px;margin-bottom:16px}
-@media(min-width:900px){.panel{padding:24px}}
-label{display:flex;flex-direction:column;gap:6px;font-size:.8125rem;font-weight:600;color:var(--text-muted);margin:0 0 16px}
-label.check{flex-direction:row;align-items:center;gap:10px;font-size:1rem;font-weight:500;color:var(--text-primary);min-height:44px}
+h1{font-size:1.75rem;font-weight:600;line-height:1.15;margin:0 0 8px}
+h2{font-size:1.125rem;font-weight:600;line-height:1.3;margin:0 0 12px}
+.hint{font-size:.875rem;color:var(--text-muted);margin:0 0 16px}
+.panel{padding:0 0 24px;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.panel:last-of-type{border-bottom:0}
+label{display:flex;flex-direction:column;gap:6px;font-size:.875rem;font-weight:400;color:var(--text-muted);margin:0 0 16px}
+label.check{flex-direction:row;align-items:center;gap:10px;font-size:1rem;font-weight:400;color:var(--text-primary);min-height:44px}
 label .hint{margin:0;font-weight:400}
 input,textarea{width:100%;font:inherit;font-size:1rem;font-weight:400;color:var(--text-primary);background:var(--surface);
-border:1px solid var(--border);border-radius:var(--radius-sm);min-height:48px;padding:10px 12px}
-input[type=checkbox]{width:22px;height:22px;min-height:0;margin:0;accent-color:var(--brand-primary)}
+border:1px solid var(--border-strong);border-radius:var(--radius-sm);min-height:48px;padding:10px 12px}
+input[type=checkbox]{width:22px;height:22px;min-height:0;margin:0;accent-color:var(--text-primary)}
 input[type=file]{padding:10px}
 input.qty{font-size:1.25rem;font-weight:600;max-width:160px}
-textarea{font:13px/1.45 ui-monospace,Consolas,monospace;min-height:360px;resize:vertical}
-input:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:3px solid var(--focus-ring);outline-offset:1px}
+textarea{font:14px/1.45 ui-monospace,Consolas,monospace;min-height:360px;resize:vertical}
+input:focus,textarea:focus,button:focus-visible,a:focus-visible{outline:3px solid var(--text-primary);outline-offset:2px}
 button,.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 16px;
-font:inherit;font-weight:700;border-radius:var(--radius-sm);border:1px solid var(--brand-primary);background:var(--brand-primary);
-color:#fff;cursor:pointer;text-decoration:none}
+font:inherit;font-weight:600;border-radius:var(--radius-sm);border:1px solid var(--brand-primary);background:var(--brand-primary);
+color:var(--text-primary);cursor:pointer;text-decoration:none}
 button:hover,.button:hover{background:var(--brand-primary-hover);border-color:var(--brand-primary-hover)}
 button:active,.button:active{background:var(--brand-primary-active)}
-.secondary{background:var(--surface);color:var(--text-primary);border-color:var(--border)}
-.secondary:hover{background:var(--surface-secondary);border-color:var(--border)}
-.danger{background:var(--surface);color:var(--danger);border-color:var(--danger-border)}
-.danger:hover{background:var(--danger-soft);border-color:var(--danger-border)}
+.secondary{background:var(--surface);color:var(--text-primary);border-color:var(--border-strong)}
+.secondary:hover{background:var(--surface-secondary);border-color:var(--border-strong)}
+.danger{background:var(--surface);color:var(--danger);border-color:var(--danger)}
+.danger:hover{background:var(--surface-secondary);border-color:var(--danger)}
 button:disabled,button:disabled:hover{background:var(--surface-secondary);color:var(--text-muted);border-color:var(--border);cursor:default}
 .block{width:100%}
 .actions{display:flex;flex-wrap:wrap;gap:8px}
 .fields{display:grid;gap:0 12px}
 @media(min-width:600px){.fields{grid-template-columns:1fr 1fr}.fields .wide{grid-column:1/-1}}
-.status{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 10px;border-radius:999px;font-size:.8125rem;
-font-weight:600;white-space:nowrap;border:1px solid var(--border);background:var(--surface-secondary);color:var(--text-secondary)}
-.status::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
-.status.ok{color:var(--success);background:var(--success-soft);border-color:var(--success-border)}
-.status.warn{color:var(--warning);background:var(--warning-soft);border-color:var(--warning-border)}
-.status.err{color:var(--danger);background:var(--danger-soft);border-color:var(--danger-border)}
-.operation-feedback{margin:12px 0 0;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);
-font-size:.9375rem;background:var(--surface-secondary);color:var(--text-secondary)}
-.operation-feedback.loading{background:var(--info-soft);border-color:var(--info-border);color:var(--info)}
-.operation-feedback.success{background:var(--success-soft);border-color:var(--success-border);color:var(--success)}
-.operation-feedback.warning{background:var(--warning-soft);border-color:var(--warning-border);color:var(--warning)}
-.operation-feedback.error{background:var(--danger-soft);border-color:var(--danger-border);color:var(--danger);font-weight:600}
+/* Situação escrita, sem pílula nem bolinha. */
+.status{display:inline-flex;align-items:center;min-height:32px;font-size:.875rem;font-weight:600;white-space:nowrap;color:var(--text-secondary)}
+.status.ok{color:var(--success)}
+.status.warn{color:var(--warning)}
+.status.err{color:var(--danger)}
+/* Avisos em texto, sem caixa. */
+.operation-feedback{margin:12px 0 0;font-size:1rem;color:var(--text-muted)}
+.operation-feedback.loading{color:var(--text-muted)}
+.operation-feedback.success{color:var(--success)}
+.operation-feedback.warning{color:var(--warning)}
+.operation-feedback.error{color:var(--danger);font-weight:600}
 .links{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 8px;margin-top:24px}
-.text-action{display:inline-flex;align-items:center;min-height:44px;padding:0 8px;color:var(--brand-primary-active);font-weight:700;text-decoration:none}
-.text-action:hover{text-decoration:underline}
+.text-action{display:inline-flex;align-items:center;min-height:44px;padding:0 8px;color:var(--text-primary);font-weight:400;text-decoration:underline;text-underline-offset:3px}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{font:13px ui-monospace,Consolas,monospace;padding:4px 8px;border-radius:var(--radius-sm);background:var(--brand-primary-soft);color:var(--brand-primary-active)}
-.meta{font-size:.8125rem;color:var(--text-muted);margin:12px 0 0}
-progress{width:100%;height:10px;margin-top:12px;accent-color:var(--brand-primary)}
+.chip{font:14px ui-monospace,Consolas,monospace;padding:4px 8px;background:var(--surface-secondary);color:var(--text-primary)}
+.meta{font-size:.875rem;color:var(--text-muted);margin:12px 0 0}
+progress{width:100%;height:10px;margin-top:12px;accent-color:var(--text-primary)}
 textarea.list-edit{font:inherit;font-size:1rem;line-height:1.5;min-height:180px}
-.tabs{display:flex;gap:4px;padding:4px;margin:0 0 16px;background:var(--surface-secondary);border:1px solid var(--border);border-radius:var(--radius-md)}
-.tabs .tab{flex:1;min-height:44px;padding:8px 12px;background:transparent;border:0;border-radius:var(--radius-sm);color:var(--text-secondary);font-weight:600}
-.tabs .tab:hover{background:var(--surface);border:0}
-.tabs .tab[aria-selected=true]{background:var(--surface);color:var(--brand-primary-active);font-weight:700;box-shadow:0 1px 2px rgba(16,24,40,.06)}
-/* Abas de página (Imprimir etiqueta / Fila TotalFood): navegação sublinhada,
-   diferente do seletor de tipo de etiqueta. */
+.tabs{display:flex;margin:0 0 16px;border-bottom:1px solid var(--border)}
+.tabs .tab{flex:1;min-height:44px;padding:8px 12px;margin-bottom:-1px;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--text-secondary);font-weight:400}
+.tabs .tab:hover{background:var(--surface-secondary)}
+.tabs .tab[aria-selected=true]{background:transparent;color:var(--text-primary);border-bottom-color:var(--text-primary);font-weight:600}
+/* Abas de página (Imprimir etiqueta / Fila TotalFood): sublinhado mais grosso
+   que o do seletor de tipo de etiqueta. */
 .page-tabs{display:flex;margin:-4px 0 20px;border-bottom:1px solid var(--border)}
-.page-tabs a{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;padding:8px 12px;margin-bottom:-1px;border-bottom:3px solid transparent;color:var(--text-secondary);font-weight:600;text-decoration:none;text-align:center}
-.page-tabs a[aria-current=page]{color:var(--brand-primary-active);border-bottom-color:var(--brand-primary);font-weight:700}
+.page-tabs a{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;padding:8px 12px;margin-bottom:-1px;border-bottom:3px solid transparent;color:var(--text-secondary);font-weight:400;text-decoration:none;text-align:center}
+.page-tabs a[aria-current=page]{color:var(--text-primary);border-bottom-color:var(--text-primary);font-weight:600}
 [hidden]{display:none!important}
 </style></head><body>
 <header class="top">

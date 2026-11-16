@@ -1,10 +1,9 @@
-/* Início: o que precisa de atenção hoje. Os dados vêm de /api/stock; o servidor diz o que está abaixo do mínimo. */
+/* Início: o que precisa de atenção hoje. Os dados vêm de /api/stock; o servidor diz o que está abaixo do mínimo e quanto falta. */
 (function(){
 'use strict';
 const box=document.getElementById('homeLow');if(!box)return;
 const sel=document.getElementById('warehouse'),status=document.getElementById('homeStatus'),pendingBox=document.getElementById('homePending');
 const canEntry=!!document.querySelector('.nav a[href="/entry"]');
-const num=v=>Number(String(v==null?'':v).replace(',','.'))||0;
 function cell(role,cls){const d=document.createElement('div');d.setAttribute('role',role);if(cls)d.className=cls;return d}
 function render(rows){
   box.textContent='';
@@ -15,9 +14,9 @@ function render(rows){
   box.append(head);
   low.forEach(r=>{
     const row=cell('row','home-row'),name=cell('cell','home-name'),strong=document.createElement('strong');strong.textContent=r.name;name.append(strong);
-    const q=cell('cell','num is-low');q.textContent=displayDecimal(r.quantity);
-    const m=cell('cell','num');m.textContent=displayDecimal(r.minimum);
-    const f=cell('cell','num');f.textContent=displayDecimal(Math.max(0,num(r.minimum)-num(r.quantity)));
+    const q=cell('cell','num is-low');q.textContent=displayDecimal(r.quantity)+' '+r.unit;
+    const m=cell('cell','num');m.textContent=displayDecimal(r.minimum)+' '+r.unit;
+    const f=cell('cell','num is-short');f.textContent=displayDecimal(r.shortage)+' '+r.unit;
     const act=cell('cell','home-action');
     if(canEntry){const a=document.createElement('a');a.className='button secondary';a.href='/entry?item_id='+encodeURIComponent(r.item_id)+(sel.value?'&warehouse_id='+encodeURIComponent(sel.value):'');a.textContent='Dar entrada';act.append(a)}
     row.append(name,q,m,f,act);box.append(row);
