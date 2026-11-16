@@ -2,7 +2,16 @@
 
 Origem: revisão de arquitetura e qualidade de 14 e 15/11/2026 (`main` em `1b96502`, depois `5302df5`). Este documento acompanha a situação de cada item; atualize-o no mesmo PR que resolver um item.
 
+Conferido com o código em 16/11/2026 (`main` em `bca575d`, depois do #40): não há PR novo depois do #40, e os itens abertos 1.8, 1.9, 2.4, 2.5 e porta 9100 foram conferidos no código e continuam abertos (os acentos da etiqueta não foram conferidos). Na mesma data entrou a seção **Layout**, com a versão 2 do contrato de layout (`guia-de-estilo-frontend.md`).
+
 Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do responsável pelo produto).
+
+## O que falta, em resumo
+
+- **Servidor:** 1.8 (separar handler e SQL em pacotes) e 1.9 (`app.js` com 127 KB em 418 linhas).
+- **Impressora e ESP32:** 2.4 (filtro por depósito na fila), 2.5 (consultar `~HS` antes de confirmar o envio), porta 9100 sem autenticação e acentos na etiqueta (`^CI28`).
+- **Telas:** decisão sobre o menu do celular por perfil e as abas de Caixas.
+- **Layout:** contrato reescrito e aplicado no sistema e no firmware. Falta conferir com dados reais as telas de L5 e L13, gravar o firmware 1.7.0 (L14) e rodar o Playwright (L15).
 
 ## Servidor e repositório
 
@@ -52,6 +61,30 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | feito: `unit=KG` filtra no banco | #40 |
 | Menu do celular com 4 atalhos por perfil; abas na tela de Caixas | decisão | — |
 | Saída no celular um produto por vez (pedido de 15/11: lote como no desktop) | feito: Saída em lote no celular, com câmera | #38 |
+
+## Layout (contrato de layout, versão 2)
+
+Origem: revisão visual de 16/11/2026, com mockup da tela de Estoque (computador e celular). Objetivo: tirar da interface o que parece modelo pronto (painel em volta de tudo, cartão dentro de cartão, avisos em caixa pastel, faixas laterais, cinzas e sombras de kit de interface) e deixar a identidade vir da logo. As regras estão em `guia-de-estilo-frontend.md`, seções 2 a 5 e 8. Valem para o sistema e para as páginas do ESP32. Tudo que está como feito ou parcial nesta seção entrou no #41.
+
+| Item | Situação | Onde |
+|---|---|---|
+| L1 Contrato de layout reescrito (cores, forma, tipografia, componentes, navegação, ESP32) | feito | `guia-de-estilo-frontend.md`, versão 2 |
+| L2 Variáveis de `app.css`: paleta da logo (`#80BB04`, preto, branco, cinzas neutros), um raio de 4 px, sem sombra | feito: os nomes antigos (`-soft`, `-border`, `--accent`, `--info`, `--focus-ring`, raios e sombras) ficaram como apelidos; apagar de vez entra junto com o 1.9 | `app.css`, bloco `:root` |
+| L3 Fonte Barlow (400 e 600) servida pelo sistema; pesos 500, 700 e 800 trocados | feito: WOFF2 e licença em `static/fonts`; a CSP (`default-src 'self'`) não precisou mudar | `static/fonts`, todos os CSS |
+| L4 Página sem painel: `.panel` sem borda, fundo e raio | feito | `app.css`, bloco "Contrato de layout v2" |
+| L5 Cartão dentro de cartão vira linha: `sku-row`, `sku-editor`, `permission-group`, `inventory-line`, `inventory-create-card`, `inventory-admin-card`, `inventory-review-grid`, `catalog-parent-card` | parcial: feito no CSS e conferido em Catálogo, Produtos e Administração; Contagem só foi vista vazia | `app.css` |
+| L6 Estoque: tabela sem moldura, cabeçalho com linha preta, linha aberta em cinza; no celular, linhas | feito: o detalhe continua em uma linha por marca, que carrega as embalagens só quando abre (não virou subtabela) | `app.css`, `app.js` |
+| L7 Situação "Faltam X" no lugar de "Abaixo do mínimo" / "Normal": `/api/stock` devolve `shortage`; Início deixou de calcular a falta no navegador | feito, com teste | `stock_view.go`, `ui.go`, `app.js`, `home.js` |
+| L8 Avisos em texto: `.operation-feedback` e `.product-feedback` sem fundo e sem borda; `.impact-warning` com contorno preto | feito | `app.css` |
+| L9 Faixas laterais, bolinhas e pílulas de situação (`.inventory-review-line`, `.list-action.selected`, `.low`, `.badge`, `.dispatch-chip`, `.driver-state`, `.driver-sync`, `.material-tag`) | feito | `app.css` e CSS dos módulos |
+| L10 Botões e links: texto preto sobre o verde; ação de texto preta e sublinhada; secundário com contorno `--border-strong`; alternância ligada em preto | feito | `app.css` |
+| L11 Navegação: nome dos grupos sem caixa alta; item atual com fundo verde e texto preto no menu lateral e na barra inferior; cabeçalho sem slogan | feito: o rótulo da barra inferior continua em 12 px (exceção registrada no guia, seção 3) | `app.css` |
+| L12 Entrada no sistema sem cartão | feito | `app.css` |
+| L13 CSS dos módulos (`batch`, `movement`, `crates`, `dispatch`, `driver`, `planner`, `recipes`, `material_requests`, `logistics`, `home`) | parcial: molduras, pílulas, cores fixas e sombras saíram de todos; com dados só foram conferidos Início, Entrada, Saída e Caixas. Falta abrir com dados reais Requisições, Expedição, Minha rota, Fichas técnicas, Cardápio e Locais e frota | CSS dos módulos |
+| L14 ESP32: `web_pages.h` com as mesmas variáveis; `.panel` sem moldura; situação em texto; abas sublinhadas; `.chip` neutro; `theme-color` branco; firmware 1.7.0 | parcial: feito no código e conferido no navegador; falta o `firmware-ci` compilar e gravar no aparelho | `firmware/etiqueta_zd220` |
+| L15 Testes de contrato atualizados junto (`ui_test.go`, `prehot_corrections_test.go`) | parcial: `go test` e `firmware/tests` passam; os roteiros do Playwright (`scripts/*.cjs`) não foram rodados nesta mudança | — |
+
+Próximos passos: abrir com dados reais as telas listadas em L13 e a Contagem (L5), gravar o firmware 1.7.0 no ESP (L14) e rodar os roteiros do Playwright (L15).
 
 ## Outros achados
 

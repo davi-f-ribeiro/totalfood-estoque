@@ -237,7 +237,8 @@ func stockRowsSQL(general bool, showZero bool) string {
 	_ = showZero // zero balances are intentionally not part of the operational stock view
 	base := `SELECT i.id,i.name,i.unit_code,COALESCE(i.minimum_stock::text,''),
        sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END)::text AS qty,
-       sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) < COALESCE(i.minimum_stock,0)
+       sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END) < COALESCE(i.minimum_stock,0),
+       GREATEST(COALESCE(i.minimum_stock,0) - sum(CASE WHEN ml.direction='IN' THEN ml.quantity ELSE -ml.quantity END), 0)::text AS shortage
 FROM movement_lines ml
 JOIN inventory_items i ON i.id=ml.item_id`
 	if general {

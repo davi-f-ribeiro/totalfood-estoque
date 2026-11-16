@@ -2,14 +2,16 @@
 .crates-main .panel{margin-bottom:1rem}
 .crates-main form{display:grid;gap:.7rem}
 .crates-main .crates-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
-.crates-main label{display:grid;gap:.25rem;font-weight:600}
+.crates-main label{display:grid;gap:.25rem}
 .crates-main input,.crates-main select{width:100%;min-width:0}
 .crate-weights{display:grid;gap:.5rem}
 .crate-weight-row{display:flex;align-items:center;gap:.6rem}
 .crate-weight-row label{flex:1;display:grid;grid-template-columns:5rem 1fr;align-items:center}
 .crate-total{font-size:1.15rem}
 .crate-results,.crate-jobs{display:grid;gap:.5rem;margin-top:.7rem}
-.crate-result,.crate-job{border:1px solid var(--border,#d6dce2);border-radius:10px;padding:.75rem}
+/* A caixa é um objeto: leva moldura. O trabalho de impressão é linha de lista. */
+.crate-result{border:1px solid var(--text-primary);padding:.75rem}
+.crate-job{border-bottom:1px solid var(--border);padding:.75rem 0}
 .crate-result a{margin-left:.5rem}
 .crate-current{font-weight:600}
 .crate-job{display:flex;justify-content:space-between;align-items:center;gap:.6rem}
@@ -19,7 +21,7 @@
 .crate-field{display:grid;gap:6px}
 .crate-field label{margin:0}
 /* Transferência é outra ação: separada da pesagem acima. */
-#crateTransferForm{margin-top:24px;padding-top:20px;border-top:1px solid var(--border,#d6dce2)}
+#crateTransferForm{margin-top:24px;padding-top:20px;border-top:1px solid var(--border)}
 #crateTransferForm h3{margin-top:0}
 /* Aviso dentro da lista de busca (nenhum produto, fora de KG): mesmo recuo das opções. */
 .crates-main .lookup .hint{margin:0;padding:10px 12px}

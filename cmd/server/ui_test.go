@@ -162,7 +162,7 @@ func TestBetterInterfaceOperationalContracts(t *testing.T) {
 	combined := string(jsb) + string(cssb) + string(hb)
 	for _, want := range []string{
 		`prefers-reduced-motion: no-preference`, `function scrollToContext(`,
-		`Nenhum item com estoque neste depósito.`, `Abaixo do estoque mínimo`, `className='stock-expand'`,
+		`Nenhum item com estoque neste depósito.`, `'Faltam '+displayDecimal(r.shortage)+' '+r.unit`, `className='stock-expand'`,
 		`--focus-ring:`, `body{font-size:16px}`,
 	} {
 		if !strings.Contains(combined, want) {

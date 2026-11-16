@@ -6,12 +6,12 @@
 .planner-actions{margin:0;flex-wrap:wrap}
 .planner-section{display:grid;gap:10px;min-width:0}
 .planner-section h3{margin:6px 0 0}
-.planner-grid-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-md)}
-.planner-grid th:first-child,.planner-grid td:first-child{position:sticky;left:0;z-index:1;background:var(--surface);text-align:left;font-weight:700;min-width:120px}
+.planner-grid-wrap{overflow-x:auto}
+.planner-grid th:first-child,.planner-grid td:first-child{position:sticky;left:0;z-index:1;background:var(--surface);text-align:left;font-weight:600;min-width:120px}
 .planner-grid td,.planner-grid th{text-align:left;vertical-align:top}
 .planner-grid td:nth-child(n+2),.planner-grid th:nth-child(n+2){text-align:left;min-width:150px}
 .planner-meal-row th{background:var(--surface-secondary);color:var(--text-primary);text-align:left}
-.planner-cmv-row td{color:var(--text-secondary);font-weight:700}
+.planner-cmv-row td{color:var(--text-secondary);font-weight:600}
 .planner-cellbox{display:flex;flex-wrap:wrap;align-items:center;gap:0 12px}
 .planner-cellbox>span{flex:1 0 100%}
 .planner-cellbox small{margin:0}
@@ -23,7 +23,7 @@
 .planner-premise strong{grid-column:1/-1}
 .planner-wide-dialog{width:min(1040px,calc(100vw - 32px))}
 .planner-dialog-body{display:grid;gap:12px;padding:16px}
-.planner-meal-block{display:grid;gap:8px;margin-bottom:14px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-secondary)}
+.planner-meal-block{display:grid;gap:8px;margin-bottom:14px;padding:12px 0;border-top:1px solid var(--border)}
 .planner-meal-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end}
 .planner-menu-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(70px,.6fr) minmax(0,1fr) minmax(80px,.7fr) minmax(80px,.7fr) auto;gap:8px;align-items:end}
 .planner-rule-row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(70px,.5fr) auto;gap:8px;align-items:end;margin-bottom:10px}

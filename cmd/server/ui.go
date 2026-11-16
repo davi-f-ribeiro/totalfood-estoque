@@ -374,13 +374,14 @@ func (a *app) handleStock(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id int64
-		var name, unit, min, qty string
+		var name, unit, min, qty, shortage string
 		var below bool
-		if err := rows.Scan(&id, &name, &unit, &min, &qty, &below); err != nil {
+		if err := rows.Scan(&id, &name, &unit, &min, &qty, &below, &shortage); err != nil {
 			writeJSONError(w, 500, "internal error")
 			return
 		}
-		out = append(out, map[string]any{"item_id": id, "name": name, "unit": unit, "minimum": min, "quantity": qty, "below_minimum": below})
+		// shortage: quanto falta para o mínimo. A tela mostra o valor; não calcula (guia de estilo, princípio 3).
+		out = append(out, map[string]any{"item_id": id, "name": name, "unit": unit, "minimum": min, "quantity": qty, "below_minimum": below, "shortage": shortage})
 	}
 	writeJSON(w, 200, out)
 }
