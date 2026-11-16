@@ -82,8 +82,8 @@ func (a *app) registerMovementHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/movements/exit/batch", a.requireAuth("movement_exit", "write", a.handleBatch("exit")))
 	mux.HandleFunc("POST /api/movements/transfer/batch", a.requireAuth("movement_transfer", "write", a.handleBatch("transfer")))
 	mux.HandleFunc("GET /api/operations/{operation_id}", a.requireAuthenticatedRead(a.handleGetOperation))
-	mux.HandleFunc("GET /api/reports/movements", a.requireAuth("operations", "read", a.handleMovementReport))
-	mux.HandleFunc("GET /api/reports/balance", a.requireAuth("operations", "read", a.handleBalanceReport))
+	mux.HandleFunc("GET /api/reports/movements", withWriteTimeout(slowReportTimeout, a.requireAuth("operations", "read", a.handleMovementReport)))
+	mux.HandleFunc("GET /api/reports/balance", withWriteTimeout(slowReportTimeout, a.requireAuth("operations", "read", a.handleBalanceReport)))
 	mux.HandleFunc("GET /api/reports/warehouses", a.requireAuth("operations", "read", a.handleWarehouses))
 }
 

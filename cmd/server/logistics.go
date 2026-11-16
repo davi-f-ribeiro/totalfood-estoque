@@ -173,13 +173,12 @@ func normalizePlaceRequest(req *placeRequest) string {
 
 func writePlaceError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
-	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "idx_places_normalized_name_unique"):
+	case violates(err, "idx_places_normalized_name_unique"):
 		writeJSONError(w, http.StatusConflict, "Já existe um local com este nome.")
-	case strings.Contains(msg, "places_customer_id_fkey"):
+	case violates(err, "places_customer_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Cliente não encontrado. Atualize a página e escolha de novo.")
-	case strings.Contains(msg, "places_warehouse_id_fkey"):
+	case violates(err, "places_warehouse_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Depósito não encontrado. Atualize a página e escolha de novo.")
 	default:
 		writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o local.")
@@ -366,13 +365,12 @@ func normalizeVehicleRequest(req *vehicleRequest) string {
 
 func writeVehicleError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
-	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "idx_vehicles_plate_unique"):
+	case violates(err, "idx_vehicles_plate_unique"):
 		writeJSONError(w, http.StatusConflict, "Já existe um veículo com esta placa.")
-	case strings.Contains(msg, "vehicles_asset_id_key"):
+	case violates(err, "vehicles_asset_id_key"):
 		writeJSONError(w, http.StatusConflict, "Este bem do patrimônio já está ligado a outro veículo.")
-	case strings.Contains(msg, "vehicles_asset_id_fkey"):
+	case violates(err, "vehicles_asset_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Bem do patrimônio não encontrado. Atualize a página e escolha de novo.")
 	default:
 		writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o veículo.")
@@ -463,19 +461,18 @@ func normalizeDriverRequest(req *driverRequest) string {
 
 func writeDriverError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
-	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "idx_drivers_normalized_name_unique"):
+	case violates(err, "idx_drivers_normalized_name_unique"):
 		writeJSONError(w, http.StatusConflict, "Já existe um motorista com este nome.")
-	case strings.Contains(msg, "idx_drivers_license_number_unique"):
+	case violates(err, "idx_drivers_license_number_unique"):
 		writeJSONError(w, http.StatusConflict, "Esta CNH já está cadastrada para outro motorista.")
-	case strings.Contains(msg, "drivers_user_id_key"):
+	case violates(err, "drivers_user_id_key"):
 		writeJSONError(w, http.StatusConflict, "Este usuário já está ligado a outro motorista.")
-	case strings.Contains(msg, "drivers_user_id_fkey"):
+	case violates(err, "drivers_user_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Usuário não encontrado. Atualize a página e escolha de novo.")
-	case strings.Contains(msg, "drivers_default_vehicle_id_fkey"):
+	case violates(err, "drivers_default_vehicle_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Veículo não encontrado. Atualize a página e escolha de novo.")
-	case strings.Contains(msg, "date/time field value out of range"), strings.Contains(msg, "invalid input syntax for type date"):
+	case isInvalidDate(err):
 		writeJSONError(w, http.StatusBadRequest, "Data de validade da CNH inválida.")
 	default:
 		writeJSONError(w, http.StatusBadRequest, "Não foi possível salvar o motorista.")

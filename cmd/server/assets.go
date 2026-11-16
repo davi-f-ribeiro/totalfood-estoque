@@ -297,11 +297,11 @@ func validAssetReq(req assetRequest) bool {
 func validAssetStatus(s string) bool { return s == "ATIVO" || s == "EM_MANUTENCAO" || s == "BAIXADO" }
 func writeAssetError(w http.ResponseWriter, err error, prefix string) {
 	log.Printf("%s error=%v", prefix, err)
-	if strings.Contains(err.Error(), "assets_tag") {
+	if violates(err, "assets_tag_key") {
 		writeJSONError(w, 409, "Esta plaqueta já está cadastrada.")
 		return
 	}
-	if strings.Contains(err.Error(), "asset warehouse inactive or not found") {
+	if raised(err, "asset warehouse inactive or not found") {
 		writeJSONError(w, 409, "Depósito desativado ou inexistente.")
 		return
 	}
@@ -355,7 +355,7 @@ func writeAssetMutationError(w http.ResponseWriter, err error) {
 		writeJSONError(w, 400, "Operação inválida.")
 		return
 	}
-	if strings.Contains(err.Error(), "asset warehouse inactive or not found") {
+	if raised(err, "asset warehouse inactive or not found") {
 		writeJSONError(w, 409, "Depósito desativado ou inexistente.")
 		return
 	}

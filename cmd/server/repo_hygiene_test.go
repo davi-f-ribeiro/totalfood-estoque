@@ -152,17 +152,20 @@ func TestDocumentedRoutesExist(t *testing.T) {
 // code looks for must exist in the migrated schema. Phrases with spaces are
 // trigger or driver messages, not schema names.
 func TestMatchedConstraintNamesExistInSchema(t *testing.T) {
-	re := regexp.MustCompile(`strings\.Contains\(err\.Error\(\), "([^"]+)"\)`)
+	// Erros do banco são mapeados por violates(err, "nome exato"); um nome
+	// digitado errado nunca casaria e a mensagem específica sumiria em silêncio.
+	re := regexp.MustCompile(`violates\(err, "([^"]+)"\)`)
 	names := map[string]bool{}
 	for _, src := range nonTestSources(t) {
+		if regexp.MustCompile(`strings\.Contains\((err\.Error\(\)|msg), "[a-z][a-z0-9_]*"\)`).MatchString(src) {
+			t.Error("database errors must be matched with violates/raised/isForeignKeyViolation, not by message text")
+		}
 		for _, m := range re.FindAllStringSubmatch(src, -1) {
-			if regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(m[1]) {
-				names[m[1]] = true
-			}
+			names[m[1]] = true
 		}
 	}
-	if len(names) == 0 {
-		t.Fatal("no matched constraint names found; the pattern no longer matches the code")
+	if len(names) < 20 {
+		t.Fatalf("found only %d names in violates(...); the pattern no longer matches the code", len(names))
 	}
 	db := openTestDatabase(t)
 	if err := runMigrations(context.Background(), db, filepath.Join("..", "..", "migrations")); err != nil {
@@ -170,15 +173,14 @@ func TestMatchedConstraintNamesExistInSchema(t *testing.T) {
 	}
 	for name := range names {
 		var found bool
-		err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM (
-  SELECT conname::text AS n FROM pg_constraint
-  UNION ALL SELECT indexname::text FROM pg_indexes
-  UNION ALL SELECT tgname::text FROM pg_trigger) s WHERE position($1 in n) > 0)`, name).Scan(&found)
+		err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname=$1)
+  OR EXISTS (SELECT 1 FROM pg_indexes i JOIN pg_class c ON c.relname=i.indexname JOIN pg_index x ON x.indexrelid=c.oid
+             WHERE i.indexname=$1 AND x.indisunique)`, name).Scan(&found)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !found {
-			t.Errorf("code maps database errors by %q, but no constraint, index or trigger has that name", name)
+			t.Errorf("code maps database errors by %q, but no constraint or unique index has exactly that name", name)
 		}
 	}
 }

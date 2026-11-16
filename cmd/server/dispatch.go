@@ -115,17 +115,16 @@ func normalizeDeliveryRequest(req *deliveryOrderRequest) string {
 
 func writeDeliveryError(w http.ResponseWriter, err error, logPrefix string) {
 	log.Printf("%s error=%v", logPrefix, err)
-	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "delivery_orders_operation_id_key"):
+	case violates(err, "delivery_orders_operation_id_key"):
 		writeJSONError(w, http.StatusConflict, "Este pedido já foi gravado.")
-	case strings.Contains(msg, "delivery_line_kind"):
+	case violates(err, "delivery_line_kind"):
 		writeJSONError(w, http.StatusBadRequest, "Cada linha é uma refeição ou um insumo, não os dois.")
-	case strings.Contains(msg, "delivery_order_lines_recipe_id_fkey"):
+	case violates(err, "delivery_order_lines_recipe_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Refeição não encontrada. Atualize a página e escolha de novo.")
-	case strings.Contains(msg, "delivery_order_lines_item_id_fkey"):
+	case violates(err, "delivery_order_lines_item_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Insumo não encontrado. Atualize a página e escolha de novo.")
-	case strings.Contains(msg, "delivery_orders_place_id_fkey"):
+	case violates(err, "delivery_orders_place_id_fkey"):
 		writeJSONError(w, http.StatusBadRequest, "Local não encontrado. Atualize a página e escolha de novo.")
 	default:
 		writeJSONError(w, http.StatusBadRequest, "Não foi possível gravar o pedido de entrega.")
