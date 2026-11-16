@@ -65,7 +65,7 @@ SELECT $1,id FROM permissions WHERE resource=$2 AND action=$3`, id, p[0], p[1]);
 		t.Fatal("an operator keeps the queue and gets no pointer to Administração")
 	}
 
-	// Rendering a page issues a new CSRF token, so log in again before the API calls.
+	// Log in again before the API calls (kept from when each page load issued a new CSRF token).
 	admin = doLogin(t, a, "printer-admin", "secret")
 	operator = doLogin(t, a, "printer-operator", "secret")
 
