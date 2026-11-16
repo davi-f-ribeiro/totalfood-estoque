@@ -64,7 +64,7 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 
 ## Layout (contrato de layout, versão 2)
 
-Origem: revisão visual de 16/11/2026, com mockup da tela de Estoque (computador e celular). Objetivo: tirar da interface o que parece modelo pronto (painel em volta de tudo, cartão dentro de cartão, avisos em caixa pastel, faixas laterais, cinzas e sombras de kit de interface) e deixar a identidade vir da logo. As regras estão em `guia-de-estilo-frontend.md`, seções 2 a 5 e 8. Valem para o sistema e para as páginas do ESP32.
+Origem: revisão visual de 16/11/2026, com mockup da tela de Estoque (computador e celular). Objetivo: tirar da interface o que parece modelo pronto (painel em volta de tudo, cartão dentro de cartão, avisos em caixa pastel, faixas laterais, cinzas e sombras de kit de interface) e deixar a identidade vir da logo. As regras estão em `guia-de-estilo-frontend.md`, seções 2 a 5 e 8. Valem para o sistema e para as páginas do ESP32. Tudo que está como feito ou parcial nesta seção entrou no #41.
 
 | Item | Situação | Onde |
 |---|---|---|
