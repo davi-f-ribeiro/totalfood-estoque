@@ -235,7 +235,7 @@ func (a *app) handleCrateList(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 400, "Filtro inválido.")
 		return
 	}
-	rows, err := a.db.QueryContext(r.Context(), `SELECT c.id,s.item_id,i.name,c.warehouse_id,w.name,c.current_weight::text,c.box_position,c.box_total,
+	rows, err := a.db.QueryContext(r.Context(), `SELECT c.id,s.item_id,c.sku_id,i.name,c.warehouse_id,w.name,c.current_weight::text,c.box_position,c.box_total,
  COALESCE(m.document_number,''),to_char(m.occurred_at AT TIME ZONE 'America/Fortaleza','DD/MM/YYYY')
  FROM stock_crates c JOIN product_skus s ON s.id=c.sku_id JOIN inventory_items i ON i.id=s.item_id
  JOIN warehouses w ON w.id=c.warehouse_id JOIN movements m ON m.id=c.entry_movement_id
@@ -248,15 +248,15 @@ func (a *app) handleCrateList(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, item, wh int64
+		var id, item, skuID, wh int64
 		var product, whName, weight, doc, received string
 		var pos, total int
-		if err = rows.Scan(&id, &item, &product, &wh, &whName, &weight, &pos, &total, &doc, &received); err != nil {
+		if err = rows.Scan(&id, &item, &skuID, &product, &wh, &whName, &weight, &pos, &total, &doc, &received); err != nil {
 			crateError(w, err)
 			return
 		}
 		out = append(out, map[string]any{"id": id, "code": crateCode(id), "item_id": item, "product": product, "warehouse_id": wh, "warehouse": whName,
-			"weight": weight, "position": pos, "total": total, "document": doc, "received": received})
+			"weight": weight, "position": pos, "total": total, "document": doc, "received": received, "sku_id": skuID})
 	}
 	if err = rows.Err(); err != nil {
 		crateError(w, err)
@@ -350,80 +350,8 @@ func (a *app) handleCrateWeigh(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, c)
 		return
 	}
-	// A targeted exit allocates exclusively from this crate's lot.
-	if err = lockStock(r.Context(), tx, c.SKUID, c.WarehouseID); err != nil {
-		crateError(w, err)
-		return
-	}
-	snapshot, err := getStockSnapshot(r.Context(), tx, c.SKUID, c.WarehouseID)
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	held, err := matReserved(r.Context(), tx, c.SKUID, c.WarehouseID)
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	enough, err := matEnough(r.Context(), tx, snapshot.Quantity, held, diff)
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	if !enough {
-		crateError(w, errInsufficientStock)
-		return
-	}
-	var remaining string
-	err = tx.QueryRowContext(r.Context(), `SELECT (l.initial_quantity-COALESCE(sum(a.quantity),0))::numeric(14,3)::text
-  FROM stock_lots l LEFT JOIN stock_lot_allocations a ON a.stock_lot_id=l.id WHERE l.id=$1 GROUP BY l.id`, c.LotID).Scan(&remaining)
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	if ok := quantityAtLeast(r.Context(), tx, remaining, diff); !ok {
-		crateError(w, errInsufficientStock)
-		return
-	}
 	movementReq := movementRequest{OperationID: req.OperationID, SKUID: c.SKUID, WarehouseID: c.WarehouseID, Quantity: diff, Notes: "Consumo apurado por pesagem " + c.Code + " " + req.Notes, UserID: userFromContext(r.Context()).ID}
-	movementID, err := insertMovement(r.Context(), tx, "SAIDA", movementReq, crateHash(req))
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	var lineID int64
-	err = tx.QueryRowContext(r.Context(), `INSERT INTO movement_lines(movement_id,sku_id,warehouse_id,direction,quantity,unit_cost)
-  VALUES($1,$2,$3,'OUT',$4,$5) RETURNING id`, movementID, c.SKUID, c.WarehouseID, diff, snapshot.AvgCost).Scan(&lineID)
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO stock_lot_allocations(movement_line_id,stock_lot_id,quantity) VALUES($1,$2,$3)`, lineID, c.LotID, diff)
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	_, err = tx.ExecContext(r.Context(), `UPDATE stock_crates SET current_weight=$2,revision=revision+1,
-  status=CASE WHEN $2::numeric=0 THEN 'EMPTY' ELSE 'ACTIVE' END,updated_at=now() WHERE id=$1`, id, req.Weight)
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO stock_crate_events(crate_id,operation_id,event_type,previous_weight,next_weight,movement_id,actor_id)
-   VALUES($1,$2,'REWEIGH',$3,$4,$5,$6)`, id, req.OperationID, c.Weight, req.Weight, movementID, movementReq.UserID)
-	if err != nil {
-		crateError(w, err)
-		return
-	}
-	// Caixa zerada não ganha etiqueta nova: não há o que identificar. A etiqueta que ainda
-	// estava na fila, com o peso antigo, é cancelada para não ser impressa.
-	if equalCrateWeights(req.Weight, "0") {
-		_, err = tx.ExecContext(r.Context(), `UPDATE print_jobs SET status='CANCELLED',last_error='Caixa vazia'
-  WHERE crate_id=$1 AND status='PENDING'`, id)
-	} else {
-		err = enqueueCrateLabel(r.Context(), tx, id, movementReq.UserID)
-	}
-	if err != nil {
+	if _, err = crateConsumeTx(r.Context(), tx, c, req.Weight, diff, movementReq, crateHash(req), 0, req.OperationID); err != nil {
 		crateError(w, err)
 		return
 	}
@@ -437,6 +365,74 @@ func (a *app) handleCrateWeigh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, c)
+}
+
+// crateConsumeTx tira `diff` kg de uma caixa e deixa `newWeight` nela: saída alocada só no
+// lote da caixa, novo peso e revisão, evento e etiqueta (caixa zerada não ganha etiqueta e
+// cancela a pendente). Usada pela pesagem de retorno e pela entrega de requisição por caixa.
+// Quem chama já travou a caixa (getCrate com lock) e conferiu ensureCrateNoInFlightLabel.
+// movementID 0 cria o movimento; com várias caixas na mesma entrega, as demais entram como
+// linhas do mesmo movimento. eventOp identifica o evento da caixa (único por caixa).
+func crateConsumeTx(ctx context.Context, tx *sql.Tx, c crateRow, newWeight, diff string, mv movementRequest, hash string, movementID int64, eventOp string) (int64, error) {
+	// A targeted exit allocates exclusively from this crate's lot.
+	if err := lockStock(ctx, tx, c.SKUID, c.WarehouseID); err != nil {
+		return 0, err
+	}
+	snapshot, err := getStockSnapshot(ctx, tx, c.SKUID, c.WarehouseID)
+	if err != nil {
+		return 0, err
+	}
+	held, err := matReserved(ctx, tx, c.SKUID, c.WarehouseID)
+	if err != nil {
+		return 0, err
+	}
+	enough, err := matEnough(ctx, tx, snapshot.Quantity, held, diff)
+	if err != nil {
+		return 0, err
+	}
+	if !enough {
+		return 0, errInsufficientStock
+	}
+	var remaining string
+	err = tx.QueryRowContext(ctx, `SELECT (l.initial_quantity-COALESCE(sum(a.quantity),0))::numeric(14,3)::text
+  FROM stock_lots l LEFT JOIN stock_lot_allocations a ON a.stock_lot_id=l.id WHERE l.id=$1 GROUP BY l.id`, c.LotID).Scan(&remaining)
+	if err != nil {
+		return 0, err
+	}
+	if ok := quantityAtLeast(ctx, tx, remaining, diff); !ok {
+		return 0, errInsufficientStock
+	}
+	if movementID == 0 {
+		if movementID, err = insertMovement(ctx, tx, "SAIDA", mv, hash); err != nil {
+			return 0, err
+		}
+	}
+	var lineID int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO movement_lines(movement_id,sku_id,warehouse_id,direction,quantity,unit_cost)
+  VALUES($1,$2,$3,'OUT',$4,$5) RETURNING id`, movementID, c.SKUID, c.WarehouseID, diff, snapshot.AvgCost).Scan(&lineID)
+	if err != nil {
+		return 0, err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO stock_lot_allocations(movement_line_id,stock_lot_id,quantity) VALUES($1,$2,$3)`, lineID, c.LotID, diff); err != nil {
+		return 0, err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE stock_crates SET current_weight=$2,revision=revision+1,
+  status=CASE WHEN $2::numeric=0 THEN 'EMPTY' ELSE 'ACTIVE' END,updated_at=now() WHERE id=$1`, c.ID, newWeight); err != nil {
+		return 0, err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO stock_crate_events(crate_id,operation_id,event_type,previous_weight,next_weight,movement_id,actor_id)
+   VALUES($1,$2,'REWEIGH',$3,$4,$5,$6)`, c.ID, eventOp, c.Weight, newWeight, movementID, mv.UserID); err != nil {
+		return 0, err
+	}
+	// Caixa zerada não ganha etiqueta nova: não há o que identificar. A etiqueta que ainda
+	// estava na fila, com o peso antigo, é cancelada para não ser impressa.
+	if equalCrateWeights(newWeight, "0") {
+		_, err = tx.ExecContext(ctx, `UPDATE print_jobs SET status='CANCELLED',last_error='Caixa vazia'
+  WHERE crate_id=$1 AND status='PENDING'`, c.ID)
+	} else {
+		err = enqueueCrateLabel(ctx, tx, c.ID, mv.UserID)
+	}
+	return movementID, err
 }
 func equalCrateWeights(a, b string) bool {
 	x, ok := new(big.Rat).SetString(a)

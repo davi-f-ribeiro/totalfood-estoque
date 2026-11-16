@@ -102,7 +102,15 @@ type materialDeliveryInput struct {
 	OperationID   string `json:"operation_id"`
 	ReservationID int64  `json:"reservation_id"`
 	Quantity      string `json:"quantity"`
+	// CrateIDs: caixas de onde o material sai, para item controlado por caixa (hortifruti).
+	// Várias caixas saem inteiras (a quantidade é a soma dos pesos atuais); uma caixa só
+	// pode sair em parte, e o restante fica nela com etiqueta nova.
+	CrateIDs []int64 `json:"crate_ids,omitempty"`
 }
+
+// matWeightTolerance: quanto um item em KG pode passar do pedido na separação e na entrega.
+// Hortifruti e proteína não têm peso padrão; a cozinha confere e aceita o peso real.
+const matWeightTolerance = "1.2"
 
 func (a *app) registerMaterialHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /material-requests", a.uiPage("material_requests", "Requisições", "material_requests", "read"))
@@ -115,6 +123,7 @@ func (a *app) registerMaterialHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/material-requests/{id}/deliver", a.requireAuth("material_fulfillment", "write", a.handleMaterialDeliver))
 	mux.HandleFunc("POST /api/material-requests/{id}/reservations/{reservation_id}/release", a.requireAuth("material_fulfillment", "write", a.handleMaterialRelease))
 	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/receive", a.requireAuth("material_receipts", "write", a.handleMaterialReceive))
+	mux.HandleFunc("POST /api/material-requests/{id}/close", a.requireAuth("material_receipts", "write", a.handleMaterialClose))
 	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile", a.requireAuth("material_receipts", "write", a.handleMaterialReconcile))
 	mux.HandleFunc("POST /api/material-requests/{id}/cancel", a.requireAuth("material_requests", "write", a.handleMaterialCancel))
 }
@@ -323,7 +332,9 @@ func (a *app) handleMaterialDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	var unit, delivery, production, service, status, notes, owner string
 	var created time.Time
-	err := a.db.QueryRowContext(ctx, "SELECT r.unit_name,r.delivery_date::text,r.production_date::text,r.service,r.status,r.notes,r.created_at,u.login FROM material_requests r JOIN users u ON u.id=r.created_by WHERE r.id=$1", id).Scan(&unit, &delivery, &production, &service, &status, &notes, &created, &owner)
+	var closedAt sql.NullTime
+	var closedBy, closeNotes string
+	err := a.db.QueryRowContext(ctx, "SELECT r.unit_name,r.delivery_date::text,r.production_date::text,r.service,r.status,r.notes,r.created_at,u.login,r.closed_at,COALESCE(cb.login,''),r.close_notes FROM material_requests r JOIN users u ON u.id=r.created_by LEFT JOIN users cb ON cb.id=r.closed_by WHERE r.id=$1", id).Scan(&unit, &delivery, &production, &service, &status, &notes, &created, &owner, &closedAt, &closedBy, &closeNotes)
 	if err != nil {
 		a.matRespond(w, err)
 		return
@@ -389,7 +400,33 @@ func (a *app) handleMaterialDetail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		deliveries = append(deliveries, map[string]any{"id": did, "reservation_id": rid, "quantity": qty, "movement_id": movementID, "delivered_at": at, "received": received, "delivered_by": deliverer, "received_by": receiver,
-			"received_quantity": got, "pending_divergence": pendingDiv, "divergence_reason": reason, "receipts": []map[string]any{}})
+			"received_quantity": got, "pending_divergence": pendingDiv, "divergence_reason": reason, "receipts": []map[string]any{}, "crates": []map[string]any{}})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	// Caixas que saíram em cada entrega (item controlado por caixa).
+	rows, err = a.db.QueryContext(ctx, "SELECT dc.delivery_id,dc.crate_id,dc.quantity::text FROM material_request_delivery_crates dc JOIN material_request_deliveries d ON d.id=dc.delivery_id WHERE d.request_id=$1 ORDER BY dc.delivery_id,dc.crate_id", id)
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	for rows.Next() {
+		var did, cid int64
+		var qty string
+		if err = rows.Scan(&did, &cid, &qty); err != nil {
+			rows.Close()
+			a.matRespond(w, err)
+			return
+		}
+		for _, dv := range deliveries {
+			if dv["id"] == did {
+				dv["crates"] = append(dv["crates"].([]map[string]any), map[string]any{"id": cid, "code": crateCode(cid), "quantity": qty})
+			}
+		}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -446,8 +483,13 @@ func (a *app) handleMaterialDetail(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, err)
 		return
 	}
+	var closedWhen any
+	if closedAt.Valid {
+		closedWhen = closedAt.Time
+	}
 	writeJSON(w, 200, map[string]any{"id": id, "unit_name": unit, "delivery_date": delivery, "production_date": production,
 		"service": service, "status": status, "notes": notes, "created_at": created, "requested_by": owner,
+		"closed_at": closedWhen, "closed_by": closedBy, "close_notes": closeNotes,
 		"lines": lines, "reservations": reservations, "deliveries": deliveries, "events": events})
 }
 
@@ -590,13 +632,13 @@ func (a *app) handleMaterialReserve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var within bool
-	err = tx.QueryRowContext(ctx, "SELECT $1::numeric + COALESCE((SELECT sum(remaining_quantity) FROM material_request_reservations WHERE request_line_id=$2 AND status='ATIVA'),0) + COALESCE((SELECT sum(d.quantity) FROM material_request_deliveries d JOIN material_request_reservations res ON res.id=d.reservation_id WHERE res.request_line_id=$2),0) <= $3::numeric", req.Quantity, req.LineID, asked).Scan(&within)
+	err = tx.QueryRowContext(ctx, "SELECT $1::numeric + COALESCE((SELECT sum(remaining_quantity) FROM material_request_reservations WHERE request_line_id=$2 AND status='ATIVA'),0) + COALESCE((SELECT sum(d.quantity) FROM material_request_deliveries d JOIN material_request_reservations res ON res.id=d.reservation_id WHERE res.request_line_id=$2),0) <= $3::numeric * CASE WHEN (SELECT unit_code FROM inventory_items WHERE id=$4)='KG' THEN "+matWeightTolerance+" ELSE 1 END", req.Quantity, req.LineID, asked, itemID).Scan(&within)
 	if err != nil {
 		a.matRespond(w, err)
 		return
 	}
 	if !within {
-		a.matRespond(w, matConflict("Quantidade acima do saldo ainda solicitado."))
+		a.matRespond(w, matConflict("Quantidade acima do saldo ainda solicitado. Itens em KG aceitam até 20% acima do pedido."))
 		return
 	}
 	var rid int64
@@ -622,13 +664,13 @@ func (a *app) handleMaterialReserve(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, map[string]any{"id": rid, "status": "confirmed"})
 }
 func matRefresh(ctx context.Context, tx *sql.Tx, id int64) error {
-	var total, delivered string
-	err := tx.QueryRowContext(ctx, "SELECT COALESCE(sum(l.quantity),0)::text,COALESCE(sum((SELECT COALESCE(sum(d.quantity),0) FROM material_request_reservations res JOIN material_request_deliveries d ON d.reservation_id=res.id WHERE res.request_line_id=l.id)),0)::text FROM material_request_lines l WHERE l.request_id=$1", id).Scan(&total, &delivered)
+	// Entregue por linha (um item em KG pode passar do pedido; isso não compensa a falta de outro).
+	var allDelivered, anyDelivered, anyHeld, allReceived, divergent, closed bool
+	err := tx.QueryRowContext(ctx, "SELECT NOT EXISTS(SELECT 1 FROM material_request_lines l WHERE l.request_id=$1 AND l.quantity>COALESCE((SELECT sum(d.quantity) FROM material_request_reservations res JOIN material_request_deliveries d ON d.reservation_id=res.id WHERE res.request_line_id=l.id),0)),EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=$1),(SELECT closed_at IS NOT NULL FROM material_requests WHERE id=$1)", id).Scan(&allDelivered, &anyDelivered, &closed)
 	if err != nil {
 		return err
 	}
-	var allDelivered, anyDelivered, anyHeld, allReceived, divergent bool
-	err = tx.QueryRowContext(ctx, "SELECT $1::numeric=$2::numeric,$2::numeric>0,EXISTS(SELECT 1 FROM material_request_reservations res JOIN material_request_lines l ON l.id=res.request_line_id WHERE l.request_id=$3 AND res.status='ATIVA' AND res.remaining_quantity>0),NOT EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=$3 AND received_at IS NULL),EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=$3 AND received_quantity<quantity)", total, delivered, id).Scan(&allDelivered, &anyDelivered, &anyHeld, &allReceived, &divergent)
+	err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM material_request_reservations res JOIN material_request_lines l ON l.id=res.request_line_id WHERE l.request_id=$1 AND res.status='ATIVA' AND res.remaining_quantity>0),NOT EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=$1 AND received_at IS NULL),EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=$1 AND received_quantity<quantity)", id).Scan(&anyHeld, &allReceived, &divergent)
 	if err != nil {
 		return err
 	}
@@ -646,6 +688,15 @@ func matRefresh(ctx context.Context, tx *sql.Tx, id int64) error {
 		status = "RECEBIDA"
 		if divergent { // falta conciliar o que a cozinha não recebeu
 			status = "RECEBIDA_COM_DIVERGENCIA"
+		}
+	}
+	if closed { // a cozinha aceitou o que chegou e encerrou
+		status = "RECEBIDA"
+	}
+	if status == "RECEBIDA" {
+		// Nada mais será entregue: o que sobrou reservado volta a ficar livre.
+		if _, err = tx.ExecContext(ctx, "UPDATE material_request_reservations SET remaining_quantity=0,status='LIBERADA',released_at=now() WHERE status='ATIVA' AND request_line_id IN (SELECT id FROM material_request_lines WHERE request_id=$1)", id); err != nil {
+			return err
 		}
 	}
 	_, err = tx.ExecContext(ctx, "UPDATE material_requests SET status=$2,updated_at=now() WHERE id=$1", id, status)
@@ -695,7 +746,9 @@ func (a *app) handleMaterialDeliver(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, err)
 		return
 	}
-	if status == "CANCELADA" || matReceiptDone(status) || status == "ENTREGUE" {
+	// "ENTREGUE" não bloqueia: com peso real, o pedido pode já estar coberto e ainda haver
+	// saldo separado a entregar. Quem limita a entrega é a reserva.
+	if status == "CANCELADA" || matReceiptDone(status) {
 		a.matRespond(w, matConflict("Esta requisição não aceita novas entregas."))
 		return
 	}
@@ -731,7 +784,17 @@ func (a *app) handleMaterialDeliver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mv := movementRequest{OperationID: fmt.Sprintf("material:%d:%s", id, req.OperationID), SKUID: skuID, WarehouseID: whID, Quantity: req.Quantity, ProductionDate: production, DocumentNumber: fmt.Sprintf("REQ-%d", id), Notes: fmt.Sprintf("Requisição interna %d", id), UserID: actor}
-	result, err := createExitTx(ctx, tx, mv, matHash(mv))
+	var result operationResult
+	var usedCrates []matCrateUse
+	if len(req.CrateIDs) > 0 {
+		// Item em caixa: a saída é alocada no lote de cada caixa e o peso delas diminui.
+		result.MovementID, usedCrates, err = matDeliverFromCrates(ctx, tx, req.CrateIDs, skuID, whID, mv)
+	} else {
+		result, err = createExitTx(ctx, tx, mv, matHash(mv))
+		if errors.Is(err, errCrateTrackedStock) {
+			err = matConflict("Este item é controlado por caixa. Escolha a caixa de onde o material vai sair.")
+		}
+	}
 	if err != nil {
 		a.matRespond(w, err)
 		return
@@ -742,7 +805,18 @@ func (a *app) handleMaterialDeliver(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, err)
 		return
 	}
-	if err = matEvent(ctx, tx, id, actor, "ENTREGUE", fmt.Sprintf("Entrega %d: %s, movimento %d", did, req.Quantity, result.MovementID)); err != nil {
+	detail := fmt.Sprintf("Entrega %d: %s, movimento %d", did, req.Quantity, result.MovementID)
+	for i, u := range usedCrates {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO material_request_delivery_crates(delivery_id,crate_id,quantity) VALUES($1,$2,$3::numeric)", did, u.ID, u.Quantity); err != nil {
+			a.matRespond(w, err)
+			return
+		}
+		if i == 0 {
+			detail += ", caixas"
+		}
+		detail += " " + u.Code + " (" + u.Quantity + ")"
+	}
+	if err = matEvent(ctx, tx, id, actor, "ENTREGUE", detail); err != nil {
 		a.matRespond(w, err)
 		return
 	}

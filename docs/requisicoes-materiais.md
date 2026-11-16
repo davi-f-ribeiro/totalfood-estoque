@@ -12,6 +12,17 @@ Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma
    - **Recebimento parcial (migration 041):** se a cozinha recebeu menos que o entregue (por exemplo 180 de 200 kg), informa a quantidade e o motivo. A diferença fica como **divergência** na entrega e o pedido aparece como `RECEBIDA_COM_DIVERGENCIA`.
    - **Recebimento do restante:** quando o estoque completa o que faltou, a cozinha solicitante (ou Gerente/Diretor) confirma o recebimento do restante na mesma entrega, de uma vez ou em partes. Com a divergência zerada, o pedido vira `RECEBIDA`. O Estoquista, que entrega, não confirma.
    - Conferir e conciliar **não movimentam estoque**: a saída é a da entrega. Devolução ao estoque e baixa como perda não fazem parte deste fluxo.
+   - **Itens sem peso padrão (migration 042):** em hortifruti e proteína a conta exata não fecha.
+     - O estoque entrega o **peso real**. Item em KG pode ser separado e entregue até **20% acima do pedido** (`matWeightTolerance`); item em outra unidade continua limitado ao pedido. A situação "Entregue" é decidida por linha: entregue maior ou igual ao pedido.
+     - Depois de conferir as entregas, a cozinha solicitante (ou Gerente/Diretor) pode **aceitar e encerrar** a requisição mesmo com diferença, para o pedido ou para o entregue. O pedido vira `RECEBIDA`, o que ainda estava reservado volta a ficar livre e o histórico registra `ENCERRADA` com pedido, entregue e recebido. Não movimenta estoque.
+     - Quando a requisição vira `RECEBIDA`, qualquer sobra de reserva é liberada.
+   - **Item controlado por caixa:** a saída comum continua recusando estoque de caixa (a proteção de rastreabilidade não mudou). Na entrega o estoquista marca as **caixas que vão sair** (`crate_ids`):
+     - várias caixas saem inteiras, e a quantidade tem de ser a soma dos **pesos atuais** (se uma caixa foi repesada, vale o peso novo; soma diferente é recusada);
+     - uma caixa só pode sair em parte: o restante fica nela, com etiqueta nova;
+     - tudo vira **um movimento de saída**, com uma linha por caixa alocada no lote da própria caixa, na mesma transação que consome a reserva e registra a entrega;
+     - as caixas de cada entrega ficam em `material_request_delivery_crates` e aparecem na entrega e no histórico;
+     - sem caixa marcada, a resposta é 409 com orientação, não erro genérico. A leitura de QR Code na tela de Requisições ainda não existe: a escolha é pela lista.
+   - Com peso real, o pedido pode ficar coberto ("Entregue") e ainda haver saldo separado: a entrega continua aceita enquanto a reserva tiver saldo.
 6. Se ainda não houve entrega, o solicitante pode cancelar, liberando todas as reservas. O estoquista também pode liberar reservas não entregues.
 
 ## Perfis
@@ -37,10 +48,11 @@ Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma
 - `GET /api/material-requests/items?q=` — busca por item pai.
 - `GET /api/material-requests/options/{item_id}` — SKU, marca, depósito, saldo físico/livre.
 - `POST /api/material-requests/{id}/reserve` — separar.
-- `POST /api/material-requests/{id}/deliver` — saída física transacional.
+- `POST /api/material-requests/{id}/deliver` — saída física transacional. `crate_ids` (lista) para item controlado por caixa.
 - `POST /api/material-requests/{id}/reservations/{reservation_id}/release` — liberar saldo reservado.
 - `POST /api/material-requests/{id}/deliveries/{delivery_id}/receive` — conferir entrega. Corpo opcional: `received_quantity` (sem ela, recebimento integral) e `reason` (obrigatório quando a quantidade é menor que a entregue).
 - `POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile` — confirmar o recebimento do que faltava (`operation_id`, `quantity`, `notes`). Mesma regra da conferência: `material_receipts`, solicitante ou gerência.
+- `POST /api/material-requests/{id}/close` — aceitar o que foi recebido e encerrar (`notes` opcional). `material_receipts`, solicitante ou gerência; exige todas as entregas conferidas.
 - `POST /api/material-requests/{id}/cancel` — cancelar antes da primeira entrega.
 
 ## Próximas integrações

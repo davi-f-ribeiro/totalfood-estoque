@@ -195,6 +195,18 @@ function renderDetail(r){
   }));
   top.append(actions);
  }
+ // Itens sem peso padrão (hortifruti, proteína): a conta exata não fecha. Depois de
+ // conferir as entregas, a cozinha pode aceitar o que chegou e encerrar a requisição.
+ if(r.closed_at)top.append(el('p','Encerrada por '+r.closed_by+' em '+stamp(r.closed_at)+', aceitando o que foi entregue.'+(r.close_notes?' '+r.close_notes:''),'material-small'));
+ const allChecked=r.deliveries.length>0&&r.deliveries.every(d=>d.received);
+ if(canReceive&&allChecked&&!r.closed_at&&r.status!=='RECEBIDA'&&r.status!=='CANCELADA'){
+  const obs=el('input');obs.maxLength=500;obs.autocomplete='off';
+  top.append(el('p','O que chegou é diferente do pedido. Se atende, aceite a diferença e encerre a requisição.','material-small'),field('Observação (opcional)',obs),btn('Aceitar e encerrar',async()=>{
+   if(!window.confirm('Aceitar o que foi recebido e encerrar esta requisição? O que faltou não será mais entregue.'))return;
+   await run('/api/material-requests/'+r.id+'/close',{notes:obs.value.trim()},{label:'o encerramento da requisição #'+r.id,loading:'Encerrando a requisição #'+r.id+'…',
+    where:{kind:'detail',key:'request'},success:()=>'Requisição #'+r.id+' encerrada com o que foi recebido.',failure:'Encerramento da requisição #'+r.id+' recusado.'});
+  },false));
+ }
  detailContent.append(top);
  detailContent.append(el('h3','Materiais'));
  r.lines.forEach(line=>{
@@ -216,12 +228,24 @@ function renderDetail(r){
      el('p','Reservado '+number(res.quantity)+' · Saldo separado '+number(res.remaining)+' '+(line?.unit||'')+' · '+res.status,'material-small'));
    if(canFulfill&&res.status==='ATIVA'&&Number(res.remaining)>0){
     const input=numericInput(res.remaining);
+    // Item controlado por caixa (hortifruti): o estoquista marca as caixas que vão sair e a
+    // quantidade vira a soma dos pesos atuais. Uma caixa só pode sair em parte.
+    const crateBox=el('div',null,'material-crates'),crateWeights={};crateBox.hidden=true;
+    const pickedCrates=()=>[...crateBox.querySelectorAll('input:checked')].map(x=>Number(x.value));
+    const syncCrates=()=>{const ids=pickedCrates();input.readOnly=ids.length>1;if(!ids.length)return;input.value=String(Math.round(ids.reduce((t,i)=>t+Number(crateWeights[i]),0)*1000)/1000)};
+    api('/api/crates?warehouse_id='+res.warehouse_id).then(cs=>{
+     const mine=cs.filter(c=>c.sku_id===res.sku_id);if(!mine.length)return;
+     crateBox.append(el('p','Caixas que vão sair. O peso é somado; para tirar só parte, marque uma caixa e ajuste a quantidade.','material-small'));
+     mine.forEach(c=>{crateWeights[c.id]=c.weight;const l=el('label',null,'check'),cb=el('input');cb.type='checkbox';cb.value=c.id;cb.addEventListener('change',syncCrates);l.append(cb,el('span',c.code+', '+number(c.weight)+' kg'));crateBox.append(l)});
+     crateBox.hidden=false;
+    }).catch(()=>{});
     const actions=actionRow();
     actions.append(btn('Confirmar entrega',async()=>{
      const where={kind:'detail',key:'res:'+res.id,successKey:'deliveries'};
      if(!validQuantity(input.value)){report(where,'error','Informe a quantidade de '+item+' a entregar, maior que zero e com até 3 casas decimais.');return}
+     if(!crateBox.hidden&&!pickedCrates().length){report(where,'error','Este produto é controlado por caixas. Marque as caixas que vão sair.');return}
      const q=number(requestDecimal(input.value))+' '+unit;
-     await run('/api/material-requests/'+r.id+'/deliver',{operation_id:newOperationID(),reservation_id:res.id,quantity:requestDecimal(input.value)},
+     await run('/api/material-requests/'+r.id+'/deliver',Object.assign({operation_id:newOperationID(),reservation_id:res.id,quantity:requestDecimal(input.value)},pickedCrates().length?{crate_ids:pickedCrates()}:{}),
       {label:'a entrega de '+q+' de '+item,loading:'Registrando a saída de '+q+' de '+item+'…',where,
        success:d=>'Entrega de '+q+' de '+item+' registrada'+(d.movement_id?' (saída #'+d.movement_id+')':'')+'. Falta a cozinha confirmar o recebimento.',failure:'Entrega de '+item+' recusada.'});
     },false),btn('Liberar reserva',async()=>{
@@ -229,7 +253,7 @@ function renderDetail(r){
      await run('/api/material-requests/'+r.id+'/reservations/'+res.id+'/release',{},{label:'a liberação da reserva de '+item,loading:'Liberando a reserva de '+item+'…',
       where:{kind:'detail',key:'res:'+res.id},success:()=>'Reserva de '+item+' ('+res.brand+') liberada; o saldo voltou a ficar livre.',failure:'Liberação da reserva de '+item+' recusada.'});
     }));
-    card.append(field('Quantidade a entregar',input),actions);
+    card.append(crateBox,field('Quantidade a entregar',input),actions);
    }
    detailContent.append(card);
   });
@@ -241,6 +265,7 @@ function renderDetail(r){
    const pendingDiv=Number(d.pending_divergence)||0;
    card.append(el('strong','Entrega #'+d.id+' · '+number(d.quantity)+' unidades-base'),
      el('p','Saída #'+d.movement_id+' · '+stamp(d.delivered_at)+' · '+d.delivered_by,'material-small'));
+   if((d.crates||[]).length)card.append(el('p','Caixas: '+d.crates.map(c=>c.code+' ('+number(c.quantity)+' kg)').join(', '),'material-small'));
    if(!d.received)card.append(el('p','Aguardando recebimento','material-small'));
    else if(pendingDiv<=0&&(d.receipts||[]).length<2)card.append(el('p','Recebimento confirmado por '+d.received_by,'material-small'));
    else card.append(el('p','Recebido '+number(d.received_quantity)+' de '+number(d.quantity)+', conferido por '+d.received_by,'material-small'));

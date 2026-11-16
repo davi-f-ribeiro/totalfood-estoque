@@ -12,7 +12,7 @@ const html=original.replace('{{template "header" .}}','<header>Gestão de Estoqu
 .replaceAll('{{.CSRF}}','e2e-token').replaceAll('{{.User.ID}}','7')
 .replace(/\{\{if \.CanMaterial(Write|Fulfill|Receive)\}\}1\{\{else\}\}0\{\{end\}\}/g,'1')
 .replaceAll('{{if .CanMaterialWrite}}','').replaceAll('{{end}}','');
-const state={requests:[],created:new Map(),reservations:[],deliveries:[],deliverOps:new Map(),failDeliver:true,received:new Set()};
+const state={requests:[],created:new Map(),reservations:[],deliveries:[],deliverOps:new Map(),failDeliver:true,received:new Set(),crates:[]};
 const respond=(route,status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const request1=()=>({id:1,unit_name:'Cozinha Central',requested_by:'Ana',production_date:'2026-11-16',service:'almoco',delivery_date:'2026-11-16',
  status:state.deliveries.length?'EM_ATENDIMENTO':'ABERTA',created_at:'2026-11-15T10:00:00Z',notes:'',
@@ -57,14 +57,17 @@ async function main(){
    }
    if(p==='/api/material-requests/1/deliver'){
     if(!state.deliverOps.has(body.operation_id)){
-     state.deliverOps.set(body.operation_id,{id:40,movement_id:900});
+     const n=state.deliveries.length;state.deliverOps.set(body.operation_id,{id:40+n,movement_id:900+n});
      const r=state.reservations.find(x=>x.id===body.reservation_id);r.remaining=String(Number(r.remaining)-Number(body.quantity));if(Number(r.remaining)<=0)r.status='CONSUMIDA';
-     state.deliveries.push({id:40,quantity:body.quantity,movement_id:900,delivered_at:'2026-11-15T11:00:00Z',delivered_by:'Bruno'});
+     const made=state.deliverOps.get(body.operation_id);
+     state.deliveries.push({id:made.id,quantity:body.quantity,movement_id:made.movement_id,delivered_at:'2026-11-15T11:00:00Z',delivered_by:'Bruno',crates:(body.crate_ids||[]).map(id=>({id,code:'CX-00000'+id,quantity:state.crates.find(c=>c.id===id).weight}))});
+     if(body.crate_ids)state.crates=state.crates.filter(c=>!body.crate_ids.includes(c.id));
     }
     if(state.failDeliver){state.failDeliver=false;return respond(route,503,{error:'Resposta perdida após gravar'})}
     return respond(route,201,{...state.deliverOps.get(body.operation_id),status:'confirmed'});
    }
    if(p==='/api/material-requests/1/deliveries/40/receive'){state.received.add(40);return respond(route,200,{id:40,status:'confirmed'})}
+   if(p==='/api/crates')return respond(route,200,state.crates);
    return respond(route,404,{error:'Unknown route '+p});
   });
   const inViewport=sel=>page.locator(sel).first().evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=-1&&r.bottom<=innerHeight+1});
@@ -116,6 +119,26 @@ async function main(){
   await page.locator('[data-note-key="delivery:40"] [data-detail-note]',{hasText:'Recebimento da entrega #40 confirmado.'}).waitFor();
   assert(await inViewport('[data-note-key="delivery:40"] [data-detail-note]'),'Aviso do recebimento precisa aparecer na tela');
   await topHidden();
+
+  // Item controlado por caixa: o estoquista marca as caixas, o peso é somado e a entrega
+  // leva a lista de caixas. Sem caixa marcada, o aviso é definitivo, sem "Enviar de novo".
+  state.reservations.push({id:31,line_id:1,sku_id:5,warehouse_id:1,brand:'Sem marca',sku:'Melão Japonês',warehouse:'Câmara Fria',quantity:'5',remaining:'5',status:'ATIVA'});
+  state.crates=[{id:7,code:'CX-000007',sku_id:5,weight:'2.000'},{id:8,code:'CX-000008',sku_id:5,weight:'3.000'},{id:9,code:'CX-000009',sku_id:6,weight:'9.000'}];
+  await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).click();
+  const crateCard=page.locator('[data-note-key="res:31"]');
+  await crateCard.locator('input[type=checkbox]').first().waitFor();
+  assert.equal(await crateCard.locator('input[type=checkbox]').count(),2,'Só as caixas do produto separado aparecem');
+  await crateCard.locator('button',{hasText:'Confirmar entrega'}).click();
+  await crateCard.locator('[data-detail-note]',{hasText:'Este produto é controlado por caixas. Marque as caixas que vão sair.'}).waitFor();
+  assert.equal(await crateCard.locator('[data-detail-note] button').count(),0,'Recusa definitiva não oferece reenvio');
+  await crateCard.locator('input[type=checkbox]').nth(0).check();
+  await crateCard.locator('input[type=checkbox]').nth(1).check();
+  assert.equal(await crateCard.locator('input:not([type=checkbox])').inputValue(),'5','A quantidade é a soma dos pesos das caixas');
+  await crateCard.locator('button',{hasText:'Confirmar entrega'}).click();
+  await page.locator('[data-note-key="deliveries"] [data-detail-note]',{hasText:'Entrega de 5 KG de Feijão carioca registrada (saída #901).'}).waitFor();
+  const crateDeliver=state.requests.filter(r=>r.p==='/api/material-requests/1/deliver').pop();
+  assert.deepEqual(crateDeliver.body.crate_ids,[7,8],'A entrega precisa levar as caixas marcadas');
+  await page.locator('[data-note-key="delivery:41"]',{hasText:'Caixas: CX-000007 (2 kg), CX-000008 (3 kg)'}).waitFor();
 
   assert.equal(await page.getByText('Operação registrada.').count(),0,'Mensagem genérica não pode voltar');
   const size=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
