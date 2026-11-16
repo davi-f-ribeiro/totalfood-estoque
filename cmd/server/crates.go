@@ -351,7 +351,7 @@ func (a *app) handleCrateWeigh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	movementReq := movementRequest{OperationID: req.OperationID, SKUID: c.SKUID, WarehouseID: c.WarehouseID, Quantity: diff, Notes: "Consumo apurado por pesagem " + c.Code + " " + req.Notes, UserID: userFromContext(r.Context()).ID}
-	if _, err = crateConsumeTx(r.Context(), tx, c, req.Weight, diff, movementReq, crateHash(req)); err != nil {
+	if _, err = crateConsumeTx(r.Context(), tx, c, req.Weight, diff, movementReq, crateHash(req), 0, req.OperationID); err != nil {
 		crateError(w, err)
 		return
 	}
@@ -371,7 +371,9 @@ func (a *app) handleCrateWeigh(w http.ResponseWriter, r *http.Request) {
 // lote da caixa, novo peso e revisão, evento e etiqueta (caixa zerada não ganha etiqueta e
 // cancela a pendente). Usada pela pesagem de retorno e pela entrega de requisição por caixa.
 // Quem chama já travou a caixa (getCrate com lock) e conferiu ensureCrateNoInFlightLabel.
-func crateConsumeTx(ctx context.Context, tx *sql.Tx, c crateRow, newWeight, diff string, mv movementRequest, hash string) (int64, error) {
+// movementID 0 cria o movimento; com várias caixas na mesma entrega, as demais entram como
+// linhas do mesmo movimento. eventOp identifica o evento da caixa (único por caixa).
+func crateConsumeTx(ctx context.Context, tx *sql.Tx, c crateRow, newWeight, diff string, mv movementRequest, hash string, movementID int64, eventOp string) (int64, error) {
 	// A targeted exit allocates exclusively from this crate's lot.
 	if err := lockStock(ctx, tx, c.SKUID, c.WarehouseID); err != nil {
 		return 0, err
@@ -400,9 +402,10 @@ func crateConsumeTx(ctx context.Context, tx *sql.Tx, c crateRow, newWeight, diff
 	if ok := quantityAtLeast(ctx, tx, remaining, diff); !ok {
 		return 0, errInsufficientStock
 	}
-	movementID, err := insertMovement(ctx, tx, "SAIDA", mv, hash)
-	if err != nil {
-		return 0, err
+	if movementID == 0 {
+		if movementID, err = insertMovement(ctx, tx, "SAIDA", mv, hash); err != nil {
+			return 0, err
+		}
 	}
 	var lineID int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO movement_lines(movement_id,sku_id,warehouse_id,direction,quantity,unit_cost)
@@ -418,7 +421,7 @@ func crateConsumeTx(ctx context.Context, tx *sql.Tx, c crateRow, newWeight, diff
 		return 0, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO stock_crate_events(crate_id,operation_id,event_type,previous_weight,next_weight,movement_id,actor_id)
-   VALUES($1,$2,'REWEIGH',$3,$4,$5,$6)`, c.ID, mv.OperationID, c.Weight, newWeight, movementID, mv.UserID); err != nil {
+   VALUES($1,$2,'REWEIGH',$3,$4,$5,$6)`, c.ID, eventOp, c.Weight, newWeight, movementID, mv.UserID); err != nil {
 		return 0, err
 	}
 	// Caixa zerada não ganha etiqueta nova: não há o que identificar. A etiqueta que ainda

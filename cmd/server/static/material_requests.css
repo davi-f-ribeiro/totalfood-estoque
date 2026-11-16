@@ -46,3 +46,6 @@
 .material-retry-inline{margin-left:8px}
 /* Divergência de recebimento: quanto falta, escrito (guia de estilo, seção 4, Situação). */
 .material-divergence{margin:4px 0;color:var(--danger);font-weight:600}
+/* Entrega por caixa: lista de caixas para marcar. */
+.material-crates{display:grid;gap:4px;margin:8px 0}
+.material-crates label.check{min-height:44px;margin:0;font-size:1rem;color:var(--text-primary);font-variant-numeric:tabular-nums}

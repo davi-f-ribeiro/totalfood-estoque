@@ -102,8 +102,10 @@ type materialDeliveryInput struct {
 	OperationID   string `json:"operation_id"`
 	ReservationID int64  `json:"reservation_id"`
 	Quantity      string `json:"quantity"`
-	// CrateID: caixa de onde o material sai, para item controlado por caixa (hortifruti).
-	CrateID int64 `json:"crate_id,omitempty"`
+	// CrateIDs: caixas de onde o material sai, para item controlado por caixa (hortifruti).
+	// Várias caixas saem inteiras (a quantidade é a soma dos pesos atuais); uma caixa só
+	// pode sair em parte, e o restante fica nela com etiqueta nova.
+	CrateIDs []int64 `json:"crate_ids,omitempty"`
 }
 
 // matWeightTolerance: quanto um item em KG pode passar do pedido na separação e na entrega.
@@ -398,7 +400,33 @@ func (a *app) handleMaterialDetail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		deliveries = append(deliveries, map[string]any{"id": did, "reservation_id": rid, "quantity": qty, "movement_id": movementID, "delivered_at": at, "received": received, "delivered_by": deliverer, "received_by": receiver,
-			"received_quantity": got, "pending_divergence": pendingDiv, "divergence_reason": reason, "receipts": []map[string]any{}})
+			"received_quantity": got, "pending_divergence": pendingDiv, "divergence_reason": reason, "receipts": []map[string]any{}, "crates": []map[string]any{}})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	// Caixas que saíram em cada entrega (item controlado por caixa).
+	rows, err = a.db.QueryContext(ctx, "SELECT dc.delivery_id,dc.crate_id,dc.quantity::text FROM material_request_delivery_crates dc JOIN material_request_deliveries d ON d.id=dc.delivery_id WHERE d.request_id=$1 ORDER BY dc.delivery_id,dc.crate_id", id)
+	if err != nil {
+		a.matRespond(w, err)
+		return
+	}
+	for rows.Next() {
+		var did, cid int64
+		var qty string
+		if err = rows.Scan(&did, &cid, &qty); err != nil {
+			rows.Close()
+			a.matRespond(w, err)
+			return
+		}
+		for _, dv := range deliveries {
+			if dv["id"] == did {
+				dv["crates"] = append(dv["crates"].([]map[string]any), map[string]any{"id": cid, "code": crateCode(cid), "quantity": qty})
+			}
+		}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -718,7 +746,9 @@ func (a *app) handleMaterialDeliver(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, err)
 		return
 	}
-	if status == "CANCELADA" || matReceiptDone(status) || status == "ENTREGUE" {
+	// "ENTREGUE" não bloqueia: com peso real, o pedido pode já estar coberto e ainda haver
+	// saldo separado a entregar. Quem limita a entrega é a reserva.
+	if status == "CANCELADA" || matReceiptDone(status) {
 		a.matRespond(w, matConflict("Esta requisição não aceita novas entregas."))
 		return
 	}
@@ -755,9 +785,10 @@ func (a *app) handleMaterialDeliver(w http.ResponseWriter, r *http.Request) {
 	}
 	mv := movementRequest{OperationID: fmt.Sprintf("material:%d:%s", id, req.OperationID), SKUID: skuID, WarehouseID: whID, Quantity: req.Quantity, ProductionDate: production, DocumentNumber: fmt.Sprintf("REQ-%d", id), Notes: fmt.Sprintf("Requisição interna %d", id), UserID: actor}
 	var result operationResult
-	if req.CrateID > 0 {
-		// Item em caixa: a saída é alocada no lote daquela caixa e o peso dela diminui.
-		result.MovementID, err = matDeliverFromCrate(ctx, tx, req.CrateID, skuID, whID, mv)
+	var usedCrates []matCrateUse
+	if len(req.CrateIDs) > 0 {
+		// Item em caixa: a saída é alocada no lote de cada caixa e o peso delas diminui.
+		result.MovementID, usedCrates, err = matDeliverFromCrates(ctx, tx, req.CrateIDs, skuID, whID, mv)
 	} else {
 		result, err = createExitTx(ctx, tx, mv, matHash(mv))
 		if errors.Is(err, errCrateTrackedStock) {
@@ -774,7 +805,18 @@ func (a *app) handleMaterialDeliver(w http.ResponseWriter, r *http.Request) {
 		a.matRespond(w, err)
 		return
 	}
-	if err = matEvent(ctx, tx, id, actor, "ENTREGUE", fmt.Sprintf("Entrega %d: %s, movimento %d", did, req.Quantity, result.MovementID)); err != nil {
+	detail := fmt.Sprintf("Entrega %d: %s, movimento %d", did, req.Quantity, result.MovementID)
+	for i, u := range usedCrates {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO material_request_delivery_crates(delivery_id,crate_id,quantity) VALUES($1,$2,$3::numeric)", did, u.ID, u.Quantity); err != nil {
+			a.matRespond(w, err)
+			return
+		}
+		if i == 0 {
+			detail += ", caixas"
+		}
+		detail += " " + u.Code + " (" + u.Quantity + ")"
+	}
+	if err = matEvent(ctx, tx, id, actor, "ENTREGUE", detail); err != nil {
 		a.matRespond(w, err)
 		return
 	}

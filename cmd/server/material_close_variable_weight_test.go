@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -137,8 +139,9 @@ func TestMaterialCloseWithDifferenceAndWeightTolerance(t *testing.T) {
 	}
 }
 
-// Item controlado por caixa (hortifruti): a entrega da requisição sai de uma caixa escolhida.
-func TestMaterialDeliveryFromCrate(t *testing.T) {
+// Diagnóstico de 16/11/2026 (requisição #6, Melão Japonês): item controlado por caixa não
+// saía por requisição. A entrega passa a sair de caixas escolhidas, pelo peso atual delas.
+func TestMaterialDeliveryFromCrates(t *testing.T) {
 	a, _, _, _ := newStockTestApp(t)
 	db := a.db
 	createTestUser(t, a, "crate-req-director", "secret", "Diretor", true)
@@ -152,8 +155,9 @@ func TestMaterialDeliveryFromCrate(t *testing.T) {
 	if err := db.QueryRow(`SELECT id FROM warehouses WHERE name='VR'`).Scan(&wh); err != nil {
 		t.Fatal(err)
 	}
+	// As seis caixas do caso real: 111,8 kg.
 	receive := crateReceiveRequest{OperationID: "crate-req-receipt", SKUID: sku, WarehouseID: wh, UnitCost: "2",
-		DocumentNumber: "999", SupplierName: "CEASA", Weights: []string{"20.000", "22.000"}}
+		DocumentNumber: "999", SupplierName: "CEASA", Weights: []string{"19.300", "18.900", "22.000", "21.800", "20.900", "8.900"}}
 	rr := authReq(a, http.MethodPost, "/api/crates/receive", receive, director, "")
 	if rr.Code != 200 {
 		t.Fatalf("receive crates=%d %s", rr.Code, rr.Body.String())
@@ -161,63 +165,162 @@ func TestMaterialDeliveryFromCrate(t *testing.T) {
 	var out struct {
 		Crates []crateRow `json:"crates"`
 	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil || len(out.Crates) != 2 {
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil || len(out.Crates) != 6 {
 		t.Fatalf("crates=%+v err=%v", out, err)
 	}
-	first, second := out.Crates[0].ID, out.Crates[1].ID
+	ids := make([]int64, 6)
+	for i, c := range out.Crates {
+		ids[i] = c.ID
+	}
+	stock := func() string {
+		t.Helper()
+		var q string
+		if err := db.QueryRow(`SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::numeric(14,3)::text FROM movement_lines WHERE sku_id=$1 AND warehouse_id=$2`, sku, wh).Scan(&q); err != nil {
+			t.Fatal(err)
+		}
+		return q
+	}
+	crate := func(id int64) (string, string) {
+		t.Helper()
+		var w, st string
+		if err := db.QueryRow(`SELECT current_weight::text,status FROM stock_crates WHERE id=$1`, id).Scan(&w, &st); err != nil {
+			t.Fatal(err)
+		}
+		return w, st
+	}
 
-	base, line := materialOpenRequest(t, a, sku, "crate", "30", cozinha)
-	res := authReq(a, http.MethodPost, base+"/reserve", map[string]any{"operation_id": "crate-req-res", "line_id": line, "sku_id": sku, "warehouse_id": wh, "quantity": "30"}, estoquista, "")
+	// Pedido de 106 kg, reserva de 102,9 kg (cinco caixas).
+	base, line := materialOpenRequest(t, a, sku, "crate", "106", cozinha)
+	res := authReq(a, http.MethodPost, base+"/reserve", map[string]any{"operation_id": "crate-req-res", "line_id": line, "sku_id": sku, "warehouse_id": wh, "quantity": "102.9"}, estoquista, "")
 	if res.Code != 201 {
 		t.Fatalf("reserve=%d %s", res.Code, res.Body.String())
 	}
 	rid := int64(materialTestJSON(t, res.Body.Bytes())["id"].(float64))
-	deliver := func(op, qty string, crate int64) (int, string) {
-		body := map[string]any{"operation_id": op, "reservation_id": rid, "quantity": qty}
-		if crate > 0 {
-			body["crate_id"] = crate
+	remaining := func(r int64) string {
+		t.Helper()
+		var q string
+		if err := db.QueryRow(`SELECT remaining_quantity::text FROM material_request_reservations WHERE id=$1`, r).Scan(&q); err != nil {
+			t.Fatal(err)
+		}
+		return q
+	}
+	deliver := func(r int64, op, qty string, crates ...int64) (int, string) {
+		body := map[string]any{"operation_id": op, "reservation_id": r, "quantity": qty}
+		if len(crates) > 0 {
+			body["crate_ids"] = crates
 		}
 		rr := authReq(a, http.MethodPost, base+"/deliver", body, estoquista, "")
 		return rr.Code, rr.Body.String()
 	}
-	// Sem caixa, a saída é recusada com orientação (antes era erro genérico).
-	if code, body := deliver("crate-req-none", "20", 0); code != 409 || !strings.Contains(body, "controlado por caixa") {
-		t.Fatalf("delivery without a crate=%d %s", code, body)
+	five := ids[:5]
+
+	// Sem caixa: recusa definitiva e com orientação (antes era erro 500 e "Enviar de novo").
+	if code, body := deliver(rid, "crate-req-none", "102.9"); code != 409 || !strings.Contains(body, "controlado por caixa") {
+		t.Fatalf("delivery without crates=%d %s", code, body)
 	}
-	if code, body := deliver("crate-req-over", "21", first); code != 409 {
-		t.Fatalf("delivery above the crate weight=%d %s", code, body)
+	// Caixas que somam menos que a quantidade, e várias caixas com saída parcial: recusadas.
+	if code, body := deliver(rid, "crate-req-short", "102.9", ids[0], ids[1], ids[2], ids[3]); code != 409 {
+		t.Fatalf("crates below the quantity=%d %s", code, body)
 	}
-	if code, body := deliver("crate-req-1", "20", first); code != 201 {
-		t.Fatalf("whole crate=%d %s", code, body)
+	if code, body := deliver(rid, "crate-req-partial-many", "100", five...); code != 409 {
+		t.Fatalf("partial delivery over several crates=%d %s", code, body)
 	}
-	if code, body := deliver("crate-req-1", "20", first); code != 200 {
+	if code, body := deliver(rid, "crate-req-dup", "38.6", ids[0], ids[0]); code != 400 {
+		t.Fatalf("same crate twice in one delivery=%d %s", code, body)
+	}
+	// Nada mudou com as recusas (rollback completo).
+	if w, st := crate(ids[0]); remaining(rid) != "102.900" || stock() != "111.800" || st != "ACTIVE" || !equalCrateWeights(w, "19.3") {
+		t.Fatalf("refused deliveries changed state: remaining=%s stock=%s crate=%s %s", remaining(rid), stock(), w, st)
+	}
+
+	// Caixa repesada depois da reserva: vale o peso atual, não o antigo.
+	if rr := authReq(a, http.MethodPost, fmt.Sprintf("/api/crates/%d/weigh", ids[4]), crateWeighRequest{OperationID: "crate-req-reweigh", Weight: "20.400"}, director, ""); rr.Code != 200 {
+		t.Fatalf("reweigh=%d %s", rr.Code, rr.Body.String())
+	}
+	if code, body := deliver(rid, "crate-req-stale", "102.9", five...); code != 409 {
+		t.Fatalf("delivery with the old weight=%d %s", code, body)
+	}
+
+	// Cinco caixas inteiras em uma entrega: 102,4 kg pelo peso atual.
+	code, body := deliver(rid, "crate-req-five", "102.4", five...)
+	if code != 201 {
+		t.Fatalf("five crates=%d %s", code, body)
+	}
+	var first map[string]any
+	_ = json.Unmarshal([]byte(body), &first)
+	if code, body := deliver(rid, "crate-req-five", "102.4", five...); code != 200 {
 		t.Fatalf("delivery replay=%d %s", code, body)
 	}
-	if code, body := deliver("crate-req-2", "10", second); code != 201 {
-		t.Fatalf("part of a crate=%d %s", code, body)
-	}
-	var w1, s1, w2, s2 string
-	if err := db.QueryRow(`SELECT current_weight::text,status FROM stock_crates WHERE id=$1`, first).Scan(&w1, &s1); err != nil {
+	movement := int64(first["movement_id"].(float64))
+	var lines, events, moves int
+	if err := db.QueryRow(`SELECT (SELECT count(*) FROM movement_lines WHERE movement_id=$1),(SELECT count(*) FROM stock_crate_events WHERE movement_id=$1),(SELECT count(*) FROM material_request_deliveries)`, movement).Scan(&lines, &events, &moves); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRow(`SELECT current_weight::text,status FROM stock_crates WHERE id=$1`, second).Scan(&w2, &s2); err != nil {
-		t.Fatal(err)
+	if lines != 5 || events != 5 || moves != 1 {
+		t.Fatalf("one movement with one line and one crate event per crate: lines=%d events=%d deliveries=%d", lines, events, moves)
 	}
-	if s1 != "EMPTY" || !equalCrateWeights(w1, "0") || s2 != "ACTIVE" || !equalCrateWeights(w2, "12") {
-		t.Fatalf("crates after delivery: %s %s / %s %s", w1, s1, w2, s2)
+	for _, id := range five {
+		if w, st := crate(id); st != "EMPTY" || !equalCrateWeights(w, "0") {
+			t.Fatalf("crate %d after delivery: %s %s", id, w, st)
+		}
 	}
-	var pendingSecond, pendingFirst int
-	if err := db.QueryRow(`SELECT count(*) FILTER (WHERE crate_id=$1 AND status='PENDING'),count(*) FILTER (WHERE crate_id=$2 AND status='PENDING') FROM print_jobs`, second, first).Scan(&pendingSecond, &pendingFirst); err != nil {
-		t.Fatal(err)
+	if remaining(rid) != "0.500" || stock() != "8.900" {
+		t.Fatalf("after delivery: remaining=%s stock=%s", remaining(rid), stock())
 	}
-	if pendingSecond != 1 || pendingFirst != 0 {
-		t.Fatalf("labels: second crate pending=%d (want 1), emptied crate pending=%d (want 0)", pendingSecond, pendingFirst)
+	d := materialStatus(t, a, base, cozinha)
+	del := d["deliveries"].([]any)[0].(map[string]any)
+	if d["status"] != "ENTREGA_PARCIAL" || del["quantity"] != "102.400" || len(del["crates"].([]any)) != 5 || del["received"] != false {
+		t.Fatalf("request after delivery: status=%v delivery=%+v", d["status"], del)
 	}
-	if d := materialStatus(t, a, base, cozinha); d["status"] != "ENTREGUE" || len(d["deliveries"].([]any)) != 2 {
-		t.Fatalf("request after crate deliveries: status=%v deliveries=%v", d["status"], d["deliveries"])
+	found := false
+	for _, e := range d["events"].([]any) {
+		x := e.(map[string]any)
+		if x["action"] == "ENTREGUE" && strings.Contains(x["details"].(string), crateCode(ids[0])) {
+			found = true
+		}
 	}
-	var stock string
-	if err := db.QueryRow(`SELECT COALESCE(sum(CASE WHEN direction='IN' THEN quantity ELSE -quantity END),0)::numeric(14,3)::text FROM movement_lines WHERE sku_id=$1 AND warehouse_id=$2`, sku, wh).Scan(&stock); err != nil || stock != "12.000" {
-		t.Fatalf("stock after crate deliveries=%s err=%v", stock, err)
+	if !found {
+		t.Fatalf("delivery event does not name the crates: %+v", d["events"])
+	}
+
+	// Caixa já entregue (vazia) não sai de novo.
+	if code, body := deliver(rid, "crate-req-again", "0.5", ids[0]); code != 409 {
+		t.Fatalf("emptied crate delivered again=%d %s", code, body)
+	}
+
+	// Duas entregas ao mesmo tempo na mesma caixa (8,9 kg): 0,5 de uma reserva e 8,4 de outra.
+	// As duas entram, uma depois da outra, e a caixa termina vazia, sem saldo negativo.
+	res2 := authReq(a, http.MethodPost, base+"/reserve", map[string]any{"operation_id": "crate-req-res2", "line_id": line, "sku_id": sku, "warehouse_id": wh, "quantity": "8.4"}, estoquista, "")
+	if res2.Code != 201 {
+		t.Fatalf("second reserve=%d %s", res2.Code, res2.Body.String())
+	}
+	rid2 := int64(materialTestJSON(t, res2.Body.Bytes())["id"].(float64))
+	var wg sync.WaitGroup
+	codes := make([]int, 2)
+	bodies := make([]string, 2)
+	wg.Add(2)
+	go func() { defer wg.Done(); codes[0], bodies[0] = deliver(rid, "crate-req-race-a", "0.5", ids[5]) }()
+	go func() { defer wg.Done(); codes[1], bodies[1] = deliver(rid2, "crate-req-race-b", "8.4", ids[5]) }()
+	wg.Wait()
+	// A que pega a caixa primeiro pode ser a de 8,4 kg; então a de 0,5 sai da mesma caixa.
+	// Se a de 0,5 for primeiro, a de 8,4 (saída parcial de uma caixa com 8,4) também entra.
+	if codes[0] != 201 || codes[1] != 201 {
+		t.Fatalf("concurrent deliveries from one crate: %d %s / %d %s", codes[0], bodies[0], codes[1], bodies[1])
+	}
+	if w, st := crate(ids[5]); st != "EMPTY" || !equalCrateWeights(w, "0") || stock() != "0.000" {
+		t.Fatalf("after concurrent deliveries: crate=%s %s stock=%s", w, st, stock())
+	}
+	if d = materialStatus(t, a, base, cozinha); d["status"] != "ENTREGUE" || len(d["deliveries"].([]any)) != 3 {
+		t.Fatalf("request after all deliveries: status=%v deliveries=%d", d["status"], len(d["deliveries"].([]any)))
+	}
+	// A cozinha vê as entregas e confirma o recebimento.
+	for _, v := range d["deliveries"].([]any) {
+		idv := int64(v.(map[string]any)["id"].(float64))
+		if rr := authReq(a, http.MethodPost, base+"/deliveries/"+strconv.FormatInt(idv, 10)+"/receive", map[string]any{}, cozinha, ""); rr.Code != 200 {
+			t.Fatalf("receive=%d %s", rr.Code, rr.Body.String())
+		}
+	}
+	if d = materialStatus(t, a, base, cozinha); d["status"] != "RECEBIDA" {
+		t.Fatalf("status after receipt=%v", d["status"])
 	}
 }

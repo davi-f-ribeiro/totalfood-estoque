@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -332,32 +333,79 @@ func (a *app) handleMaterialReconcile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, map[string]any{"id": did, "status": "reconciled", "received_quantity": got, "pending_divergence": left})
 }
 
-// matDeliverFromCrate registra a entrega de uma requisição tirando o peso de uma caixa.
-// A reserva já foi abatida por quem chama; aqui a caixa é travada e conferida.
-func matDeliverFromCrate(ctx context.Context, tx *sql.Tx, crateID, skuID, whID int64, mv movementRequest) (int64, error) {
-	c, err := getCrate(ctx, tx, crateID, true)
-	if errors.Is(err, errNotFound) {
-		return 0, matBad("Caixa não encontrada.")
+// matCrateUse: uma caixa usada em uma entrega e quanto saiu dela.
+type matCrateUse struct {
+	ID       int64
+	Code     string
+	Quantity string
+}
+
+// matDeliverFromCrates registra a entrega de uma requisição tirando o peso de caixas.
+// A reserva já foi abatida por quem chama; aqui as caixas são travadas (em ordem de id,
+// para duas entregas ao mesmo tempo não se travarem) e conferidas contra o peso atual.
+// Várias caixas saem inteiras e a quantidade tem de ser a soma dos pesos atuais; uma
+// caixa só pode sair em parte. Tudo vira um único movimento de saída, uma linha por caixa.
+func matDeliverFromCrates(ctx context.Context, tx *sql.Tx, ids []int64, skuID, whID int64, mv movementRequest) (int64, []matCrateUse, error) {
+	if len(ids) > 50 {
+		return 0, nil, matBad("Selecione no máximo 50 caixas por entrega.")
 	}
+	ids = append([]int64(nil), ids...)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	crates := make([]crateRow, 0, len(ids))
+	for i, cid := range ids {
+		if cid <= 0 || (i > 0 && ids[i-1] == cid) {
+			return 0, nil, matBad("Lista de caixas inválida.")
+		}
+		c, err := getCrate(ctx, tx, cid, true)
+		if errors.Is(err, errNotFound) {
+			return 0, nil, matBad("Caixa não encontrada.")
+		}
+		if err != nil {
+			return 0, nil, err
+		}
+		if c.SKUID != skuID || c.WarehouseID != whID || c.Status != "ACTIVE" {
+			return 0, nil, matConflict("A caixa " + c.Code + " não é do produto e do depósito separados, ou já está vazia. Atualize a página.")
+		}
+		if err = ensureCrateNoInFlightLabel(ctx, tx, cid); err != nil {
+			return 0, nil, matConflict("A etiqueta da caixa " + c.Code + " está sendo impressa. Aguarde e tente de novo.")
+		}
+		crates = append(crates, c)
+	}
+	weights := make([]string, len(crates))
+	for i, c := range crates {
+		weights[i] = c.Weight
+	}
+	total, err := sumCrateWeights(weights)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	if c.SKUID != skuID || c.WarehouseID != whID || c.Status != "ACTIVE" {
-		return 0, matConflict("Esta caixa não é do produto e do depósito separados, ou já está vazia.")
-	}
-	if err = ensureCrateNoInFlightLabel(ctx, tx, crateID); err != nil {
-		return 0, matConflict("A etiqueta desta caixa está sendo impressa. Aguarde e tente de novo.")
-	}
-	var fits bool
-	var left string
-	if err = tx.QueryRowContext(ctx, "SELECT $1::numeric<=$2::numeric,($2::numeric-$1::numeric)::numeric(14,3)::text", mv.Quantity, c.Weight).Scan(&fits, &left); err != nil {
-		return 0, err
+	var fits, whole bool
+	if err = tx.QueryRowContext(ctx, "SELECT $1::numeric<=$2::numeric,$1::numeric=$2::numeric", mv.Quantity, total).Scan(&fits, &whole); err != nil {
+		return 0, nil, err
 	}
 	if !fits {
-		return 0, matConflict("A caixa " + c.Code + " só tem " + c.Weight + " kg.")
+		return 0, nil, matConflict("As caixas selecionadas somam " + total + " kg, menos que a quantidade informada. Atualize a página.")
 	}
-	mv.Notes += " · " + c.Code
-	return crateConsumeTx(ctx, tx, c, left, mv.Quantity, mv, matHash(mv))
+	if !whole && len(crates) > 1 {
+		return 0, nil, matConflict("Com várias caixas, cada uma sai inteira: a quantidade tem de ser " + total + " kg, a soma dos pesos atuais. Para tirar só parte, selecione uma caixa.")
+	}
+	used := make([]matCrateUse, 0, len(crates))
+	var movementID int64
+	for _, c := range crates {
+		take, left := c.Weight, "0"
+		if !whole { // uma caixa, saída parcial: o que sobra fica nela
+			take = mv.Quantity
+			if err = tx.QueryRowContext(ctx, "SELECT ($1::numeric-$2::numeric)::numeric(14,3)::text", c.Weight, take).Scan(&left); err != nil {
+				return 0, nil, err
+			}
+		}
+		movementID, err = crateConsumeTx(ctx, tx, c, left, take, mv, matHash(mv), movementID, fmt.Sprintf("%s:%d", mv.OperationID, c.ID))
+		if err != nil {
+			return 0, nil, err
+		}
+		used = append(used, matCrateUse{ID: c.ID, Code: c.Code, Quantity: take})
+	}
+	return movementID, used, nil
 }
 
 // handleMaterialClose: a cozinha aceita o que foi entregue e encerra a requisição, mesmo
