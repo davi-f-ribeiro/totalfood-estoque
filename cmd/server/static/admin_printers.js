@@ -20,7 +20,7 @@ async function load(){
  for(const d of rows){
   const row=document.createElement('div');row.className='row warehouse-row';
   const info=document.createElement('div'),name=document.createElement('strong'),meta=document.createElement('small');
-  name.textContent=d.name;meta.textContent=(d.active?'Ativa':'Revogada')+testLabel(d);
+  name.textContent=d.name;meta.textContent=(d.active?'Ativa':'Revogada')+seenLabel(d)+testLabel(d);
   info.append(name,meta);row.append(info);
   if(d.active){
    const actions=document.createElement('div');actions.className='printer-actions';
@@ -37,6 +37,11 @@ async function load(){
 // Situação do último teste de cada impressora, para conferir se ele saiu.
 const testStates={PENDING:'aguardando o ESP32',CLAIMED:'sendo impresso',SENT:'enviado ao USB',
  UNCERTAIN:'sem confirmação do ESP32',FAILED:'falhou no ESP32',CANCELLED:'cancelado'};
+// Última vez que o ESP32 buscou a fila (com ou sem etiqueta): mostra se ele alcança o servidor.
+function seenLabel(d){
+ if(!d.active)return '';
+ return d.last_seen_at?' · Buscou a fila em '+d.last_seen_at:' · Ainda não buscou a fila';
+}
 function testLabel(d){
  if(!d.last_test_status)return '';
  return ' · Último teste '+(d.last_test_at||'')+': '+(testStates[d.last_test_status]||d.last_test_status);

@@ -27,16 +27,18 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Fila travada por trabalho sem caixa (503 em produção) | feito | #33 (migration 040) |
 | Etiqueta de teste sem movimentar estoque | feito | #33 |
 | 2.3 Reserva: prazo de 5 min e confirmação tardia | feito | #27 |
-| 2.3 Reserva vencida só expira quando alguma impressora busca a fila | aberto | — |
+| 2.3 Reserva vencida só expira quando alguma impressora busca a fila | feito: expira também ao listar a fila, as impressoras e ao enviar teste | #39 |
 | 2.4 Qualquer impressora pega qualquer etiqueta de caixa (sem filtro por depósito) | aberto | — |
 | 2.5 Etiqueta marcada como enviada sem consultar papel, tampa e pausa da Zebra (`~HS`) | aberto | — |
 | 2.6 Fila do ESP exige login e recusa a senha padrão | feito | #27 |
 | 2.6 Operador precisava da senha de administrador do ESP para imprimir | feito: fila sem senha numa aba própria (rede interna fechada, decisão de 15/11) | firmware 1.6.4 |
 | 2.6 Porta 9100 aberta sem autenticação | aberto | — |
 | 2.7 Falha de banco na autenticação da impressora respondia 401 | feito | #29 |
-| 2.7 `last_seen_at` só atualiza quando há trabalho; comentário órfão na migration 039; `^CI28` com texto só ASCII | aberto | — |
+| 2.7 `last_seen_at` só atualiza quando há trabalho | feito: atualiza a cada busca e aparece em Administração | #39 |
+| 2.7 Comentário órfão na migration 039 | feito: aponta para `allocateLots`, onde a regra está | #39 |
+| 2.7 `^CI28` com texto só ASCII (acentos removidos na etiqueta) | aberto: muda a impressão, validar com a Zebra | — |
 | 2.8 Testes: token revogado, reserva antiga após reenvio, outra impressora, teste endereçado | feito | #29, #33 |
-| 2.8 Testes: falha seguida de reenvio; cancelamento ao gerar nova revisão | aberto | — |
+| 2.8 Testes: falha seguida de reenvio; cancelamento ao gerar nova revisão | feito | #39 |
 
 ## Telas
 
