@@ -73,3 +73,61 @@
 .batch-summary .operation-feedback{margin:0}
 
 @media(max-width:1180px){.batch-grid{grid-template-columns:minmax(0,1fr)}.batch-summary{position:static}}
+
+/* Câmera e dicas: a câmera só aparece no celular; cada dica no seu formato. */
+.batch-scan-row .batch-camera{flex:0 0 auto}
+.batch-hint-mobile{display:none}
+
+/* ---------- Celular e tablet (< 1000 px): Saída em lote ----------
+   Cada produto é um cartão com botões − e +; a confirmação fica numa barra fixa acima do menu
+   inferior, com o aviso logo acima dos botões. */
+@media(max-width:999.98px){
+  .movement[data-mode="batch"]>h1{font-size:1.25rem;margin:0 0 12px}
+  body .main.movement-main:has(.movement[data-mode="batch"]){padding-bottom:168px}
+  .batch-modes{display:flex;width:100%;margin:0 0 12px}
+  .batch-modes a{flex:1;justify-content:center;padding:0 8px}
+  .batch-grid{gap:12px}
+  .batch-main{gap:12px}
+  .batch-card{padding:12px}
+  .batch-route{gap:12px}
+  .batch-route label{flex-basis:100%}
+
+  .batch-scan-row{flex-wrap:wrap}
+  .batch-scan-row input{flex:1 1 100%}
+  .batch-scan-row button{flex:1 1 0}
+  .batch-scan-row .batch-camera{flex:1.4 1 0;order:-1;background:var(--brand-primary);border-color:var(--brand-primary);color:#fff}
+  .batch-scan-row .batch-camera .scan-icon{filter:brightness(0) invert(1)}
+  .batch-hint-desktop{display:none}
+  .batch-hint-mobile{display:block}
+
+  .batch-table-card{overflow:visible;padding:0}
+  .batch-table-card [role="table"]{min-width:0}
+  .batch-row.is-card{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px;grid-template-areas:"name name remove" "qty qty qty" "balance after after";gap:8px 12px;padding:12px;align-items:center}
+  .batch-row.is-card .batch-name{grid-area:name}
+  .batch-row.is-card .batch-remove{grid-area:remove;justify-self:end;width:44px}
+  .batch-row.is-card .batch-qty-cell{grid-area:qty;display:grid;grid-template-columns:52px minmax(0,1fr) 52px;grid-template-areas:"minus input plus" "unit unit unit";gap:4px 8px;text-align:center}
+  .batch-row.is-card .batch-qty-cell .batch-step:first-child{grid-area:minus}
+  .batch-row.is-card .batch-qty-cell .batch-qty{grid-area:input;min-height:52px;text-align:center;font-size:1.375rem}
+  .batch-row.is-card .batch-qty-cell .batch-step:last-of-type{grid-area:plus}
+  .batch-row.is-card .batch-step{min-height:52px;padding:0;font-size:1.5rem;font-weight:700;line-height:1}
+  .batch-row.is-card .batch-qty-unit{grid-area:unit;color:var(--text-muted);font-size:.8125rem}
+  .batch-row.is-card .batch-balance{grid-area:balance;text-align:left}
+  .batch-row.is-card .batch-after{grid-area:after;text-align:right}
+  .batch-row.is-card .batch-balance::before,.batch-row.is-card .batch-after::before{content:attr(data-label);display:block;color:var(--text-muted);font-size:.75rem;font-weight:600}
+
+  .batch-recent-row{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"time kind count" "names names names";gap:2px 12px;padding:10px 12px}
+  .batch-recent-row .time{grid-area:time}.batch-recent-row .kind{grid-area:kind}.batch-recent-row .count{grid-area:count}
+  .batch-recent-row .names{grid-area:names;color:var(--text-secondary);overflow-wrap:anywhere}
+
+  .batch-summary{padding:12px;gap:12px}
+  .batch-actions{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:30;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;margin:0;padding:12px 16px;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 16px rgba(16,24,40,.06)}
+  .batch-actions .operation-feedback{grid-column:1/-1;margin:0;max-height:30vh;overflow:auto}
+  .batch-actions #batchClear{order:1;min-height:52px;padding:0 14px;white-space:nowrap}
+  .batch-actions #batchSubmit{order:2;min-height:52px;font-size:1rem}
+  .batch-actions .operation-feedback{order:0}
+}
+/* Tablet com menu lateral: a barra acompanha a área de conteúdo, como no assistente. */
+@media(min-width:900px) and (max-width:999.98px){
+  .batch-actions{left:232px;bottom:0}
+}
+

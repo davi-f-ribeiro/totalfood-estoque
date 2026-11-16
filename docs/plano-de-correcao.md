@@ -51,6 +51,7 @@ Legenda: **feito** · **parcial** · **aberto** · **decisão** (depende do resp
 | Requisições: todas as mensagens no topo da página, inclusive as do detalhe; mensagem genérica "Operação registrada." (contrato global, seção 3) | feito | PR de Requisições |
 | Caixas: a busca filtra KG no navegador depois do limite de 10 resultados do servidor | aberto | — |
 | Menu do celular com 4 atalhos por perfil; abas na tela de Caixas | decisão | — |
+| Saída no celular um produto por vez (pedido de 15/11: lote como no desktop) | feito: Saída em lote no celular, com câmera | #38 |
 
 ## Outros achados
 

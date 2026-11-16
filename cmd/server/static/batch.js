@@ -1,5 +1,7 @@
 function newOperationID(){if(globalThis.crypto&&typeof crypto.randomUUID==="function")return crypto.randomUUID();const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&0x0f)|0x40;b[8]=(b[8]&0x3f)|0x80;const h=Array.from(b,x=>x.toString(16).padStart(2,"0")).join("");return h.slice(0,8)+"-"+h.slice(8,12)+"-"+h.slice(12,16)+"-"+h.slice(16,20)+"-"+h.slice(20)}
-/* Lote de Entrada, Saída e Transferência (desktop, a partir de 1000 px).
+/* Lote de Entrada, Saída e Transferência (desktop, a partir de 1000 px) e de Saída no celular.
+   No celular (< 1000 px) cada produto vira um cartão, a câmera lê os códigos e a confirmação
+   fica numa barra fixa acima do menu inferior.
    Usa as funções comuns de app.js (api, skuLabel, productLookup, displayDecimal...).
    O servidor grava o lote inteiro ou nada; aqui só montamos o envio e mostramos o resultado. */
 (function(){
@@ -20,6 +22,10 @@ const wh=$('batchWarehouse'),to=$('batchWarehouseTo'),search=$('batchSearch'),lo
   pendingBox=$('batchPending'),pendingText=$('batchPendingText'),checkBtn=$('batchCheck'),retryBtn=$('batchRetry'),discardBtn=$('batchDiscard');
 
 let lines=[],warehouses=[],seq=0,pending=null,pendingState='',launches=[];
+const compactMQ=window.matchMedia?window.matchMedia('(max-width: 999.98px)'):null;
+const compact=()=>!!(compactMQ&&compactMQ.matches);
+/* No celular, focar o campo abre o teclado e cobre a lista: só focamos no desktop. */
+function focusSearch(){if(!compact())search.focus()}
 
 view.hidden=false;
 $('batchProductionDateWrap').hidden=isEntry||isTransfer;productionDate.required=!isEntry&&!isTransfer;productionDate.value=todayProductionDate();
@@ -30,6 +36,8 @@ const num=v=>Number(String(v==null?'':v).replace(',','.'))||0;
 const fmt=(v,max=3)=>displayDecimal(String(v),max);
 const decimalOK=v=>/^(0|[1-9][0-9]*)([.,][0-9]{1,4})?$/.test(String(v||'').trim());
 const plural=(n,one,many)=>n+' '+(n===1?one:many);
+/* Quantidade do lote é em embalagens (quantity_semantics: presentation). */
+function embalagemLabel(line){const c=num(line.content)||1;return c===1?(line.unit||'un.'):'emb. de '+fmt(c)+' '+(line.unit||'')}
 
 function note(type,text){setFeedback(status,type,text)}
 function lookupNote(type,html){feedback.className='product-feedback '+(type||'');feedback.innerHTML=html||'';feedback.hidden=!html}
@@ -59,28 +67,39 @@ function headerRow(){
   labels.forEach(([t,c])=>{const h=cell('columnheader',c);if(t)h.textContent=t;else{const s=document.createElement('span');s.className='sr-only';s.textContent='Remover';h.append(s)}r.append(h)});
   return r;
 }
+function setQty(line,input,row,value){line.qty=value;input.value=value;row.classList.remove('has-error');refreshComputed()}
+function stepButton(label,text,onClick){const b=document.createElement('button');b.type='button';b.className='secondary batch-step';b.textContent=text;b.setAttribute('aria-label',label);b.addEventListener('click',onClick);return b}
 function lineRow(line,i){
-  const r=cell('row','batch-row');r.style.gridTemplateColumns=columns();r.dataset.key=line.key;
+  const r=cell('row','batch-row'+(compact()?' is-card':''));if(!compact())r.style.gridTemplateColumns=columns();r.dataset.key=line.key;
   const l=skuLabel(line);
   const name=cell('cell','batch-name');const strong=document.createElement('strong');strong.textContent=l.item;const meta=document.createElement('span');meta.textContent=l.meta;name.append(strong,meta);
-  const bal=cell('cell','num');bal.dataset.role='balance';
-  const q=cell('cell','num');const qi=document.createElement('input');qi.inputMode='decimal';qi.value=line.qty;qi.setAttribute('aria-label','Quantidade de '+l.item);qi.className='batch-qty';
-  qi.addEventListener('input',()=>{line.qty=qi.value;r.classList.remove('has-error');refreshComputed()});q.append(qi);
+  const bal=cell('cell','num batch-balance');bal.dataset.role='balance';bal.dataset.label=isTransfer?'Na origem':'Estoque atual';
+  const q=cell('cell','num batch-qty-cell');const qi=document.createElement('input');qi.inputMode='decimal';qi.value=line.qty;qi.setAttribute('aria-label','Quantidade de '+l.item);qi.className='batch-qty';
+  qi.addEventListener('input',()=>{line.qty=qi.value;r.classList.remove('has-error');refreshComputed()});
+  if(compact()){
+    /* Botões de 1 em 1 para o polegar; o campo continua aceitando decimais. */
+    const minus=stepButton('Diminuir '+l.item,'−',()=>{const n=num(line.qty)-1;if(n>0)setQty(line,qi,r,String(Math.round(n*10000)/10000).replace('.',','))});
+    const plus=stepButton('Aumentar '+l.item,'+',()=>setQty(line,qi,r,String(Math.round((num(line.qty)+1)*10000)/10000).replace('.',',')));
+    const unit=document.createElement('span');unit.className='batch-qty-unit';unit.textContent=embalagemLabel(line);
+    q.append(minus,qi,plus,unit);
+  }else q.append(qi);
   r.append(name,bal,q);
   if(isEntry){const p=cell('cell','num');const pi=document.createElement('input');pi.inputMode='decimal';pi.value=line.price;pi.setAttribute('aria-label','Preço da embalagem de '+l.item);pi.addEventListener('input',()=>{line.price=pi.value;r.classList.remove('has-error')});p.append(pi);r.append(p)}
-  const after=cell('cell','num batch-after');after.dataset.role='after';r.append(after);
+  const after=cell('cell','num batch-after');after.dataset.role='after';after.dataset.label='Após a saída';if(isEntry)after.dataset.label='Após a entrada';if(isTransfer)after.dataset.label='Fica na origem';r.append(after);
   const rm=document.createElement('button');rm.type='button';rm.className='batch-remove secondary';rm.setAttribute('role','cell');rm.setAttribute('aria-label','Remover '+l.item);rm.textContent='×';
-  rm.addEventListener('click',()=>{lines=lines.filter(x=>x.key!==line.key);renderTable();search.focus()});r.append(rm);
+  rm.addEventListener('click',()=>{lines=lines.filter(x=>x.key!==line.key);renderTable();if(compact())lookupNote('',esc(l.item)+' saiu do lote.');focusSearch()});r.append(rm);
   return r;
 }
 function renderTable(){
   table.textContent='';
   if(!lines.length){
-    const e=document.createElement('p');e.className='batch-empty';e.textContent='Nenhum produto no lote. Bipe um código ou busque pelo nome.';table.append(e);
+    const e=document.createElement('p');e.className='batch-empty';e.textContent=compact()?'Nenhum produto no lote. Leia um código com a câmera ou busque pelo nome.':'Nenhum produto no lote. Bipe um código ou busque pelo nome.';table.append(e);
   }else{
-    table.append(headerRow());
+    if(!compact())table.append(headerRow());
     lines.forEach((ln,i)=>table.append(lineRow(ln,i)));
   }
+  /* Redesenhar (ex.: girar a tela) não pode destravar um lançamento sem confirmação. */
+  if(pending)table.querySelectorAll('input,button').forEach(el=>{el.disabled=true});
   refreshComputed();
 }
 function refreshComputed(){
@@ -121,13 +140,15 @@ async function addProduct(r){
     renderTable();
     const row=table.querySelector('[data-key="'+existing.key+'"]');
     row?.classList.add('is-flash');setTimeout(()=>row?.classList.remove('is-flash'),900);
-    search.value='';search.focus();return;
+    if(compact())lookupNote('success',esc(skuLabel(existing).item)+': '+esc(fmt(num(existing.qty),4))+' no lote.');
+    search.value='';focusSearch();return;
   }
   const line=Object.assign({key:'l'+(++seq),content_quantity:'1',qty:'1',price:'',rows:null},r);
   line.content=line.content_quantity;
   lines.push(line);search.value='';renderTable();
   try{line.rows=await api('/api/stock/availability?sku_id='+encodeURIComponent(r.sku_id))}catch(err){line.rows=[];lookupNote('error','Não foi possível consultar o estoque de '+esc(skuLabel(r).item)+'. O servidor confere de novo ao confirmar.')}
   refreshComputed();
+  if(compact()){lookupNote('success',esc(skuLabel(line).item)+' adicionado. '+plural(lines.length,'produto','produtos')+' no lote.');return}
   const row=table.querySelector('[data-key="'+line.key+'"] .batch-qty');row?.focus();row?.select();
 }
 let lookupSeq=0;
@@ -176,10 +197,10 @@ function validate(){
   if(!wh.value){note('error',isTransfer?'Escolha o depósito de origem.':'Escolha o depósito.');wh.focus();return false}
   if(isTransfer){if(!to.value){note('error','Escolha o depósito de destino.');to.focus();return false}if(to.value===wh.value){note('error','O destino precisa ser diferente da origem.');return false}}
   if(!isEntry&&!isTransfer&&!productionDate.value){note('error','Informe a data de produção.');productionDate.focus();return false}
-  if(!lines.length){note('error','Adicione ao menos um produto ao lote.');search.focus();return false}
+  if(!lines.length){note('error','Adicione ao menos um produto ao lote.');focusSearch();return false}
   for(let i=0;i<lines.length;i++){
     const l=lines[i],row=table.querySelector('[data-key="'+l.key+'"]'),label=skuLabel(l).item;
-    const fail=msg=>{row?.classList.add('has-error');note('error','Item '+(i+1)+', '+label+': '+msg);return false};
+    const fail=msg=>{row?.classList.add('has-error');if(compact())row?.scrollIntoView({block:'center',behavior:'smooth'});note('error','Item '+(i+1)+', '+label+': '+msg);return false};
     if(!decimalOK(l.qty)||num(l.qty)<=0)return fail('digite uma quantidade maior que zero, com até 4 casas decimais.');
     if(isEntry&&(!decimalOK(l.price)))return fail('digite o preço da embalagem.');
     if(!isEntry){const bal=currentBalance(l);if(bal!==null&&num(l.qty)*(num(l.content)||1)>bal)return fail('a quantidade é maior que o estoque ('+fmt(bal)+' '+(l.unit||'')+').')}
@@ -210,13 +231,14 @@ async function dropPending(){
   if(id&&store()){try{await store().clearPending('movement',id)}catch(e){}}
   pending=null;pendingState='';pendingBox.hidden=true;retryBtn.hidden=true;discardBtn.hidden=true;lock(false);renderFacts();
 }
-function lock(on){[wh,to,search,addBtn,doc,notes,productionDate].forEach(el=>{el.disabled=on});table.querySelectorAll('input,button').forEach(el=>{el.disabled=on})}
+function lock(on){[wh,to,search,addBtn,$('batchScan'),doc,notes,productionDate].forEach(el=>{if(el)el.disabled=on});table.querySelectorAll('input,button').forEach(el=>{el.disabled=on})}
 function showPending(retryable,discardable){
   disarmDiscard(discardBtn);pendingBox.hidden=false;
   const name=pending.url.includes('/entry')?'Entrada':pending.url.includes('/exit')?'Saída':'Transferência';
   const n=Array.isArray(pending.body.lines)?pending.body.lines.length:1;
   pendingText.textContent=name+' sem confirmação · '+plural(n,'produto','produtos')+'. Confira se foi registrada antes de fazer outro lançamento.';
   retryBtn.hidden=!retryable;discardBtn.hidden=!discardable;lock(true);renderFacts();
+  if(compact())pendingBox.scrollIntoView({block:'start',behavior:'smooth'});
 }
 function summaryOfLaunch(){
   const names=lines.slice(0,2).map(l=>skuLabel(l).item).join(', ');
@@ -234,7 +256,7 @@ function reset(){lines=[];doc.value='';notes.value='';productionDate.value=today
 async function confirmed(text){
   launches.unshift(summaryOfLaunch());
   await dropPending();
-  reset();renderRecent();note('success',text);search.focus();
+  reset();renderRecent();note('success',text);focusSearch();
 }
 async function verify(){
   if(!pending)return'none';
@@ -279,6 +301,19 @@ retryBtn.addEventListener('click',()=>runLocked(retryBtn,async()=>{const s=await
 discardBtn.addEventListener('click',async()=>{if(pendingState!=='missing'&&!armDiscard(discardBtn)){note('error',uncheckedDiscardWarning);return}disarmDiscard(discardBtn);await dropPending();note('success','Lançamento descartado. Você já pode fazer outro.')});
 clearBtn.addEventListener('click',()=>{reset();note('','')});
 
+/* ---------- Câmera (celular) ---------- */
+/* initScanner (app.js) abre a câmera em tela cheia; o código lido entra como se tivesse sido bipado. */
+if(compact())search.placeholder='Nome, marca ou código';
+if(typeof initScanner==='function'&&compact()){
+  /* A câmera fica no passo 1 do assistente, oculto no modo lote: trazemos para o
+     cartão de busca, para o aviso de câmera negada aparecer junto do botão. */
+  const sc=$('scanner');if(sc)document.querySelector('.batch-scan .batch-scan-row')?.after(sc);
+  initScanner('batchScan',async code=>{search.value=code;await runSearch(true)});
+  $('batchScan').addEventListener('scanner:start',()=>{lookupSeq++;hideLookup();lookupNote('','')});
+}
+/* Girar a tela entre celular e desktop redesenha a lista no formato certo. */
+compactMQ?.addEventListener?.('change',()=>renderTable());
+
 /* ---------- Início ---------- */
 renderTable();renderRecent();
 loadWarehousesForBatch();
@@ -291,5 +326,5 @@ if(q.get('item_id')){api('/api/stock/detail/'+encodeURIComponent(q.get('item_id'
   search.value=d.name;
   if(rows.length===1){addProduct(rows[0])}else if(rows.length>1){showLookup(rows,lookup,addProduct);lookupNote('','Escolha a embalagem do produto.')}
 }).catch(err=>lookupNote('error',esc(uiErrorMessage(err,'Não foi possível carregar o produto.'))))}
-search.focus();
+focusSearch();
 })();

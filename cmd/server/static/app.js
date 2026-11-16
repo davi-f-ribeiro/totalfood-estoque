@@ -78,7 +78,7 @@ sel.onchange=load;search?.addEventListener('input',applyStockFilters);below?.add
 
 async function initMovement(){
 let f=document.getElementById('movementForm');if(!f)return;
-let movementRoot=document.querySelector('.movement');if(document.getElementById('batchView')&&window.matchMedia&&window.matchMedia('(min-width: 1000px)').matches){movementRoot.dataset.mode='batch';return}movementRoot.dataset.mode='wizard';
+let movementRoot=document.querySelector('.movement');/* Lote: no desktop para Entrada, Saída e Transferência; no celular só a Saída usa o lote (vários produtos e uma confirmação). */if(document.getElementById('batchView')&&(movementRoot.dataset.title==='Saída'||window.matchMedia&&window.matchMedia('(min-width: 1000px)').matches)){movementRoot.dataset.mode='batch';return}movementRoot.dataset.mode='wizard';
 let allWarehouses;try{allWarehouses=await loadWarehouses()}catch(err){setFeedback(document.getElementById('status'),'error',uiErrorMessage(err,'Não foi possível carregar os depósitos.'));return}
 let params=new URLSearchParams(location.search),title=document.querySelector('.movement').dataset.title,isEntry=title==='Entrada',isTransfer=title==='Transferência',canCatalog=!!document.querySelector('.nav a[href="/products"]');
 let costWrap=document.getElementById('costWrap'),destWrap=document.getElementById('destWrap'),originWrap=document.getElementById('originWrap');
