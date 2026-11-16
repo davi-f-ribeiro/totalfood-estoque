@@ -151,11 +151,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	csrf, err := newToken()
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
+	csrf := csrfForSession(tok)
 	exp := time.Now().Add(12 * time.Hour)
 	_, err = a.db.ExecContext(r.Context(), `INSERT INTO sessions (user_id,token_hash,csrf_token_hash,expires_at) VALUES ($1,$2,$3,$4)`, id, hashToken(tok), hashToken(csrf), exp)
 	if err != nil {
@@ -310,8 +306,13 @@ func newToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 func hashToken(v string) string { h := sha256.Sum256([]byte(v)); return hex.EncodeToString(h[:]) }
-func osGetenv(k string) string  { return strings.TrimSpace(os.Getenv(k)) }
-func secureCookie() bool        { return os.Getenv("COOKIE_SECURE") != "false" }
+
+// csrfForSession deriva o token CSRF do token de sessão. O cookie de sessão é HttpOnly e
+// SameSite=Strict, então só o servidor consegue calcular o valor; e como ele depende só da
+// sessão, é o mesmo em todas as abas e não muda quando outra página é aberta.
+func csrfForSession(sessionToken string) string { return hashToken("csrf:" + sessionToken) }
+func osGetenv(k string) string                  { return strings.TrimSpace(os.Getenv(k)) }
+func secureCookie() bool                        { return os.Getenv("COOKIE_SECURE") != "false" }
 func setSessionCookie(w http.ResponseWriter, tok string, exp time.Time) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: tok, Path: "/", Expires: exp, HttpOnly: true, Secure: secureCookie(), SameSite: http.SameSiteStrictMode})
 }

@@ -90,7 +90,7 @@ func (a *app) showChangePassword(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	csrf, _ := a.rotateCSRF(r.Context(), r)
+	csrf, _ := a.sessionCSRF(r.Context(), r)
 	a.render(w, "change_password.html", uiData{Title: "Alterar senha", User: u, CSRF: csrf, Page: "change-password"})
 }
 
@@ -111,7 +111,7 @@ func (a *app) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tok, _ := newToken()
-	csrf, _ := newToken()
+	csrf := csrfForSession(tok)
 	exp := now().Add(sessionDuration)
 	_, err := a.db.ExecContext(r.Context(), `INSERT INTO sessions (user_id,token_hash,csrf_token_hash,expires_at) VALUES ($1,$2,$3,$4)`, id, hashToken(tok), hashToken(csrf), exp)
 	if err != nil {
@@ -149,7 +149,7 @@ func (a *app) uiPage(tmpl, title, res, act string) http.HandlerFunc {
 			http.Redirect(w, r, "/no-access", http.StatusSeeOther)
 			return
 		}
-		csrf, _ := a.rotateCSRF(r.Context(), r)
+		csrf, _ := a.sessionCSRF(r.Context(), r)
 		data, err := a.uiDataForUser(r.Context(), u, csrf, tmpl, title)
 		if err != nil {
 			http.Error(w, "Não foi possível carregar a página.", http.StatusInternalServerError)
@@ -225,7 +225,7 @@ func (a *app) adminPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/change-password", http.StatusSeeOther)
 		return
 	}
-	csrf, _ := a.rotateCSRF(r.Context(), r)
+	csrf, _ := a.sessionCSRF(r.Context(), r)
 	data, err := a.uiDataForUser(r.Context(), u, csrf, "admin", "Administração")
 	if err != nil {
 		http.Error(w, "Não foi possível carregar a página.", http.StatusInternalServerError)
@@ -281,16 +281,17 @@ func (a *app) redirectToAuthorizedHome(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/no-access", http.StatusSeeOther)
 }
 
-func (a *app) rotateCSRF(ctx context.Context, r *http.Request) (string, error) {
+// sessionCSRF devolve o token CSRF que a página deve enviar. Ele é fixo por sessão
+// (csrfForSession). Antes era sorteado a cada página carregada: abrir o sistema em uma
+// segunda aba trocava o token no banco, e o próximo envio da primeira aba falhava com 403.
+// O UPDATE só alcança sessões criadas antes desta mudança, que ainda guardam um token sorteado.
+func (a *app) sessionCSRF(ctx context.Context, r *http.Request) (string, error) {
 	c, _ := r.Cookie(sessionCookieName)
 	if c == nil {
 		return "", errAuthRequired
 	}
-	csrf, err := newToken()
-	if err != nil {
-		return "", err
-	}
-	_, err = a.db.ExecContext(ctx, `UPDATE sessions SET csrf_token_hash=$1 WHERE token_hash=$2 AND revoked_at IS NULL AND expires_at>now()`, hashToken(csrf), hashToken(c.Value))
+	csrf := csrfForSession(c.Value)
+	_, err := a.db.ExecContext(ctx, `UPDATE sessions SET csrf_token_hash=$1 WHERE token_hash=$2 AND csrf_token_hash<>$1 AND revoked_at IS NULL AND expires_at>now()`, hashToken(csrf), hashToken(c.Value))
 	return csrf, err
 }
 func (a *app) render(w http.ResponseWriter, name string, data uiData) {
