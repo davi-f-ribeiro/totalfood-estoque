@@ -32,6 +32,7 @@ type uiData struct {
 	CanTransfer        bool
 	CanReports         bool
 	CanCatalog         bool
+	CanCatalogWrite    bool
 	CanAssets          bool
 	CanCosts           bool
 	CanCostsWrite      bool
@@ -191,6 +192,7 @@ WHERE pp.profile_id=$1`, u.ProfileID)
 		CanTransfer:        has("movement_transfer", "write"),
 		CanReports:         has("operations", "read"),
 		CanCatalog:         has("catalog", "read"),
+		CanCatalogWrite:    has("catalog", "write"),
 		CanAssets:          has("assets", "read"),
 		CanCosts:           has("costs", "read"),
 		CanCostsWrite:      has("costs", "write"),
@@ -296,6 +298,8 @@ func (a *app) sessionCSRF(ctx context.Context, r *http.Request) (string, error) 
 }
 func (a *app) render(w http.ResponseWriter, name string, data uiData) {
 	setSecurityHeaders(w)
+	// Página nunca fica guardada no navegador: depois de sair, Voltar não pode mostrar a tela anterior.
+	w.Header().Set("Cache-Control", "no-store")
 	_ = uiTemplates.ExecuteTemplate(w, name, data)
 }
 

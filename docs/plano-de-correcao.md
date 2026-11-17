@@ -97,3 +97,29 @@ Próximos passos: abrir com dados reais as telas listadas em L13 e a Contagem (L
 | Abrir o sistema em outra aba derrubava o envio da primeira com 403 (o token CSRF era sorteado a cada página carregada), e a tela mostrava "Você não tem permissão" para qualquer 403 | feito: token fixo por sessão (`csrfForSession`), a tela mostra o motivo que o servidor devolve; teste `TestCSRFTokenSurvivesOpeningAnotherPage` |
 | `resetProductionAccess` tinha teste, mas nada na aplicação a chamava | feito: removida (5S) |
 | Requisições: a cozinha só conseguia confirmar a entrega inteira (auditoria de 16/11/2026) | feito: recebimento parcial com motivo, situação "Recebida com divergência" e confirmação do restante pela cozinha solicitante ou pela gerência, sem movimentar estoque (migration 041; `docs/requisicoes-materiais.md`); teste `TestMaterialPartialReceiptDivergenceAndReconciliation` |
+
+## Teste de 16/11/2026 (`main` em `40cdd82`)
+
+Origem: `docs/testes/2026-11-16-40cdd82/relatorio-teste-totalfood.md`, na branch `qa/totalfood-estoque-2026-11-16-40cdd82` (147 casos, 21 falhas, 14 defeitos). Corrigido na branch `fix/qa-2026-11-16-40cdd82`. Cada item tem prova em `cmd/server/qa_2026_11_16_test.go`.
+
+| Caso | Situação | Onde |
+|---|---|---|
+| PERM-01 Gerente e Estoquista de banco novo só abriam Requisições | feito: migration 043 dá ao Estoquista estoque, catálogo (leitura), entrada, saída e transferência; ao Gerente estoque, catálogo (leitura), relatórios e contagem. Só acrescenta acessos. O ajuste de estoque continua sem perfil automático (migration 030) | `migrations/043_default_profile_access.sql` |
+| INV-21 / TRV-04 / TRV-05 Ajuste de contagem em produto de caixa respondia 500 "Erro interno." | feito: 409 dizendo para corrigir o peso de cada caixa em Caixas; saldo e pesos preservados. O ajuste agregado continua não permitido para caixa | `inventory_adjustment_http.go` |
+| CAT-04 Catálogo recusava produto novo sem marca | feito: `brand_id=0` aceito na criação, nome gerado com "Sem marca"; a tela Produtos ganhou a opção "Sem marca" | `catalog.go`, `products.html`, `products.js` |
+| ACE-07 Voltar depois de Sair mostrava a tela anterior | feito: páginas saem com `Cache-Control: no-store` | `ui.go` (`render`) |
+| REL-05 / TRV-10 Ajustes fora do relatório de movimentações | feito: relatório "Ajustes de contagem" (`type=AJUSTE`), com sinal e observação; contrato atualizado | `movement_reports.go`, `reports.html`, `app.js`, `movement-reports-contract.md` |
+| EST-06 Trocar o depósito no Estoque perdia a busca e o "abaixo do mínimo" | feito: os filtros são reaplicados a cada carga da lista | `app.js` (`initStock`) |
+| ADM-02 Senha redefinida pelo administrador não pedia troca | feito: redefinição e edição com senha marcam `must_change_password` (menos quando o administrador muda a própria senha) | `admin.go` |
+| ACE-06 Envio com a sessão encerrada aparecia como "cadastro sem confirmação" | feito: o aviso diz que a sessão foi encerrada e que o cadastro continua guardado; o 403 de sessão trocada em outra aba também mantém o cadastro guardado | `app.js` (`catalogPendingFlow`) |
+| CX-05 / CX-11 Fila sem o motivo do cancelamento, da falha e da incerteza | feito: `/api/print/jobs` devolve `reason`; a fila mostra "Cancelada: Caixa vazia", "Falha: …" | `print_queue.go`, `crates.js` |
+| CAT-06 "+ Novo produto" visível para quem só lê o catálogo | feito: o botão só existe com `catalog/write` | `ui.go`, `products.html`, `products.js` |
+| TRV-01 Encerramento repetido com outra observação respondia 200 | feito: 409 quando a observação enviada difere da gravada; repetição igual ou sem observação continua 200 | `material_receipts.go` |
+| ADM-08 `delivery`, `dispatch` e `fiscal_import` sem rótulo em português | feito: "Minha rota", "Expedição" e "Nota fiscal" | `app.js` (`resourceLabel`) |
+| EST-07 Início mostrava a falta só com o número | feito: coluna "Situação" com "Faltam X", igual ao Estoque | `home.js`, `home.css` |
+| LAY-05 Barra inferior a 11 px e textos de apoio a 13,33 px | feito: barra em 12 px em qualquer largura; `small` em 14 px | `app.css` |
+| LAY-08 Página dentro de "Mais" sem marca de página atual no celular | feito: o botão "Mais" fica verde quando a página atual está dentro dele | `app.js`, `app.css` |
+| LAY-11 Link "Administração" em Caixas com 17 px de altura | feito: link dentro de texto de apoio com 44 px no celular | `app.css` |
+| LAY-12 Slogan com ponto de exclamação | feito: "Qualidade todo dia" | `login.html`, `base.html` |
+
+Fora desta correção, como o relatório registrou: `TestWarehouseMigration019IncrementalAndIdempotent` consulta `pg_indexes` e `pg_trigger` sem restringir o schema e falha em banco reutilizado; usuário criado em Administração entra sem troca obrigatória de senha (só a redefinição passou a exigir); produto com marca não vira "Sem marca" pela edição.

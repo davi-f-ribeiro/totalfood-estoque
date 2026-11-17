@@ -217,7 +217,7 @@ SELECT EXISTS(SELECT 1 FROM profiles WHERE id=$1),
 
 	var newVersion int64
 	if passwordHash != "" {
-		err = tx.QueryRowContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3,password_hash=$4,version=version+1 WHERE id=$5 AND version=$6 RETURNING version`, login, req.ProfileID, active, passwordHash, id, req.Version).Scan(&newVersion)
+		err = tx.QueryRowContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3,password_hash=$4,must_change_password=$7,version=version+1 WHERE id=$5 AND version=$6 RETURNING version`, login, req.ProfileID, active, passwordHash, id, req.Version, id != u.ID).Scan(&newVersion)
 	} else {
 		err = tx.QueryRowContext(r.Context(), `UPDATE users SET login=$1,profile_id=$2,active=$3,version=version+1 WHERE id=$4 AND version=$5 RETURNING version`, login, req.ProfileID, active, id, req.Version).Scan(&newVersion)
 	}
@@ -294,7 +294,7 @@ func (a *app) handleAdminResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var newVersion int64
-	if err = tx.QueryRowContext(r.Context(), `UPDATE users SET password_hash=$1,version=version+1 WHERE id=$2 AND version=$3 RETURNING version`, string(h), id, req.Version).Scan(&newVersion); errors.Is(err, sql.ErrNoRows) {
+	if err = tx.QueryRowContext(r.Context(), `UPDATE users SET password_hash=$1,must_change_password=$4,version=version+1 WHERE id=$2 AND version=$3 RETURNING version`, string(h), id, req.Version, id != userFromContext(r.Context()).ID).Scan(&newVersion); errors.Is(err, sql.ErrNoRows) {
 		writeConcurrentEditError(w)
 		return
 	} else if err != nil {

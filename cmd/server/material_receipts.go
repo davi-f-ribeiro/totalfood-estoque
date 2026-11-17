@@ -455,16 +455,22 @@ func (a *app) handleMaterialClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var closed, anyDelivery, unchecked bool
-	var asked, delivered, received string
-	err = tx.QueryRowContext(ctx, `SELECT r.closed_at IS NOT NULL,
+	var asked, delivered, received, closedNotes string
+	err = tx.QueryRowContext(ctx, `SELECT r.closed_at IS NOT NULL,COALESCE(r.close_notes,''),
   EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=r.id),
   EXISTS(SELECT 1 FROM material_request_deliveries WHERE request_id=r.id AND received_at IS NULL),
   COALESCE((SELECT sum(quantity) FROM material_request_lines WHERE request_id=r.id),0)::text,
   COALESCE((SELECT sum(quantity) FROM material_request_deliveries WHERE request_id=r.id),0)::text,
   COALESCE((SELECT sum(received_quantity) FROM material_request_deliveries WHERE request_id=r.id),0)::text
-  FROM material_requests r WHERE r.id=$1`, id).Scan(&closed, &anyDelivery, &unchecked, &asked, &delivered, &received)
+  FROM material_requests r WHERE r.id=$1`, id).Scan(&closed, &closedNotes, &anyDelivery, &unchecked, &asked, &delivered, &received)
 	if err != nil {
 		a.matRespond(w, err)
+		return
+	}
+	// Repetir o encerramento é seguro; repetir com outra observação é outro pedido e não pode
+	// passar por confirmação do primeiro. Repetição sem observação só confere a situação.
+	if closed && req.Notes != "" && closedNotes != req.Notes {
+		a.matRespond(w, matConflict("Esta requisição já foi encerrada com outra observação. Atualize a página."))
 		return
 	}
 	if closed || status == "RECEBIDA" {
