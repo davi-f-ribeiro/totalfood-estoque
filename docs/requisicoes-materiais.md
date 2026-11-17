@@ -1,7 +1,7 @@
 # Requisições de materiais — Totalfood Estoque
 
 ## Objetivo
-Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma **data de produção** e um **serviço** (café da manhã, almoço ou jantar). A operação é independente da solicitação de compra do Planner.
+Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma **data de produção** e um **serviço** (café da manhã, almoço, lanche ou jantar). A operação é independente da solicitação de compra do Planner.
 
 ## Fluxo
 1. Cozinha abre `/material-requests`, informa unidade, entrega desejada, data de produção e serviço; adiciona itens/quantidades nas unidades-base (KG, L, UN).

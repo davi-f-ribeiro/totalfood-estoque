@@ -198,7 +198,7 @@ func (a *app) handleMaterialCreate(w http.ResponseWriter, r *http.Request) {
 	if !matOp(req.OperationID) || len(req.UnitName) == 0 || len(req.UnitName) > 120 || len(req.Notes) > 1000 ||
 		req.DeliveryDate == "" || !validProductionDate(req.DeliveryDate) ||
 		req.ProductionDate == "" || !validProductionDate(req.ProductionDate) ||
-		(req.Service != "cafe" && req.Service != "almoco" && req.Service != "jantar") ||
+		(req.Service != "cafe" && req.Service != "almoco" && req.Service != "lanche" && req.Service != "jantar") ||
 		len(req.Lines) == 0 || len(req.Lines) > 100 {
 		writeJSONError(w, 400, "Confira unidade, datas, serviço e itens da requisição.")
 		return
