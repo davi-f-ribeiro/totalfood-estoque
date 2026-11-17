@@ -35,7 +35,7 @@ func TestMaterialRequestWorkflowServiceReservationPartialDeliveryAndReceipt(t *t
 		t.Fatal(err)
 	}
 	future := time.Now().In(time.FixedZone("-03", -3*3600)).AddDate(0, 0, 1).Format("2006-01-02")
-	body := map[string]any{"operation_id": "material-request-create", "unit_name": "Cozinha Central", "delivery_date": future, "production_date": future, "service": "almoco", "notes": "Almoço", "lines": []map[string]any{{"item_id": item, "quantity": "10"}}}
+	body := map[string]any{"operation_id": "material-request-create", "unit_name": "Cozinha Central", "delivery_date": future, "production_date": future, "service": "lanche", "notes": "Lanche", "lines": []map[string]any{{"item_id": item, "quantity": "10"}}}
 	created := authReq(a, http.MethodPost, "/api/material-requests", body, cozinha, "")
 	if created.Code != 201 {
 		t.Fatalf("create=%d %s", created.Code, created.Body.String())
@@ -46,7 +46,7 @@ func TestMaterialRequestWorkflowServiceReservationPartialDeliveryAndReceipt(t *t
 	if repeated.Code != 200 || int64(materialTestJSON(t, repeated.Body.Bytes())["id"].(float64)) != id {
 		t.Fatalf("create replay=%d %s", repeated.Code, repeated.Body.String())
 	}
-	bad := map[string]any{"operation_id": "material-request-create", "unit_name": "Cozinha Central", "delivery_date": future, "production_date": future, "service": "jantar", "notes": "Almoço", "lines": []map[string]any{{"item_id": item, "quantity": "10"}}}
+	bad := map[string]any{"operation_id": "material-request-create", "unit_name": "Cozinha Central", "delivery_date": future, "production_date": future, "service": "jantar", "notes": "Lanche", "lines": []map[string]any{{"item_id": item, "quantity": "10"}}}
 	if rr := authReq(a, http.MethodPost, "/api/material-requests", bad, cozinha, ""); rr.Code != 409 {
 		t.Fatalf("changed replay=%d %s", rr.Code, rr.Body.String())
 	}
@@ -68,7 +68,7 @@ func TestMaterialRequestWorkflowServiceReservationPartialDeliveryAndReceipt(t *t
 		t.Fatalf("detail=%d %s", detail.Code, detail.Body.String())
 	}
 	d := materialTestJSON(t, detail.Body.Bytes())
-	if d["service"] != "almoco" || d["production_date"] != future {
+	if d["service"] != "lanche" || d["production_date"] != future {
 		t.Fatalf("wrong service/day: %+v", d)
 	}
 	lines := d["lines"].([]any)

@@ -4,7 +4,7 @@ const root=document.getElementById('materialsRoot');if(!root)return;
 const $=id=>document.getElementById(id);
 const canWrite=root.dataset.canWrite==='1',canFulfill=root.dataset.canFulfill==='1',canReceive=root.dataset.canReceive==='1';
 const status=$('materialStatus'),pendingBox=$('materialPending'),list=$('materialList'),detail=$('materialDetail'),detailContent=$('materialDetailContent');
-const serviceLabel={cafe:'Café da manhã',almoco:'Almoço',jantar:'Jantar'};
+const serviceLabel={cafe:'Café da manhã',almoco:'Almoço',lanche:'Lanche',jantar:'Jantar'};
 const statusText=s=>s==='RECEBIDA_COM_DIVERGENCIA'?'RECEBIDA COM DIVERGÊNCIA':String(s||'').replaceAll('_',' ');
 let draft=[],current=0,busy=false,pending=null,searchSequence=0,searchTimer=0;
 const pendingKey='material-request:pending:'+document.querySelector('meta[name="current-user-id"]')?.content;

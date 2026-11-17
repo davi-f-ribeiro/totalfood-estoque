@@ -14,7 +14,7 @@ const html=original.replace('{{template "header" .}}','<header>Gestão de Estoqu
 .replaceAll('{{if .CanMaterialWrite}}','').replaceAll('{{end}}','');
 const state={requests:[],created:new Map(),reservations:[],deliveries:[],deliverOps:new Map(),failDeliver:true,received:new Set(),crates:[]};
 const respond=(route,status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
-const request1=()=>({id:1,unit_name:'Cozinha Central',requested_by:'Ana',production_date:'2026-11-16',service:'almoco',delivery_date:'2026-11-16',
+const request1=()=>({id:1,unit_name:'Cozinha Central',requested_by:'Ana',production_date:'2026-11-16',service:'lanche',delivery_date:'2026-11-16',
  status:state.deliveries.length?'EM_ATENDIMENTO':'ABERTA',created_at:'2026-11-15T10:00:00Z',notes:'',
  lines:[{id:1,item_id:20,item:'Feijão carioca',unit:'KG',quantity:'10',reserved:String(state.reservations.reduce((s,r)=>s+Number(r.remaining),0)),delivered:String(state.deliveries.reduce((s,d)=>s+Number(d.quantity),0))}],
  reservations:state.reservations,
@@ -43,7 +43,7 @@ async function main(){
    const req=route.request(),u=new URL(req.url()),p=u.pathname;
    let body={};try{body=req.postDataJSON()||{}}catch{}
    state.requests.push({p,method:req.method(),body});
-   if(p==='/api/material-requests'&&req.method()==='GET')return respond(route,200,[{id:1,unit_name:'Cozinha Central',production_date:'2026-11-16',service:'almoco',items:1,status:request1().status}]);
+   if(p==='/api/material-requests'&&req.method()==='GET')return respond(route,200,[{id:1,unit_name:'Cozinha Central',production_date:'2026-11-16',service:'lanche',items:1,status:request1().status}]);
    if(p==='/api/material-requests'&&req.method()==='POST'){
     if(!state.created.has(body.operation_id))state.created.set(body.operation_id,2);
     return respond(route,201,{id:state.created.get(body.operation_id),status:'confirmed'});
@@ -78,6 +78,7 @@ async function main(){
   await page.locator('#materialSearch').fill('arroz');
   await page.locator('#materialMatches button').first().click();
   await page.locator('#materialUnit').fill('Cozinha Central');
+  await page.locator('#materialService').selectOption({label:'Lanche'});
   await page.locator('#materialCreateSubmit').click();
   await page.locator('#materialCreateStatus',{hasText:'Informe a quantidade de Arroz branco'}).waitFor();
   assert(await inViewport('#materialCreateStatus'),'Erro da criação precisa aparecer na tela');
@@ -85,11 +86,13 @@ async function main(){
   await page.locator('#materialCreateSubmit').click();
   await page.locator('#materialCreateStatus',{hasText:'Requisição #2 enviada ao estoque: 1 material para Cozinha Central.'}).waitFor();
   assert(await inViewport('#materialCreateStatus'),'Sucesso da criação precisa aparecer na tela');
+  assert.equal(state.requests.find(r=>r.p==='/api/material-requests'&&r.method==='POST').body.service,'lanche');
   await topHidden();
 
   // Separar: aviso no cartão do material.
   await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).click();
   await page.locator('#materialDetail').waitFor({state:'visible'});
+  await page.locator('#materialDetail').getByText('Lanche',{exact:true}).waitFor();
   await page.locator('[data-note-key="line:1"] button',{hasText:'Separar material'}).click();
   await page.locator('[data-note-key="line:1"] select').waitFor();
   await page.locator('[data-note-key="line:1"] input').fill('4');
