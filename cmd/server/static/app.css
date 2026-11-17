@@ -298,7 +298,7 @@ label.check{display:flex;align-items:center;gap:8px;min-height:44px;margin-botto
   .nav>a,.nav-more-toggle{flex-direction:column;justify-content:center;gap:3px;min-width:0;min-height:60px;padding:8px 2px 6px;border-top:3px solid transparent;font-size:.75rem;line-height:1.15;text-align:center}
   /* Com 7 ou mais itens, rótulos longos (Requisições) quebram dentro da coluna em vez de invadir a vizinha. */
   .nav>a{overflow-wrap:anywhere;hyphens:auto}
-  @media(max-width:420px){.nav>a,.nav-more-toggle{font-size:.6875rem;padding-left:1px;padding-right:1px}}
+  @media(max-width:420px){.nav>a,.nav-more-toggle{padding-left:1px;padding-right:1px}}
   .nav>a[aria-current="page"]{border-top-color:var(--brand-primary);background:transparent}
   .nav-more{display:block;position:relative;min-width:0}
   .nav-more-toggle{display:flex;width:100%;height:100%;border-radius:0}
@@ -617,3 +617,14 @@ input[type="checkbox"],input[type="radio"],progress{accent-color:var(--text-prim
 .stock-crate-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:4px 0;border-top:1px solid var(--border);color:var(--text-primary);text-decoration:none;font-variant-numeric:tabular-nums}
 a.stock-crate-row:hover{background:var(--surface)}
 .stock-crate-row strong{white-space:nowrap;font-weight:600}
+
+/* Texto de apoio: nunca abaixo de 14 px (o padrão do navegador para <small> dá 13,33 px). */
+small{font-size:.875rem}
+/* Celular: página atual dentro de “Mais” marca o próprio botão, como os outros itens da barra. */
+@media(max-width:899px){
+  .nav-more.has-current .nav-more-toggle{background:var(--brand-primary);color:var(--text-primary);font-weight:600}
+}
+/* Link dentro de texto de apoio com área de toque de 44 px no celular. */
+@media(max-width:899px){
+  .hint a{display:inline-flex;align-items:center;min-height:44px}
+}

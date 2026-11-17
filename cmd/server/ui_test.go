@@ -1181,7 +1181,7 @@ func TestCatalogCreateRecoveryUIContract(t *testing.T) {
 		"function catalogPendingFlow(",
 		"async function saveCatalogPending(kind,p)",
 		"store.claimPending(kind,p.body.operation_id,p.url,p)",
-		"if(uncertainWriteError(err)||err.status===401)return{state:'unknown',err}",
+		"if(uncertainWriteError(err)||sessionLostError(err))return{state:'unknown',err}",
 		"if(current||!await saveCatalogPending(kind,p))",
 		"ficou sem confirmação",
 	} {

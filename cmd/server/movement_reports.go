@@ -24,16 +24,18 @@ type movementReportRow struct {
 	DocumentNumber string    `json:"document_number"`
 	SupplierName   string    `json:"supplier_name"`
 	Responsible    string    `json:"responsible"`
+	Notes          string    `json:"notes"`
 }
 
 func (a *app) listMovementReport(ctx context.Context, typ string, start, end time.Time, warehouseID int64) ([]movementReportRow, error) {
 	rows, err := a.db.QueryContext(ctx, `
 SELECT m.occurred_at,CASE WHEN m.movement_type='SAIDA' THEN COALESCE(m.production_date::text, (m.occurred_at AT TIME ZONE 'America/Fortaleza')::date::text) ELSE '' END,m.id,m.movement_type,i.name,
        COALESCE(NULLIF(s.name,''),NULLIF(s.brand,''),''),
-       COALESCE(s.barcode,''),w.id,w.name,ml.quantity::text,i.unit_code,
+       COALESCE(s.barcode,''),w.id,w.name,
+       CASE WHEN m.movement_type='AJUSTE' AND ml.direction='OUT' THEN (-ml.quantity)::text ELSE ml.quantity::text END,i.unit_code,
        ml.unit_cost::numeric(14,4)::text,
        COALESCE(m.document_number,''),COALESCE(m.supplier_name,''),
-       COALESCE(NULLIF(u.login,''),NULLIF(m.responsible,''),'')
+       COALESCE(NULLIF(u.login,''),NULLIF(m.responsible,''),''),COALESCE(m.notes,'')
 FROM movements m
 JOIN movement_lines ml ON ml.movement_id=m.id
 JOIN product_skus s ON s.id=ml.sku_id
@@ -52,7 +54,7 @@ ORDER BY m.occurred_at,m.id,ml.id`, typ, start, end, warehouseID)
 	out := []movementReportRow{}
 	for rows.Next() {
 		var x movementReportRow
-		if err := rows.Scan(&x.OccurredAt, &x.ProductionDate, &x.MovementID, &x.Type, &x.Item, &x.SKU, &x.Barcode, &x.WarehouseID, &x.Warehouse, &x.Quantity, &x.Unit, &x.UnitCost, &x.DocumentNumber, &x.SupplierName, &x.Responsible); err != nil {
+		if err := rows.Scan(&x.OccurredAt, &x.ProductionDate, &x.MovementID, &x.Type, &x.Item, &x.SKU, &x.Barcode, &x.WarehouseID, &x.Warehouse, &x.Quantity, &x.Unit, &x.UnitCost, &x.DocumentNumber, &x.SupplierName, &x.Responsible, &x.Notes); err != nil {
 			return nil, err
 		}
 		out = append(out, x)
@@ -62,7 +64,8 @@ ORDER BY m.occurred_at,m.id,ml.id`, typ, start, end, warehouseID)
 
 func (a *app) handleMovementReport(w http.ResponseWriter, r *http.Request) {
 	typ := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("type")))
-	if typ != "ENTRADA" && typ != "SAIDA" {
+	// AJUSTE lista os ajustes de contagem com sinal: sobra positiva, falta negativa.
+	if typ != "ENTRADA" && typ != "SAIDA" && typ != "AJUSTE" {
 		writeJSONError(w, http.StatusBadRequest, "Tipo de movimentação inválido.")
 		return
 	}

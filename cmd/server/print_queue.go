@@ -84,7 +84,7 @@ func enqueueCrateLabel(ctx context.Context, tx *sql.Tx, crateID, actorID int64) 
 	if err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE print_jobs SET status='CANCELLED',last_error='Substituido por etiqueta mais recente'
+	if _, err = tx.ExecContext(ctx, `UPDATE print_jobs SET status='CANCELLED',last_error='Substituída por etiqueta mais recente'
   WHERE crate_id=$1 AND status='PENDING'`, crateID); err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ func (a *app) handlePrintJobs(w http.ResponseWriter, r *http.Request) {
 		log.Printf("print queue expire failed: %v", err)
 	}
 	rows, err := a.db.QueryContext(r.Context(), `SELECT j.id,j.crate_id,j.revision,j.status,c.box_position,c.box_total,
-   i.name FROM print_jobs j JOIN stock_crates c ON c.id=j.crate_id JOIN product_skus s ON s.id=c.sku_id
+   i.name,COALESCE(j.last_error,'') FROM print_jobs j JOIN stock_crates c ON c.id=j.crate_id JOIN product_skus s ON s.id=c.sku_id
    JOIN inventory_items i ON i.id=s.item_id ORDER BY j.id DESC LIMIT 100`)
 	if err != nil {
 		writeJSONError(w, 500, "Falha ao consultar fila.")
@@ -227,13 +227,13 @@ func (a *app) handlePrintJobs(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, cid int64
 		var rev, pos, total int
-		var status, product string
-		if err = rows.Scan(&id, &cid, &rev, &status, &pos, &total, &product); err != nil {
+		var status, product, reason string
+		if err = rows.Scan(&id, &cid, &rev, &status, &pos, &total, &product, &reason); err != nil {
 			writeJSONError(w, 500, "Falha ao consultar fila.")
 			return
 		}
 		jobs = append(jobs, map[string]any{"id": id, "crate_id": cid, "crate_code": crateCode(cid), "revision": rev,
-			"status": status, "product": product, "position": pos, "total": total})
+			"status": status, "reason": reason, "product": product, "position": pos, "total": total})
 	}
 	writeJSON(w, 200, map[string]any{"jobs": jobs})
 }

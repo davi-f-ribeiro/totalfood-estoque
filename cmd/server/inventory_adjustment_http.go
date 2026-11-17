@@ -50,6 +50,8 @@ func (a *app) handleInventoryStockAdjustment(w http.ResponseWriter, r *http.Requ
 		writeJSONError(w, http.StatusConflict, "Esta divergência já foi ajustada.")
 	case errors.Is(err, errInventoryAdjustmentCostUnavailable):
 		writeJSONError(w, http.StatusConflict, "Não há custo válido para registrar o ajuste.")
+	case errors.Is(err, errCrateTrackedStock):
+		writeJSONError(w, http.StatusConflict, "Este produto é controlado por caixas. Corrija o peso de cada caixa na tela Caixas; o ajuste pela contagem não escolhe de qual caixa tirar.")
 	case errors.Is(err, errInsufficientStock):
 		writeJSONError(w, http.StatusConflict, "O estoque atual é menor que a redução do ajuste.")
 	case errors.Is(err, errWarehouseInactive):

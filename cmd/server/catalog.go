@@ -426,7 +426,7 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizeCatalogSKURequest(&req)
-	if req.ItemID <= 0 || req.BrandID <= 0 || req.Barcode == "" || !positiveDecimal(req.ContentQuantity) {
+	if req.ItemID <= 0 || req.BrandID < 0 || req.Barcode == "" || !positiveDecimal(req.ContentQuantity) {
 		writeJSONError(w, http.StatusBadRequest, "Preencha o item, a marca, quanto vem em cada embalagem e o código de barras.")
 		return
 	}
@@ -442,10 +442,10 @@ func (a *app) handleCreateCatalogSKU(w http.ResponseWriter, r *http.Request) {
 	res, err := a.createCatalogRecord(r.Context(), "product_skus", req.OperationID, hash, func(tx *sql.Tx) (int64, error) {
 		var itemName, brandName, unit string
 		if err := tx.QueryRowContext(r.Context(), `
-SELECT i.name,b.name,i.unit_code
+SELECT i.name,CASE WHEN b.id=0 THEN 'Sem marca' ELSE b.name END,i.unit_code
 FROM inventory_items i
 JOIN brands b ON b.id=$2
-WHERE i.id=$1 AND i.active=true AND b.active=true`, req.ItemID, req.BrandID).Scan(&itemName, &brandName, &unit); errors.Is(err, sql.ErrNoRows) {
+WHERE i.id=$1 AND i.active=true AND (b.active=true OR b.id=0)`, req.ItemID, req.BrandID).Scan(&itemName, &brandName, &unit); errors.Is(err, sql.ErrNoRows) {
 			return 0, catalogDomainError{http.StatusBadRequest, "Item ou marca inválidos."}
 		} else if err != nil {
 			return 0, err

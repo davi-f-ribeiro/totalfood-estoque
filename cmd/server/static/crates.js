@@ -170,8 +170,8 @@ async function jobs(){
   for(const job of data.jobs){
    const row=document.createElement('div');row.className='crate-job';
    const label=document.createElement('span');
-   const names={PENDING:'Pendente',CLAIMED:'Reservada',SENT:'Enviada ao USB',UNCERTAIN:'Confirmação incerta',FAILED:'Falha',CANCELLED:'Substituída'};
-   label.textContent=job.crate_code+' · '+job.product+' · rev '+job.revision+' · '+(names[job.status]||job.status);
+   const names={PENDING:'Pendente',CLAIMED:'Reservada',SENT:'Enviada ao USB',UNCERTAIN:'Confirmação incerta',FAILED:'Falha',CANCELLED:'Cancelada'};
+   label.textContent=job.crate_code+' · '+job.product+' · rev '+job.revision+' · '+(names[job.status]||job.status)+(job.reason?': '+job.reason:'');
    row.append(label);
    if(['UNCERTAIN','FAILED'].includes(job.status)){
     const button=document.createElement('button');button.className='secondary';button.textContent='Reenviar';

@@ -42,6 +42,9 @@ Saldo por SKU e depósito na data de corte, com quantidade, unidade e preço mé
 
 A conclusão de inventário não grava ajuste em `movement_lines`. Desde a migração 030, a divergência pode virar um ajuste explícito (`POST /api/inventory-validations/{id}/lines/{sku_id}/adjust`), gravado como movimento `AJUSTE`: ele entra no saldo e no preço médio do relatório de saldo, mas não aparece nos relatórios de entradas e saídas, que continuam restritos a `ENTRADA` e `SAIDA`. O relatório segue representando o saldo contábil do ledger, não a contagem física.
 
+### Ajustes de contagem
+Somente `movements.movement_type = 'AJUSTE'` (`type=AJUSTE` na mesma consulta de movimentações, sem SQL novo). A quantidade vem com sinal: sobra positiva, falta negativa. A última coluna mostra a observação do movimento (a auditoria de origem) no lugar de documento e fornecedor. Existe para que o saldo possa ser explicado linha a linha junto com Entradas e Saídas (teste de 16/11/2026, REL-05 e TRV-10). Transferências e pesagens de caixa continuam fora desta lista.
+
 ## Reutilização obrigatória
 
 1. Não criar tabela de relatório/saldo/snapshot.

@@ -10,13 +10,13 @@ function render(rows){
   const low=rows.filter(r=>r.below_minimum);
   if(!low.length){const p=document.createElement('p');p.className='home-empty';p.textContent='Nenhum item abaixo do mínimo.';box.append(p);return}
   const head=cell('row','home-row home-row-head');
-  [['Item',''],['Estoque','num'],['Mínimo','num'],['Falta','num'],['','']].forEach(([t,c])=>{const h=cell('columnheader',c);if(t)h.textContent=t;else{const s=document.createElement('span');s.className='sr-only';s.textContent='Ação';h.append(s)}head.append(h)});
+  [['Item',''],['Estoque','num'],['Mínimo','num'],['Situação','num'],['','']].forEach(([t,c])=>{const h=cell('columnheader',c);if(t)h.textContent=t;else{const s=document.createElement('span');s.className='sr-only';s.textContent='Ação';h.append(s)}head.append(h)});
   box.append(head);
   low.forEach(r=>{
     const row=cell('row','home-row'),name=cell('cell','home-name'),strong=document.createElement('strong');strong.textContent=r.name;name.append(strong);
     const q=cell('cell','num is-low');q.textContent=displayDecimal(r.quantity)+' '+r.unit;
     const m=cell('cell','num');m.textContent=displayDecimal(r.minimum)+' '+r.unit;
-    const f=cell('cell','num is-short');f.textContent=displayDecimal(r.shortage)+' '+r.unit;
+    const f=cell('cell','num is-short');f.textContent='Faltam '+displayDecimal(r.shortage)+' '+r.unit;
     const act=cell('cell','home-action');
     if(canEntry){const a=document.createElement('a');a.className='button secondary';a.href='/entry?item_id='+encodeURIComponent(r.item_id)+(sel.value?'&warehouse_id='+encodeURIComponent(sel.value):'');a.textContent='Dar entrada';act.append(a)}
     row.append(name,q,m,f,act);box.append(row);
