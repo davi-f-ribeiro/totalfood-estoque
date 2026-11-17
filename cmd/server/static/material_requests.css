@@ -49,3 +49,23 @@
 /* Entrega por caixa: lista de caixas para marcar. */
 .material-crates{display:grid;gap:4px;margin:8px 0}
 .material-crates label.check{min-height:44px;margin:0;font-size:1rem;color:var(--text-primary);font-variant-numeric:tabular-nums}
+
+.material-pagination[hidden],.material-filter-summary ul[hidden]{display:none}
+.material-filters{display:grid;gap:8px}
+.material-filters label{display:block;min-width:0;margin:0;font-weight:600}
+.material-filter-details{padding:8px 12px;border:1px solid var(--border);border-radius:8px}
+.material-filter-details summary{cursor:pointer;padding:6px 0;font-weight:600}
+.material-filter-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:8px 12px;margin:8px 0 0}
+fieldset.material-filter-fields{min-width:0;padding:0;border:0}
+.material-filter-fields legend{padding:0;font-weight:600}
+.material-filter-summary,.material-list-summary,.material-pagination{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.material-filter-summary ul{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none;min-width:0}
+.material-filter-summary li{background:var(--surface-secondary);border-radius:6px;padding:4px 8px;overflow-wrap:anywhere}
+.material-list-summary{justify-content:space-between;margin:8px 0}
+.material-list-summary p{margin:0}
+.material-pagination{justify-content:space-between;margin-top:12px}
+.material-filter-summary button,.material-pagination button{min-height:44px}
+@media(min-width:680px){
+  .material-filter-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+  fieldset.material-filter-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+}

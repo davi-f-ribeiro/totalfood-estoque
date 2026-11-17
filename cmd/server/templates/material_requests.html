@@ -19,6 +19,7 @@
   </div>
   <div id="materialStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
   {{if .CanMaterialWrite}}
+  <p class="hint"><a href="#materialRequests">Ir para a lista de requisições</a></p>
   <section class="panel material-create" aria-labelledby="materialCreateTitle">
     <h2 id="materialCreateTitle">Nova requisição</h2>
     <form id="materialCreateForm" novalidate>
@@ -40,10 +41,68 @@
     </form>
   </section>
   {{end}}
-  <section class="panel material-list" aria-labelledby="materialListTitle">
+  <section class="panel material-list" id="materialRequests" aria-labelledby="materialListTitle">
     <div class="material-toolbar"><h2 id="materialListTitle">Requisições</h2><button class="secondary" id="materialRefresh" type="button">Atualizar</button></div>
+    <p id="materialListScope" class="hint"></p>
+    <form id="materialFilters" class="material-filters" role="search" aria-label="Filtrar requisições">
+      <label>Buscar requisições
+        <input name="q" type="search" maxlength="120" autocomplete="off" placeholder="Número, material, serviço ou unidade">
+      </label>
+      <details class="material-filter-details">
+        <summary>Filtros e ordenação</summary>
+        <div class="material-filter-fields">
+          <label>Unidade<select name="unit"><option value="">Todas as unidades</option></select></label>
+          <label>Situação<select name="status">
+            <option value="">Todas as situações</option>
+            <option value="PENDENTE">Pendente</option>
+            <option value="EM_SEPARACAO">Em separação</option>
+            <option value="ENTREGA_PARCIAL">Entrega parcial</option>
+            <option value="ENTREGUE">Entregue</option>
+            <option value="RECEBIDA_COM_DIVERGENCIA">Recebida com divergência</option>
+            <option value="RECEBIDA">Recebida</option>
+            <option value="ENCERRADA">Encerrada</option>
+            <option value="CANCELADA">Cancelada</option>
+          </select></label>
+          <label>Serviço<select name="service">
+            <option value="">Todos os serviços</option>
+            <option value="cafe">Café da manhã</option>
+            <option value="almoco">Almoço</option>
+            <option value="lanche">Lanche</option>
+            <option value="jantar">Jantar</option>
+          </select></label>
+          <label>Ordenar por<select name="sort">
+            <option value="newest">Mais recentes primeiro</option>
+            <option value="oldest">Mais antigas primeiro</option>
+            <option value="production">Data de produção mais antiga</option>
+            <option value="number">Maior número da requisição</option>
+          </select></label>
+        </div>
+        <fieldset class="material-filter-fields">
+          <legend>Período</legend>
+          <label>Data de<select name="date_field">
+            <option value="production">Produção</option>
+            <option value="delivery">Entrega desejada</option>
+          </select></label>
+          <label>De<input name="from" type="date"></label>
+          <label>Até<input name="to" type="date"></label>
+        </fieldset>
+      </details>
+      <div class="material-filter-summary">
+        <ul id="materialActiveFilters" aria-label="Filtros ativos" hidden></ul>
+        <button class="secondary" id="materialClearFilters" type="button" hidden>Limpar filtros</button>
+      </div>
+    </form>
     <p id="materialListStatus" class="operation-feedback" role="status" aria-live="polite" hidden></p>
-    <div id="materialList" class="material-request-list" aria-live="polite"><p>Carregando requisições…</p></div>
+    <div class="material-list-summary">
+      <p class="hint" id="materialListCount" role="status" tabindex="-1"></p>
+      <p class="hint" id="materialListOrder"></p>
+    </div>
+    <div id="materialList" class="material-request-list" aria-busy="true"></div>
+    <div id="materialPagination" class="material-pagination" aria-label="Páginas de requisições" hidden>
+      <button class="secondary" id="materialPreviousPage" type="button">Anterior</button>
+      <span id="materialPageLabel"></span>
+      <button class="secondary" id="materialNextPage" type="button">Próxima</button>
+    </div>
   </section>
   <section class="panel material-detail" id="materialDetail" aria-labelledby="materialDetailTitle" hidden>
     <div class="material-toolbar"><h2 id="materialDetailTitle">Detalhes</h2><button type="button" id="materialClose" class="secondary">Fechar</button></div>
