@@ -119,33 +119,144 @@ async function sendPending(opts={}){
  }finally{busy=false;showPending()}
 }
 $('materialRetry').addEventListener('click',()=>sendPending({}));
-async function refresh(){
+const filters=$('materialFilters'), filterFields=filters.elements;
+const listCount=$('materialListCount'), listOrder=$('materialListOrder');
+const clearFilters=$('materialClearFilters');
+let listSequence=0,listTimer=0,listPage=1,detailSequence=0;
+function listParameters(){
+ const params=new URLSearchParams();
+ for(const [key,value] of new FormData(filters)){
+  if(value.trim())params.set(key,value.trim());
+ }
+ params.set('page',String(listPage));
+ return params;
+}
+function showListFilters(params){
+ const chips=$('materialActiveFilters');
+ const label=name=>filterFields.namedItem(name).selectedOptions[0]?.textContent;
+ const from=params.get('from'),to=params.get('to');
+ const dates=[from&&'de '+day(from),to&&'até '+day(to)].filter(Boolean).join(' ');
+ const names=[
+  params.has('q')&&'Busca: '+params.get('q'),
+  params.has('unit')&&'Unidade: '+params.get('unit'),
+  params.has('status')&&'Situação: '+label('status'),
+  params.has('service')&&'Serviço: '+label('service'),
+  dates&&label('date_field')+' '+dates
+ ].filter(Boolean);
+ chips.replaceChildren(...names.map(name=>el('li',name)));
+ chips.hidden=!names.length;
+ clearFilters.hidden=!names.length&&params.get('sort')==='newest';
+ listOrder.textContent=label('sort');
+}
+async function loadRequestList(focusCount=false){
+ clearTimeout(listTimer);
+ const sequence=++listSequence;
+ const params=listParameters();
+ const from=params.get('from'),to=params.get('to');
+ const feedback=$('materialListStatus');
+ showListFilters(params);
+ list.setAttribute('aria-busy','true');
+ list.replaceChildren();
+ listCount.textContent='';
+ $('materialPagination').hidden=true;
+ setFeedback(feedback,'','');
  try{
-  const records=await api('/api/material-requests');
-  list.textContent='';
-  if(!records.length)list.append(el('p','Nenhuma requisição encontrada.','hint'));
-  records.forEach(r=>{
-   const b=btn('',()=>openReq(r.id));
-   b.textContent='';
-   const h=el('strong','#'+r.id+' · '+r.unit_name);
-   const sub=el('small',day(r.production_date)+' · '+(serviceLabel[r.service]||r.service)+' · '+r.items+' materiais');
-   const state=el('span',statusText(r.status),'material-tag');
-   b.append(h,sub,state);b.setAttribute('aria-current',String(current===r.id));list.append(b);
-  });
-  if(current)await openReq(current,false);
- }catch(e){report({kind:'list'},'error',uiErrorMessage(e,'Não foi possível atualizar as requisições.'))}
+  if(from&&to&&from>to){
+   setFeedback(feedback,'error','A data inicial deve ser anterior ou igual à data final.');
+   return;
+  }
+  listCount.textContent='Carregando requisições…';
+  const result=await api('/api/material-requests/search?'+params);
+  if(sequence!==listSequence)return;
+  const unit=filterFields.namedItem('unit');
+  const selected=params.get('unit')||'';
+  const units=[...result.units];
+  if(selected&&!units.includes(selected))units.push(selected);
+  unit.replaceChildren(new Option('Todas as unidades',''),...units.map(name=>new Option(name,name)));
+  unit.value=selected;
+  $('materialListScope').textContent=result.scope==='own'
+   ?'Escopo do seu perfil: requisições criadas por você.'
+   :'Escopo do seu perfil: requisições de todas as unidades.';
+  const pages=Math.max(1,Math.ceil(result.filtered/result.page_size));
+  if(listPage>pages){listPage=pages;return loadRequestList(focusCount)}
+  const start=(listPage-1)*result.page_size+1;
+  const end=start+result.requests.length-1;
+  const shown=result.requests.length?(start===end?number(start):number(start)+'–'+number(end)):'0';
+  listCount.textContent='Exibindo '+shown+' de '+number(result.filtered)+' no resultado'
+   +(result.filtered!==result.total?' · '+number(result.total)+' acessíveis · '+number(result.total-result.filtered)+' fora dos filtros':'');
+  if(!result.requests.length){
+   list.append(el('p',result.total?'Nenhuma requisição corresponde aos filtros.':'Você ainda não tem requisições disponíveis.','hint'));
+  }
+  for(const r of result.requests){
+   const button=btn('',()=>openReq(r.id));
+   const materials=r.items===1?'1 material':number(r.items)+' materiais';
+   button.append(
+    el('strong','#'+r.id+' · '+r.unit_name),
+    el('small','Produção '+day(r.production_date)+' · Entrega '+day(r.delivery_date)),
+    el('small',(serviceLabel[r.service]||r.service)+' · '+materials),
+    el('span',statusText(r.status),'material-tag')
+   );
+   button.dataset.requestId=r.id;
+   button.setAttribute('aria-current',String(current===r.id));
+   list.append(button);
+  }
+  if(pages>1){
+   $('materialPagination').hidden=false;
+   $('materialPageLabel').textContent='Página '+number(listPage)+' de '+number(pages);
+   $('materialPreviousPage').disabled=listPage<=1;
+   $('materialNextPage').disabled=listPage>=pages;
+  }
+  if(focusCount)listCount.focus();
+ }catch(e){
+  if(sequence!==listSequence)return;
+  listCount.textContent='';
+  setFeedback(feedback,'error',uiErrorMessage(e,'Não foi possível atualizar as requisições.'));
+ }finally{
+  if(sequence===listSequence)list.setAttribute('aria-busy','false');
+ }
+}
+function applyListFilters(){
+ listPage=1;
+ return loadRequestList();
+}
+filters.addEventListener('input',event=>{
+ if(event.target.name!=='q')return;
+ clearTimeout(listTimer);
+ ++listSequence;
+ listTimer=setTimeout(applyListFilters,250);
+});
+filters.addEventListener('change',event=>{
+ if(event.target.name!=='q')applyListFilters();
+});
+filters.addEventListener('submit',event=>{
+ event.preventDefault();
+ applyListFilters();
+});
+clearFilters.addEventListener('click',()=>{
+ filters.reset();
+ filterFields.namedItem('q').focus();
+ applyListFilters();
+});
+$('materialPreviousPage').addEventListener('click',()=>{listPage--;loadRequestList(true)});
+$('materialNextPage').addEventListener('click',()=>{listPage++;loadRequestList(true)});
+async function refresh(){
+ await Promise.all([loadRequestList(),current?openReq(current,false):null]);
 }
 async function openReq(id,scroll=true){
+ const sequence=++detailSequence;
  try{
   const r=await api('/api/material-requests/'+id);
+  if(sequence!==detailSequence)return;
   if(current!==id)detailNote=null;
   current=id;detail.hidden=false;renderDetail(r);
-  list.querySelectorAll('button[aria-current]').forEach(b=>b.setAttribute('aria-current',String(b.firstChild?.textContent?.startsWith('#'+id+' · '))));
+  list.querySelectorAll('button[aria-current]').forEach(b=>b.setAttribute('aria-current',String(b.dataset.requestId===String(id))));
   if(scroll)detail.scrollIntoView({block:'start',behavior:'auto'});
- }catch(e){report({kind:'list'},'error',uiErrorMessage(e,'Não foi possível abrir a requisição #'+id+'.'))}
+ }catch(e){
+  if(sequence===detailSequence)report({kind:'list'},'error',uiErrorMessage(e,'Não foi possível abrir a requisição #'+id+'.'));
+ }
 }
 $('materialRefresh').addEventListener('click',refresh);
-$('materialClose').addEventListener('click',()=>{current=0;detailNote=null;detail.hidden=true;list.querySelectorAll('button[aria-current]').forEach(b=>b.setAttribute('aria-current','false'))});
+$('materialClose').addEventListener('click',()=>{++detailSequence;current=0;detailNote=null;detail.hidden=true;list.querySelectorAll('button[aria-current]').forEach(b=>b.setAttribute('aria-current','false'))});
 function actionRow(){return el('div',null,'material-actions')}
 function numericInput(value){
  const i=el('input');i.type='text';i.inputMode='decimal';i.value=String(value||'');i.placeholder='Quantidade';i.setAttribute('aria-label','Quantidade em unidade-base');return i;

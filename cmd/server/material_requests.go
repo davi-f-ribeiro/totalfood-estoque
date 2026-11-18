@@ -115,6 +115,7 @@ const matWeightTolerance = "1.2"
 func (a *app) registerMaterialHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /material-requests", a.uiPage("material_requests", "Requisições", "material_requests", "read"))
 	mux.HandleFunc("GET /api/material-requests", a.requireAuth("material_requests", "read", a.handleMaterialList))
+	mux.HandleFunc("GET /api/material-requests/search", a.requireAuth("material_requests", "read", a.handleMaterialListPage))
 	mux.HandleFunc("GET /api/material-requests/items", a.requireAuth("material_requests", "read", a.handleMaterialItems))
 	mux.HandleFunc("GET /api/material-requests/options/{item_id}", a.requireAuth("material_fulfillment", "write", a.handleMaterialOptions))
 	mux.HandleFunc("POST /api/material-requests", a.requireAuth("material_requests", "write", a.handleMaterialCreate))

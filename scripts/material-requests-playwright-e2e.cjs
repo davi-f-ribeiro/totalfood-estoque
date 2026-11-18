@@ -12,10 +12,10 @@ const html=original.replace('{{template "header" .}}','<header>Gestão de Estoqu
 .replaceAll('{{.CSRF}}','e2e-token').replaceAll('{{.User.ID}}','7')
 .replace(/\{\{if \.CanMaterial(Write|Fulfill|Receive)\}\}1\{\{else\}\}0\{\{end\}\}/g,'1')
 .replaceAll('{{if .CanMaterialWrite}}','').replaceAll('{{end}}','');
-const state={requests:[],created:new Map(),reservations:[],deliveries:[],deliverOps:new Map(),failDeliver:true,received:new Set(),crates:[]};
+const state={scope:'all',requests:[],created:new Map(),reservations:[],deliveries:[],deliverOps:new Map(),failDeliver:true,received:new Set(),crates:[]};
 const respond=(route,status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const request1=()=>({id:1,unit_name:'Cozinha Central',requested_by:'Ana',production_date:'2026-11-16',service:'lanche',delivery_date:'2026-11-16',
- status:state.deliveries.length?'EM_ATENDIMENTO':'ABERTA',created_at:'2026-11-15T10:00:00Z',notes:'',
+ status:state.deliveries.length?'ENTREGA_PARCIAL':'PENDENTE',created_at:'2026-11-15T10:00:00Z',notes:'',
  lines:[{id:1,item_id:20,item:'Feijão carioca',unit:'KG',quantity:'10',reserved:String(state.reservations.reduce((s,r)=>s+Number(r.remaining),0)),delivered:String(state.deliveries.reduce((s,d)=>s+Number(d.quantity),0))}],
  reservations:state.reservations,
  deliveries:state.deliveries.map(d=>({...d,received:state.received.has(d.id),received_by:state.received.has(d.id)?'Ana':''})),
@@ -42,8 +42,20 @@ async function main(){
   await page.route('**/api/**',async route=>{
    const req=route.request(),u=new URL(req.url()),p=u.pathname;
    let body={};try{body=req.postDataJSON()||{}}catch{}
-   state.requests.push({p,method:req.method(),body});
-   if(p==='/api/material-requests'&&req.method()==='GET')return respond(route,200,[{id:1,unit_name:'Cozinha Central',production_date:'2026-11-16',service:'lanche',items:1,status:request1().status}]);
+   state.requests.push({p,method:req.method(),body,params:Object.fromEntries(u.searchParams)});
+   if(p==='/api/material-requests/search'){
+    const rows=[
+     {id:1,unit_name:'Cozinha Central',production_date:'2026-11-16',delivery_date:'2026-11-15',service:'lanche',items:1,status:request1().status},
+     {id:2,unit_name:'Nutrição',production_date:'2026-11-17',delivery_date:'2026-11-16',service:'cafe',items:2,status:'PENDENTE'}
+    ];
+    const own=state.scope==='own';
+    const visible=own?rows.slice(0,1):rows;
+    const filtered=visible.filter(r=>['unit','status','service'].every(k=>!u.searchParams.get(k)||r[k==='unit'?'unit_name':k]===u.searchParams.get(k)))
+     .filter(r=>!u.searchParams.get('q')||u.searchParams.get('q')==='#'+r.id);
+    const index=Number(u.searchParams.get('page'))-1;
+    return respond(route,200,{requests:filtered.slice(index,index+1),total:visible.length,filtered:filtered.length,
+     page_size:1,units:visible.map(r=>r.unit_name),scope:own?'own':'all'});
+   }
    if(p==='/api/material-requests'&&req.method()==='POST'){
     if(!state.created.has(body.operation_id))state.created.set(body.operation_id,2);
     return respond(route,201,{id:state.created.get(body.operation_id),status:'confirmed'});
@@ -73,6 +85,50 @@ async function main(){
   const inViewport=sel=>page.locator(sel).first().evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=-1&&r.bottom<=innerHeight+1});
   const topHidden=async()=>assert.equal(await page.locator('#materialStatus').isVisible(),false,'Aviso do topo não pode ser usado pelas ações');
   await page.goto(base+'/material-requests',{waitUntil:'networkidle'});
+
+  await page.locator('#materialListCount',{hasText:'Exibindo 1 de 2 no resultado'}).waitFor();
+  await page.locator('#materialListScope',{hasText:'todas as unidades'}).waitFor();
+  await page.getByRole('button',{name:'Próxima',exact:true}).click();
+  await page.locator('#materialPageLabel',{hasText:'Página 2 de 2'}).waitFor();
+  await page.locator('#materialList button',{hasText:'#2 · Nutrição'}).waitFor();
+  await page.getByRole('button',{name:'Anterior',exact:true}).click();
+  await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).waitFor();
+
+  await page.getByText('Filtros e ordenação',{exact:true}).click();
+  const filters=page.locator('#materialFilters');
+  await filters.locator('[name=unit]').selectOption('Nutrição');
+  await filters.locator('[name=status]').selectOption('PENDENTE');
+  await filters.locator('[name=service]').selectOption('cafe');
+  await filters.locator('[name=date_field]').selectOption('delivery');
+  await filters.locator('[name=from]').fill('2026-11-16');
+  await filters.locator('[name=to]').fill('2026-11-16');
+  await filters.locator('[name=sort]').selectOption('oldest');
+  await page.locator('#materialListOrder',{hasText:'Mais antigas primeiro'}).waitFor();
+  await page.locator('#materialActiveFilters',{hasText:'Entrega desejada de 16/11/2026 até 16/11/2026'}).waitFor();
+  await page.locator('#materialListCount',{hasText:'Exibindo 1 de 1 no resultado · 2 acessíveis · 1 fora dos filtros'}).waitFor();
+  await page.locator('#materialList button',{hasText:'#2 · Nutrição'}).waitFor();
+  const combined=state.requests.find(r=>r.params?.unit==='Nutrição'&&r.params.status==='PENDENTE'&&r.params.service==='cafe'&&r.params.sort==='oldest');
+  assert.equal(combined.params.date_field,'delivery');
+  assert.equal(combined.params.from,'2026-11-16');
+  assert.equal(combined.params.to,'2026-11-16');
+  assert.equal(combined.params.page,'1');
+
+  await filters.locator('[name=q]').fill('#555');
+  await page.getByText('Nenhuma requisição corresponde aos filtros.').waitFor();
+  await page.getByRole('button',{name:'Limpar filtros'}).click();
+  await page.locator('#materialListCount',{hasText:'Exibindo 1 de 2 no resultado'}).waitFor();
+  assert.equal(await page.locator('#materialActiveFilters').isVisible(),false);
+  assert.deepEqual(await filters.locator('[name=q]').inputValue(),'');
+  state.scope='own';
+  await filters.locator('[name=q]').fill('#1');
+  await page.locator('#materialListScope',{hasText:'requisições criadas por você'}).waitFor();
+  assert.deepEqual(await filters.locator('[name=unit] option').allTextContents(),['Todas as unidades','Cozinha Central']);
+  state.scope='all';
+  await page.getByRole('button',{name:'Limpar filtros'}).click();
+  await page.locator('#materialListCount',{hasText:'Exibindo 1 de 2 no resultado'}).waitFor();
+  const filterSize=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
+  assert(filterSize[0]<=filterSize[1],'Filtros abertos sem rolagem lateral a 390 px '+filterSize);
+  await page.getByText('Filtros e ordenação',{exact:true}).click();
 
   // Criar: erro e sucesso abaixo do botão, com o material e a unidade.
   await page.locator('#materialSearch').fill('arroz');
