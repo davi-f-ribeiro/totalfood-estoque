@@ -138,7 +138,7 @@ func (a *app) handleMaterialItems(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, []any{})
 		return
 	}
-	rows, err := a.db.QueryContext(r.Context(), "SELECT id,name,unit_code FROM inventory_items WHERE active AND name ILIKE '%' || $1 || '%' ORDER BY lower(name),id LIMIT 40", q)
+	rows, err := a.db.QueryContext(r.Context(), "SELECT id,name,unit_code FROM inventory_items WHERE active AND strpos(translate(lower(name), "+searchAccents+"), translate(lower($1::text), "+searchAccents+")) > 0 ORDER BY lower(name),id LIMIT 40", q)
 	if err != nil {
 		a.matRespond(w, err)
 		return

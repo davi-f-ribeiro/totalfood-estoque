@@ -14,8 +14,8 @@ function el(tag,cls,text){let e=document.createElement(tag);if(cls)e.className=c
 function clearSel(){list.querySelectorAll('.catalog-parent-card.selected').forEach(x=>x.classList.remove('selected'))}
 async function loadOptions(){if(options)return options;options=await api('/api/recipes/options');return options}
 function renderList(){
- list.textContent='';let q=search.value.trim().toLowerCase();
- let rows=recipes.filter(r=>!q||r.name.toLowerCase().includes(q));
+ list.textContent='';let q=foldSearch(search.value.trim());
+ let rows=recipes.filter(r=>!q||foldSearch(r.name).includes(q));
  if(!rows.length){list.append(el('p','hint',recipes.length?'Nenhuma ficha encontrada. Revise a busca.':'Nenhuma ficha cadastrada.'));return}
  rows.forEach(r=>{let b=el('button','catalog-parent-card'),s=el('strong',null,r.name),m=el('small',null,r.incomplete?'Sem custo em algum ingrediente':'Custo da porção: '+money(r.cost_per_portion,4));
   b.type='button';if(r.id===selectedId)b.classList.add('selected');if(!r.active)m.textContent+=' · Inativa';

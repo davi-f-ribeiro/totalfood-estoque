@@ -98,7 +98,6 @@ func (a *app) handleMaterialListPage(w http.ResponseWriter, r *http.Request) {
 
 	// Escopo, opções, contagem e página saem do mesmo snapshot. A ordem vem
 	// exclusivamente das opções fixas em readMaterialListFilter.
-	const accents = "'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc'"
 	const query = `
 WITH scoped AS (
 	SELECT id, unit_name, delivery_date, production_date, service, status, created_at, created_by,
@@ -106,7 +105,7 @@ WITH scoped AS (
 	FROM material_requests
 	WHERE ($1::boolean OR created_by = $2)
 ), search AS (
-	SELECT translate(lower($3::text), ` + accents + `) AS term
+	SELECT translate(lower($3::text), ` + searchAccents + `) AS term
 ), filtered AS (
 	SELECT s.*
 	FROM scoped s CROSS JOIN search
@@ -123,10 +122,10 @@ WITH scoped AS (
 	       OR ($4 = '' AND (
 	          strpos(translate(lower(concat_ws(' ', s.unit_name, s.service, CASE s.service
 	              WHEN 'cafe' THEN 'Café da manhã' WHEN 'almoco' THEN 'Almoço'
-	              WHEN 'lanche' THEN 'Lanche' WHEN 'jantar' THEN 'Jantar' END)), ` + accents + `), search.term) > 0
+	              WHEN 'lanche' THEN 'Lanche' WHEN 'jantar' THEN 'Jantar' END)), ` + searchAccents + `), search.term) > 0
 	          OR EXISTS (SELECT 1 FROM material_request_lines l JOIN inventory_items i ON i.id = l.item_id
 	                     WHERE l.request_id = s.id
-	                       AND strpos(translate(lower(i.name), ` + accents + `), search.term) > 0)
+	                       AND strpos(translate(lower(i.name), ` + searchAccents + `), search.term) > 0)
 	       )))
 ), page AS (
 	SELECT * FROM filtered ORDER BY %s LIMIT $11 OFFSET $12

@@ -62,7 +62,7 @@ func (a *app) registerAssetHandlers(mux *http.ServeMux) {
 }
 
 func (a *app) handleAssetTypes(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), `SELECT id,name,active FROM asset_types WHERE $1='' OR lower(name) LIKE lower($2) ORDER BY name LIMIT 100`, strings.TrimSpace(r.URL.Query().Get("q")), "%"+strings.TrimSpace(r.URL.Query().Get("q"))+"%")
+	rows, err := a.db.QueryContext(r.Context(), `SELECT id,name,active FROM asset_types WHERE $1='' OR translate(lower(name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`) ORDER BY name LIMIT 100`, strings.TrimSpace(r.URL.Query().Get("q")), "%"+strings.TrimSpace(r.URL.Query().Get("q"))+"%")
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
@@ -129,7 +129,7 @@ func (a *app) handleUpdateAssetType(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleAssets(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.db.QueryContext(r.Context(), `SELECT a.id,a.tag,a.status,COALESCE(a.current_warehouse_id,0),COALESCE(w.name,''),t.id,t.name,a.version FROM assets a JOIN asset_types t ON t.id=a.asset_type_id LEFT JOIN warehouses w ON w.id=a.current_warehouse_id WHERE $1='' OR a.tag=$1 OR lower(t.name) LIKE lower($2) ORDER BY a.tag LIMIT 100`, cleanBarcode(r.URL.Query().Get("q")), "%"+cleanBarcode(r.URL.Query().Get("q"))+"%")
+	rows, err := a.db.QueryContext(r.Context(), `SELECT a.id,a.tag,a.status,COALESCE(a.current_warehouse_id,0),COALESCE(w.name,''),t.id,t.name,a.version FROM assets a JOIN asset_types t ON t.id=a.asset_type_id LEFT JOIN warehouses w ON w.id=a.current_warehouse_id WHERE $1='' OR a.tag=$1 OR translate(lower(t.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`) ORDER BY a.tag LIMIT 100`, cleanBarcode(r.URL.Query().Get("q")), "%"+cleanBarcode(r.URL.Query().Get("q"))+"%")
 	if err != nil {
 		writeJSONError(w, 500, "internal error")
 		return
