@@ -24,6 +24,13 @@ Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma
      - sem caixa marcada, a resposta é 409 com orientação, não erro genérico. A leitura de QR Code na tela de Requisições ainda não existe: a escolha é pela lista.
    - Com peso real, o pedido pode ficar coberto ("Entregue") e ainda haver saldo separado: a entrega continua aceita enquanto a reserva tiver saldo.
 6. Se ainda não houve entrega, o solicitante pode cancelar, liberando todas as reservas. O estoquista também pode liberar reservas não entregues.
+7. **Edição (migration 045):** enquanto a requisição não foi recebida, encerrada ou cancelada, o solicitante (ou Gerente/Diretor) pode corrigir unidade, datas, serviço, observação e os itens, sem cancelar nem alterar o banco.
+   - Item sem entrega pode sair do pedido; a separação dele deixa de existir e o saldo volta a ficar livre.
+   - Item que já teve entrega não sai, e a quantidade não fica abaixo do entregue.
+   - Ao reduzir a quantidade, o que a separação tiver acima do novo pedido (com a mesma folga de 20% para KG) volta ao saldo livre, das separações mais novas para as mais antigas.
+   - A data de produção não muda depois da primeira entrega, porque a saída já foi lançada com ela.
+   - Cada edição vira um evento `EDITADA` no histórico, com o que mudou (ex.: "Arroz: 10 → 12 KG; removido Feijão (4 UN)"). Não movimenta estoque.
+   - O Estoquista não edita: ele não tem `material_requests/write`.
 
 ## Perfis
 - Cozinha (criado pela migration 038): ler/criar suas requisições, confirmar recebimentos.
@@ -34,7 +41,7 @@ Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma
 
 ## Segurança, disponibilidade e reenvio
 - `operation_id` idempotente com hash para criação, separação e entrega.
-- Recebimento, cancelamento e liberação são naturalmente repetíveis pelo estado persistido. Repetir a conferência com a mesma quantidade não muda nada; com outra quantidade é recusada.
+- Recebimento, cancelamento e liberação são naturalmente repetíveis pelo estado persistido. A edição também: o corpo é o estado completo desejado, e reenviar o mesmo corpo depois de salvo responde 200 sem mudar nada. O campo `version` (devolvido no detalhe) impede que uma tela desatualizada sobrescreva a edição de outra pessoa: versão diferente com outro conteúdo é 409. Repetir a conferência com a mesma quantidade não muda nada; com outra quantidade é recusada.
 - A conciliação usa `operation_id` com hash, e a entrega é travada na transação: dois envios ao mesmo tempo não confirmam a mesma quantidade duas vezes, e a soma recebida nunca passa da entregue.
 - Cada conferência e cada conciliação vira uma linha em `material_request_receipts` (quem, quando, quanto, observação) e um evento `DIVERGENCIA` ou `CONCILIADA` no histórico.
 - A interface conserva operações incertas no IndexedDB e em `sessionStorage` para reenvio explícito, sem envios automáticos em loop.
@@ -53,6 +60,7 @@ Uma unidade (ex.: Cozinha Central) solicita materiais por **item pai**, para uma
 - `POST /api/material-requests/{id}/deliveries/{delivery_id}/receive` — conferir entrega. Corpo opcional: `received_quantity` (sem ela, recebimento integral) e `reason` (obrigatório quando a quantidade é menor que a entregue).
 - `POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile` — confirmar o recebimento do que faltava (`operation_id`, `quantity`, `notes`). Mesma regra da conferência: `material_receipts`, solicitante ou gerência.
 - `POST /api/material-requests/{id}/close` — aceitar o que foi recebido e encerrar (`notes` opcional). `material_receipts`, solicitante ou gerência; exige todas as entregas conferidas.
+- `POST /api/material-requests/{id}/edit` — editar (`version`, `unit_name`, `delivery_date`, `production_date`, `service`, `notes`, `lines`). `material_requests/write`, solicitante ou gerência.
 - `POST /api/material-requests/{id}/cancel` — cancelar antes da primeira entrega.
 
 ## Próximas integrações
