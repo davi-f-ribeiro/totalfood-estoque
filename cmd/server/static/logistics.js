@@ -16,8 +16,8 @@ function fillSelect(sel,rows,emptyLabel,current){
  sel.textContent='';if(emptyLabel!=null){let o=el('option',null,emptyLabel);o.value='';sel.append(o)}
  rows.forEach(r=>{let o=el('option',null,r.name);o.value=r.id;sel.append(o)});sel.value=current?String(current):''}
 function renderPlaces(){
- let list=$('placeList'),q=placeSearch.value.trim().toLowerCase();list.textContent='';
- let rows=places.filter(p=>!q||[p.name,p.customer_name,p.warehouse_name,p.city].some(v=>v&&v.toLowerCase().includes(q)));
+ let list=$('placeList'),q=foldSearch(placeSearch.value.trim());list.textContent='';
+ let rows=places.filter(p=>!q||[p.name,p.customer_name,p.warehouse_name,p.city].some(v=>v&&foldSearch(v).includes(q)));
  if(!rows.length){list.append(el('p','hint',places.length?'Nenhum local encontrado. Revise a busca.':'Nenhum local cadastrado.'));return}
  rows.forEach(p=>list.append(card(p.name,[kindLabel[p.kind]+(p.customer_name?': '+p.customer_name:p.warehouse_name?': '+p.warehouse_name:''),p.city,p.latitude==null?'Sem coordenada':null,p.window_start?'Recebe '+p.window_start+'–'+p.window_end:null],!p.active,()=>openPlace(p))))}
 function renderVehicles(){

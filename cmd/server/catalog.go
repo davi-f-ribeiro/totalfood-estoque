@@ -175,12 +175,12 @@ WITH parent_page AS (
     FROM inventory_items i
     LEFT JOIN categories c ON c.id=i.category_id
     WHERE (
-        $1='' OR lower(i.name) LIKE lower($2)
+        $1='' OR translate(lower(i.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`)
         OR EXISTS (
             SELECT 1 FROM product_skus sx
             WHERE sx.item_id=i.id
-              AND (lower(COALESCE(sx.name,'')) LIKE lower($2)
-                   OR EXISTS (SELECT 1 FROM brands bx WHERE bx.id=sx.brand_id AND lower(bx.name) LIKE lower($2))
+              AND (translate(lower(COALESCE(sx.name,'')), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`)
+                   OR EXISTS (SELECT 1 FROM brands bx WHERE bx.id=sx.brand_id AND translate(lower(bx.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`))
                    OR COALESCE(sx.barcode,'') LIKE $2)
         )
     )
@@ -242,12 +242,12 @@ SELECT i.id,i.name,COALESCE(c.name,''),COALESCE(i.category_id,0),i.unit_code,
 FROM inventory_items i
 LEFT JOIN categories c ON c.id=i.category_id
 LEFT JOIN product_skus s ON s.item_id=i.id
-WHERE $1='' OR lower(i.name) LIKE lower($2)
+WHERE $1='' OR translate(lower(i.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`)
    OR EXISTS (
        SELECT 1 FROM product_skus sx
        WHERE sx.item_id=i.id
-         AND (lower(COALESCE(sx.name,'')) LIKE lower($2)
-              OR EXISTS (SELECT 1 FROM brands bx WHERE bx.id=sx.brand_id AND lower(bx.name) LIKE lower($2))
+         AND (translate(lower(COALESCE(sx.name,'')), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`)
+              OR EXISTS (SELECT 1 FROM brands bx WHERE bx.id=sx.brand_id AND translate(lower(bx.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`))
               OR COALESCE(sx.barcode,'') LIKE $2)
    )
 GROUP BY i.id,c.name

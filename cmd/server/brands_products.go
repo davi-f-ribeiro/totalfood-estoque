@@ -37,7 +37,7 @@ func (a *app) handleCatalogBrands(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.db.QueryContext(r.Context(), `
 SELECT id,name,active,version
 FROM brands
-WHERE id<>0 AND ($1='' OR lower(name) LIKE lower($2))
+WHERE id<>0 AND ($1='' OR translate(lower(name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`))
 ORDER BY active DESC,name,id
 LIMIT 100`, q, "%"+q+"%")
 	if err != nil {
@@ -72,7 +72,7 @@ SELECT id,name,active,version,
        lower(name) AS sort_name
 FROM brands
 WHERE id<>0
-  AND ($1='' OR lower(name) LIKE lower($2))
+  AND ($1='' OR translate(lower(name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`))
   AND (
       $3::boolean=false
       OR (CASE WHEN active THEN 0 ELSE 1 END, lower(name), id)
@@ -203,8 +203,8 @@ SELECT s.id,s.item_id,i.name,s.brand_id,CASE WHEN b.id=0 THEN 'Sem marca' ELSE b
 FROM product_skus s
 JOIN inventory_items i ON i.id=s.item_id
 JOIN brands b ON b.id=s.brand_id
-WHERE $1='' OR lower(i.name) LIKE lower($2) OR lower(b.name) LIKE lower($2)
-   OR lower(COALESCE(s.name,'')) LIKE lower($2) OR COALESCE(s.barcode,'') LIKE $2
+WHERE $1='' OR translate(lower(i.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`) OR translate(lower(b.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`)
+   OR translate(lower(COALESCE(s.name,'')), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`) OR COALESCE(s.barcode,'') LIKE $2
 ORDER BY s.active DESC,i.name,b.name,s.content_quantity,s.id
 LIMIT 150`, q, "%"+q+"%")
 	if err != nil {

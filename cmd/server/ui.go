@@ -342,8 +342,8 @@ FROM product_skus s
 JOIN inventory_items i ON i.id=s.item_id
 JOIN brands b ON b.id=s.brand_id
 WHERE s.active=true AND i.active=true AND (b.active=true OR b.id=0)
-  AND (s.barcode=$1 OR lower(i.name) LIKE lower($2) OR lower(b.name) LIKE lower($2)
-       OR lower(COALESCE(s.name,'')) LIKE lower($2))
+  AND (s.barcode=$1 OR translate(lower(i.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`) OR translate(lower(b.name), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`)
+       OR translate(lower(COALESCE(s.name,'')), `+searchAccents+`) LIKE translate(lower($2), `+searchAccents+`))
   AND ($3='' OR i.unit_code=$3)
 ORDER BY i.name,b.name,s.content_quantity,s.id
 LIMIT 10`, q, "%"+q+"%", unit)
