@@ -6,7 +6,7 @@ const canWrite=root.dataset.canWrite==='1',canFulfill=root.dataset.canFulfill===
 const status=$('materialStatus'),pendingBox=$('materialPending'),list=$('materialList'),detail=$('materialDetail'),detailContent=$('materialDetailContent');
 const serviceLabel={cafe:'Café da manhã',almoco:'Almoço',lanche:'Lanche',jantar:'Jantar'};
 const statusText=s=>s==='RECEBIDA_COM_DIVERGENCIA'?'RECEBIDA COM DIVERGÊNCIA':String(s||'').replaceAll('_',' ');
-let draft=[],current=0,busy=false,pending=null,searchSequence=0,searchTimer=0;
+let draft=[],current=0,busy=false,pending=null,searchSequence=0;
 const pendingKey='material-request:pending:'+document.querySelector('meta[name="current-user-id"]')?.content;
 const offline=window.OfflineStore?new OfflineStore():null;
 const day=s=>s?s.split('-').reverse().join('/'):'—';
@@ -285,7 +285,90 @@ async function chooseReserve(line,wrap){
   wrap.append(box,actions);
  }catch(e){const p=el('p',null,'operation-feedback');wrap.append(p);say(p,'error',uiErrorMessage(e,'Não foi possível consultar o estoque de '+line.item+'.'))}
 }
+// Busca de material por nome (criação e edição usam a mesma).
+function itemPicker(search,matches,taken,pick){
+ let timer=0;
+ async function lookup(q){
+  const seq=++searchSequence;matches.textContent='';
+  if(q.trim().length<2)return;
+  try{
+   const items=await api('/api/material-requests/items?q='+encodeURIComponent(q.trim()));
+   if(seq!==searchSequence)return;
+   if(!items.length){matches.append(el('p','Material não encontrado.','hint'));return}
+   items.filter(item=>!taken(item.id)).forEach(item=>{
+    matches.append(btn(item.name+' · '+item.unit,()=>{search.value='';matches.textContent='';pick(item)}));
+   });
+  }catch(e){if(seq===searchSequence)matches.append(el('p',uiErrorMessage(e,'Não foi possível buscar materiais.'),'hint'))}
+ }
+ search.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>lookup(search.value),250)});
+}
+// Edição da requisição: o rascunho sobrevive ao redesenho do detalhe (Atualizar, outras ações).
+// O servidor decide o que pode mudar; a tela só avisa o mínimo de cada item já entregue.
+let editing=null;
+const editable=r=>canWrite&&!r.closed_at&&!['CANCELADA','RECEBIDA','RECEBIDA_COM_DIVERGENCIA'].includes(r.status);
+function startEdit(r){
+ editing={request:r.id,version:r.version,unit_name:r.unit_name,delivery_date:r.delivery_date,production_date:r.production_date,service:r.service,notes:r.notes||'',
+  lines:r.lines.map(l=>({item_id:l.item_id,name:l.item,unit:l.unit,quantity:String(Number(l.quantity)),delivered:Number(l.delivered),reserved:Number(l.reserved)}))};
+ detailNote=null;renderDetail(lastDetail);
+}
+function renderEdit(r,host){
+ const e=editing,where={kind:'detail',key:'edit'};
+ const box=el('div',null,'material-edit');box.dataset.noteKey='edit';
+ box.append(el('h3','Editar requisição #'+r.id));
+ const fields=el('div',null,'material-fields');
+ const unit=el('input');unit.maxLength=120;unit.value=e.unit_name;unit.addEventListener('input',()=>{e.unit_name=unit.value});
+ const delivery=el('input');delivery.type='date';delivery.value=e.delivery_date;delivery.addEventListener('input',()=>{e.delivery_date=delivery.value});
+ const production=el('input');production.type='date';production.value=e.production_date;production.addEventListener('input',()=>{e.production_date=production.value});
+ const service=el('select');Object.entries(serviceLabel).forEach(([v,t])=>{const o=new Option(t,v);service.append(o)});service.value=e.service;service.addEventListener('change',()=>{e.service=service.value});
+ const delivered=r.deliveries.length>0;
+ if(delivered)production.disabled=true;
+ fields.append(field('Unidade solicitante',unit),field('Entrega desejada',delivery),field('Produção em',production),field('Serviço',service));
+ box.append(fields);
+ if(delivered)box.append(el('p','A data de produção não muda depois da primeira entrega.','material-small'));
+ const lines=el('div',null,'material-draft');
+ const drawLines=()=>{
+  lines.textContent='';
+  e.lines.forEach(x=>{
+   const row=el('div',null,'material-line'),head=el('div',null,'material-line-header');
+   const remove=btn('Remover',()=>{e.lines=e.lines.filter(d=>d.item_id!==x.item_id);drawLines()});
+   if(x.delivered>0)remove.disabled=true;
+   head.append(el('strong',x.name+' · '+x.unit),remove);
+   const inp=numericInput(x.quantity);inp.addEventListener('input',()=>{x.quantity=inp.value});
+   row.append(head,field('Quantidade ('+x.unit+')',inp));
+   if(x.delivered>0)row.append(el('p','Já entregue '+number(x.delivered)+' '+x.unit+': não sai do pedido e não fica abaixo disso.','material-small'));
+   else if(x.reserved>0)row.append(el('p','Separado '+number(x.reserved)+' '+x.unit+'. Ao remover ou reduzir, o excedente volta ao saldo livre.','material-small'));
+   lines.append(row);
+  });
+ };
+ drawLines();
+ const products=el('section',null,'material-products');products.setAttribute('aria-label','Materiais da requisição');
+ const search=el('input');search.type='search';search.autocomplete='off';search.placeholder='Digite o nome do material';
+ const matches=el('div',null,'material-matches');matches.setAttribute('aria-live','polite');
+ itemPicker(search,matches,id=>e.lines.some(x=>x.item_id===id),item=>{e.lines.push({item_id:item.id,name:item.name,unit:item.unit,quantity:'',delivered:0,reserved:0});drawLines()});
+ products.append(field('Adicionar material',search),matches,lines);
+ box.append(products);
+ const notes=el('textarea');notes.rows=2;notes.maxLength=1000;notes.value=e.notes;notes.addEventListener('input',()=>{e.notes=notes.value});
+ box.append(field('Observação (opcional)',notes));
+ const actions=actionRow();
+ actions.append(btn('Salvar alterações',async()=>{
+  if(!e.unit_name.trim()||!e.delivery_date||!e.production_date){report(where,'error','Informe unidade, entrega desejada e data de produção.');return}
+  if(!e.lines.length){report(where,'error','A requisição precisa de pelo menos um material. Para desistir do pedido, use Cancelar.');return}
+  const bad=e.lines.find(x=>!validQuantity(x.quantity));
+  if(bad){report(where,'error','Informe a quantidade de '+bad.name+' maior que zero, com até 3 casas decimais.');return}
+  const body={version:e.version,unit_name:e.unit_name.trim(),delivery_date:e.delivery_date,production_date:e.production_date,service:e.service,notes:e.notes.trim(),
+   lines:e.lines.map(x=>({item_id:x.item_id,quantity:requestDecimal(x.quantity)}))};
+  await run('/api/material-requests/'+r.id+'/edit',body,{label:'a edição da requisição #'+r.id,loading:'Salvando a requisição #'+r.id+'…',
+   where:{kind:'detail',key:'edit',successKey:'request'},
+   success:x=>{editing=null;return x.changed===false?'Nada mudou na requisição #'+r.id+'.':'Requisição #'+r.id+' alterada'+(x.changes&&x.changes.length?': '+x.changes.join('; ')+'.':'.')},
+   failure:'Edição da requisição #'+r.id+' recusada.'});
+ },false),btn('Descartar alterações',()=>{editing=null;detailNote=null;renderDetail(lastDetail)}));
+ box.append(actions);
+ host.append(box);
+}
+let lastDetail=null;
 function renderDetail(r){
+ lastDetail=r;
+ if(editing&&editing.request!==r.id)editing=null;
  detailContent.textContent='';
  const facts=el('div',null,'material-facts');
  [
@@ -297,15 +380,17 @@ function renderDetail(r){
  detailContent.append(facts);
  if(r.notes)detailContent.append(el('p','Observação: '+r.notes));
  const top=el('div');top.dataset.noteKey='request';
+ const topActions=actionRow();
+ if(editable(r)&&!editing)topActions.append(btn('Editar requisição',()=>startEdit(r)));
  if(canWrite&&!r.deliveries.length&&r.status!=='CANCELADA'){
-  const actions=actionRow();
+  const actions=topActions;
   actions.append(btn('Cancelar requisição',async()=>{
    if(!window.confirm('Cancelar esta requisição e liberar as reservas?'))return;
    await run('/api/material-requests/'+r.id+'/cancel',{},{label:'o cancelamento da requisição #'+r.id,loading:'Cancelando a requisição #'+r.id+'…',
     where:{kind:'detail',key:'request'},success:()=>'Requisição #'+r.id+' cancelada e reservas liberadas.',failure:'Cancelamento da requisição #'+r.id+' recusado.'});
   }));
-  top.append(actions);
  }
+ if(topActions.children.length)top.append(topActions);
  // Itens sem peso padrão (hortifruti, proteína): a conta exata não fecha. Depois de
  // conferir as entregas, a cozinha pode aceitar o que chegou e encerrar a requisição.
  if(r.closed_at)top.append(el('p','Encerrada por '+r.closed_by+' em '+stamp(r.closed_at)+', aceitando o que foi entregue.'+(r.close_notes?' '+r.close_notes:''),'material-small'));
@@ -319,6 +404,9 @@ function renderDetail(r){
   },false));
  }
  detailContent.append(top);
+ if(editing&&editing.request===r.id){
+  if(editable(r))renderEdit(r,detailContent);else editing=null;
+ }
  detailContent.append(el('h3','Materiais'));
  r.lines.forEach(line=>{
   const card=el('article',null,'material-line-details');card.dataset.noteKey='line:'+line.id;
@@ -440,19 +528,7 @@ if(canWrite){
    row.append(head,field('Quantidade ('+x.unit+')',inp));draftHost.append(row);
   });
  }
- async function lookup(q){
-  const seq=++searchSequence;matches.textContent='';
-  if(q.trim().length<2)return;
-  try{
-   const items=await api('/api/material-requests/items?q='+encodeURIComponent(q.trim()));
-   if(seq!==searchSequence)return;
-   if(!items.length){matches.append(el('p','Material não encontrado.','hint'));return}
-   items.filter(item=>!draft.some(x=>x.id===item.id)).forEach(item=>{
-    matches.append(btn(item.name+' · '+item.unit,()=>{draft.push({...item,quantity:''});search.value='';matches.textContent='';renderDraft()}));
-   });
-  }catch(e){if(seq===searchSequence)matches.append(el('p',uiErrorMessage(e,'Não foi possível buscar materiais.'),'hint'))}
- }
- search.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>lookup(search.value),250)});
+ itemPicker(search,matches,id=>draft.some(x=>x.id===id),item=>{draft.push({...item,quantity:''});renderDraft()});
  form.addEventListener('submit',async e=>{
   e.preventDefault();
   const where={kind:'create'};

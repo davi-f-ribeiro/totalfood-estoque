@@ -69,3 +69,6 @@ fieldset.material-filter-fields{min-width:0;padding:0;border:0}
   .material-filter-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
   fieldset.material-filter-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+/* Edição da requisição: abre no próprio detalhe, abaixo das ações. */
+.material-edit{border-top:1px solid var(--border);padding:12px 0;margin:10px 0}
+.material-edit h3{margin-top:0}

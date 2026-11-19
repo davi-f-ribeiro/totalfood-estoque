@@ -126,6 +126,7 @@ func (a *app) registerMaterialHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/receive", a.requireAuth("material_receipts", "write", a.handleMaterialReceive))
 	mux.HandleFunc("POST /api/material-requests/{id}/close", a.requireAuth("material_receipts", "write", a.handleMaterialClose))
 	mux.HandleFunc("POST /api/material-requests/{id}/deliveries/{delivery_id}/reconcile", a.requireAuth("material_receipts", "write", a.handleMaterialReconcile))
+	mux.HandleFunc("POST /api/material-requests/{id}/edit", a.requireAuth("material_requests", "write", a.handleMaterialEdit))
 	mux.HandleFunc("POST /api/material-requests/{id}/cancel", a.requireAuth("material_requests", "write", a.handleMaterialCancel))
 }
 func matEvent(ctx context.Context, tx *sql.Tx, id, actor int64, action, detail string) error {
@@ -187,32 +188,44 @@ func (a *app) handleMaterialOptions(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, out)
 }
-func (a *app) handleMaterialCreate(w http.ResponseWriter, r *http.Request) {
-	var req materialCreateInput
-	if !matDecode(w, r, &req) {
-		return
-	}
-	req.OperationID = strings.TrimSpace(req.OperationID)
+
+// matNormalizeRequest limpa e valida os dados do pedido (criação e edição usam a mesma regra).
+// Devolve a mensagem de erro, ou "" se estiver tudo certo.
+func matNormalizeRequest(req *materialCreateInput) string {
 	req.UnitName = strings.TrimSpace(req.UnitName)
 	req.Notes = strings.TrimSpace(req.Notes)
 	req.Service = strings.TrimSpace(req.Service)
-	if !matOp(req.OperationID) || len(req.UnitName) == 0 || len(req.UnitName) > 120 || len(req.Notes) > 1000 ||
+	if len(req.UnitName) == 0 || len(req.UnitName) > 120 || len(req.Notes) > 1000 ||
 		req.DeliveryDate == "" || !validProductionDate(req.DeliveryDate) ||
 		req.ProductionDate == "" || !validProductionDate(req.ProductionDate) ||
 		(req.Service != "cafe" && req.Service != "almoco" && req.Service != "lanche" && req.Service != "jantar") ||
 		len(req.Lines) == 0 || len(req.Lines) > 100 {
-		writeJSONError(w, 400, "Confira unidade, datas, serviço e itens da requisição.")
-		return
+		return "Confira unidade, datas, serviço e itens da requisição."
 	}
 	seen := map[int64]bool{}
 	for i := range req.Lines {
 		l := &req.Lines[i]
 		l.Quantity = normalizeDecimalInput(l.Quantity)
 		if l.ItemID <= 0 || seen[l.ItemID] || !matQty(l.Quantity) {
-			writeJSONError(w, 400, "Itens repetidos ou quantidades inválidas (até 3 casas decimais).")
-			return
+			return "Itens repetidos ou quantidades inválidas (até 3 casas decimais)."
 		}
 		seen[l.ItemID] = true
+	}
+	return ""
+}
+func (a *app) handleMaterialCreate(w http.ResponseWriter, r *http.Request) {
+	var req materialCreateInput
+	if !matDecode(w, r, &req) {
+		return
+	}
+	req.OperationID = strings.TrimSpace(req.OperationID)
+	if !matOp(req.OperationID) {
+		writeJSONError(w, 400, "Confira unidade, datas, serviço e itens da requisição.")
+		return
+	}
+	if msg := matNormalizeRequest(&req); msg != "" {
+		writeJSONError(w, 400, msg)
+		return
 	}
 	h := matHash(req)
 	actor := userFromContext(r.Context()).ID
@@ -335,7 +348,8 @@ func (a *app) handleMaterialDetail(w http.ResponseWriter, r *http.Request) {
 	var created time.Time
 	var closedAt sql.NullTime
 	var closedBy, closeNotes string
-	err := a.db.QueryRowContext(ctx, "SELECT r.unit_name,r.delivery_date::text,r.production_date::text,r.service,r.status,r.notes,r.created_at,u.login,r.closed_at,COALESCE(cb.login,''),r.close_notes FROM material_requests r JOIN users u ON u.id=r.created_by LEFT JOIN users cb ON cb.id=r.closed_by WHERE r.id=$1", id).Scan(&unit, &delivery, &production, &service, &status, &notes, &created, &owner, &closedAt, &closedBy, &closeNotes)
+	var version int64
+	err := a.db.QueryRowContext(ctx, "SELECT r.unit_name,r.delivery_date::text,r.production_date::text,r.service,r.status,r.notes,r.created_at,u.login,r.closed_at,COALESCE(cb.login,''),r.close_notes,r.version FROM material_requests r JOIN users u ON u.id=r.created_by LEFT JOIN users cb ON cb.id=r.closed_by WHERE r.id=$1", id).Scan(&unit, &delivery, &production, &service, &status, &notes, &created, &owner, &closedAt, &closedBy, &closeNotes, &version)
 	if err != nil {
 		a.matRespond(w, err)
 		return
@@ -490,7 +504,7 @@ func (a *app) handleMaterialDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"id": id, "unit_name": unit, "delivery_date": delivery, "production_date": production,
 		"service": service, "status": status, "notes": notes, "created_at": created, "requested_by": owner,
-		"closed_at": closedWhen, "closed_by": closedBy, "close_notes": closeNotes,
+		"closed_at": closedWhen, "closed_by": closedBy, "close_notes": closeNotes, "version": version,
 		"lines": lines, "reservations": reservations, "deliveries": deliveries, "events": events})
 }
 

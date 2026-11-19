@@ -12,11 +12,11 @@ const html=original.replace('{{template "header" .}}','<header>Gestão de Estoqu
 .replaceAll('{{.CSRF}}','e2e-token').replaceAll('{{.User.ID}}','7')
 .replace(/\{\{if \.CanMaterial(Write|Fulfill|Receive)\}\}1\{\{else\}\}0\{\{end\}\}/g,'1')
 .replaceAll('{{if .CanMaterialWrite}}','').replaceAll('{{end}}','');
-const state={scope:'all',requests:[],created:new Map(),reservations:[],deliveries:[],deliverOps:new Map(),failDeliver:true,received:new Set(),crates:[]};
+const state={scope:'all',requests:[],created:new Map(),reservations:[],deliveries:[],deliverOps:new Map(),failDeliver:true,received:new Set(),crates:[],version:1,qty:'10',extra:[]};
 const respond=(route,status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const request1=()=>({id:1,unit_name:'Cozinha Central',requested_by:'Ana',production_date:'2026-11-16',service:'lanche',delivery_date:'2026-11-16',
- status:state.deliveries.length?'ENTREGA_PARCIAL':'PENDENTE',created_at:'2026-11-15T10:00:00Z',notes:'',
- lines:[{id:1,item_id:20,item:'Feijão carioca',unit:'KG',quantity:'10',reserved:String(state.reservations.reduce((s,r)=>s+Number(r.remaining),0)),delivered:String(state.deliveries.reduce((s,d)=>s+Number(d.quantity),0))}],
+ status:state.deliveries.length?'ENTREGA_PARCIAL':'PENDENTE',created_at:'2026-11-15T10:00:00Z',notes:'',version:state.version,
+ lines:[{id:1,item_id:20,item:'Feijão carioca',unit:'KG',quantity:state.qty,reserved:String(state.reservations.reduce((s,r)=>s+Number(r.remaining),0)),delivered:String(state.deliveries.reduce((s,d)=>s+Number(d.quantity),0))},...state.extra],
  reservations:state.reservations,
  deliveries:state.deliveries.map(d=>({...d,received:state.received.has(d.id),received_by:state.received.has(d.id)?'Ana':''})),
  events:[]});
@@ -80,6 +80,11 @@ async function main(){
    }
    if(p==='/api/material-requests/1/deliveries/40/receive'){state.received.add(40);return respond(route,200,{id:40,status:'confirmed'})}
    if(p==='/api/crates')return respond(route,200,state.crates);
+   if(p==='/api/material-requests/1/edit'){
+    state.version++;state.qty=body.lines.find(l=>l.item_id===20).quantity;
+    state.extra=body.lines.filter(l=>l.item_id!==20).map((l,i)=>({id:50+i,item_id:l.item_id,item:'Arroz branco',unit:'KG',quantity:l.quantity,reserved:'0',delivered:'0'}));
+    return respond(route,200,{id:1,status:'ENTREGA_PARCIAL',version:state.version,changed:true,changes:['Feijão carioca: 10 → 12 KG','incluído Arroz branco (3 KG)']});
+   }
    return respond(route,404,{error:'Unknown route '+p});
   });
   const inViewport=sel=>page.locator(sel).first().evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=-1&&r.bottom<=innerHeight+1});
@@ -202,6 +207,29 @@ async function main(){
   const crateDeliver=state.requests.filter(r=>r.p==='/api/material-requests/1/deliver').pop();
   assert.deepEqual(crateDeliver.body.crate_ids,[7,8],'A entrega precisa levar as caixas marcadas');
   await page.locator('[data-note-key="delivery:41"]',{hasText:'Caixas: CX-000007 (2 kg), CX-000008 (3 kg)'}).waitFor();
+
+  // Editar: item já entregue não sai do pedido; inclui outro material e corrige a quantidade.
+  await page.locator('[data-note-key="request"] button',{hasText:'Editar requisição'}).click();
+  const editBox=page.locator('[data-note-key="edit"]');
+  await editBox.waitFor();
+  assert.equal(await editBox.locator('.material-line button',{hasText:'Remover'}).first().isDisabled(),true,'Item com entrega não pode ser removido');
+  assert.equal(await editBox.locator('input[type=date]').nth(1).isDisabled(),true,'Data de produção fica travada depois da entrega');
+  await editBox.locator('input[type=search]').fill('arroz');
+  await editBox.locator('.material-matches button').first().click();
+  await editBox.locator('button',{hasText:'Salvar alterações'}).click();
+  await editBox.locator('[data-detail-note]',{hasText:'Informe a quantidade de Arroz branco'}).waitFor();
+  assert(await inViewport('[data-note-key="edit"] [data-detail-note]'),'Erro da edição precisa aparecer na tela');
+  await editBox.locator('.material-line input').nth(0).fill('12');
+  await editBox.locator('.material-line input').nth(1).fill('3');
+  await editBox.locator('button',{hasText:'Salvar alterações'}).click();
+  await page.locator('[data-note-key="request"] [data-detail-note]',{hasText:'Requisição #1 alterada: Feijão carioca: 10 → 12 KG; incluído Arroz branco (3 KG).'}).waitFor();
+  assert(await inViewport('[data-note-key="request"] [data-detail-note]'),'Sucesso da edição precisa aparecer na tela');
+  assert.equal(await page.locator('[data-note-key="edit"]').count(),0,'Formulário fecha depois de salvar');
+  const sentEdit=state.requests.find(r=>r.p==='/api/material-requests/1/edit').body;
+  assert.equal(sentEdit.version,1);
+  assert.deepEqual(sentEdit.lines,[{item_id:20,quantity:'12'},{item_id:10,quantity:'3'}]);
+  await page.locator('#materialDetail',{hasText:'Arroz branco'}).first().waitFor();
+  await topHidden();
 
   assert.equal(await page.getByText('Operação registrada.').count(),0,'Mensagem genérica não pode voltar');
   const size=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
