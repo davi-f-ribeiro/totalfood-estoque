@@ -84,3 +84,5 @@ fieldset.material-filter-fields{min-width:0;padding:0;border:0}
   .material-workspace:has(#materialDetail:not([hidden])){grid-template-columns:minmax(300px,380px) minmax(0,1fr);align-items:start;gap:24px}
   .material-workspace:has(#materialDetail:not([hidden])) .material-detail{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}
 }
+/* Quem precisa agir, na linha da lista: texto em peso 600 (sem cor de alerta, guia seção 2). */
+.material-action{font-weight:600;color:var(--text-primary)}

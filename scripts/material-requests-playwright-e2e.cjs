@@ -45,8 +45,8 @@ async function main(){
    state.requests.push({p,method:req.method(),body,params:Object.fromEntries(u.searchParams)});
    if(p==='/api/material-requests/search'){
     const rows=[
-     {id:1,unit_name:'Cozinha Central',production_date:'2026-11-16',delivery_date:'2026-11-15',service:'lanche',items:1,status:request1().status},
-     {id:2,unit_name:'Nutrição',production_date:'2026-11-17',delivery_date:'2026-11-16',service:'cafe',items:2,status:'PENDENTE'}
+     {id:1,unit_name:'Cozinha Central',production_date:'2026-11-16',delivery_date:'2026-11-15',service:'lanche',items:1,status:request1().status,pending:{separar:0,receber:state.deliveries.filter(d=>!state.received.has(d.id)).length,divergencia:0}},
+     {id:2,unit_name:'Nutrição',production_date:'2026-11-17',delivery_date:'2026-11-16',service:'cafe',items:2,status:'PENDENTE',pending:{separar:1,receber:0,divergencia:0}}
     ];
     const own=state.scope==='own';
     const visible=own?rows.slice(0,1):rows;
@@ -96,6 +96,7 @@ async function main(){
   await page.getByRole('button',{name:'Próxima',exact:true}).click();
   await page.locator('#materialPageLabel',{hasText:'Página 2 de 2'}).waitFor();
   await page.locator('#materialList button',{hasText:'#2 · Nutrição'}).waitFor();
+  await page.locator('#materialList button[data-request-id="2"]',{hasText:'Estoque: falta separar 1 material'}).waitFor();
   await page.getByRole('button',{name:'Anterior',exact:true}).click();
   await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).waitFor();
 
@@ -178,6 +179,7 @@ async function main(){
   assert(await inViewport('[data-note-key="res:30"] [data-detail-note]'),'Aviso de entrega sem confirmação precisa aparecer na tela');
   await uncertain.locator('button',{hasText:'Enviar de novo'}).click();
   await page.locator('[data-note-key="deliveries"] [data-detail-note]',{hasText:'Entrega de 4 KG de Feijão carioca registrada (saída #900).'}).waitFor();
+  await page.locator('#materialList button[data-request-id="1"]',{hasText:'Cozinha: falta confirmar o recebimento de 1 entrega'}).waitFor();
   assert(await inViewport('[data-note-key="deliveries"] [data-detail-note]'),'Sucesso da entrega precisa aparecer na tela');
   const delivers=state.requests.filter(r=>r.p==='/api/material-requests/1/deliver');
   assert.equal(delivers.length,2);
@@ -198,6 +200,8 @@ async function main(){
   await motive.waitFor({state:'hidden'});
   // Receber: aviso no cartão da entrega.
   await page.locator('[data-note-key="delivery:40"] button',{hasText:'Confirmar recebimento'}).click();
+  await page.locator('[data-note-key="delivery:40"] [data-detail-note]',{hasText:'Recebimento da entrega #40 confirmado.'}).waitFor();
+  assert.equal(await page.locator('#materialList button[data-request-id="1"]').textContent().then(t=>t.includes('falta confirmar o recebimento')),false,'Depois de receber, a lista deixa de cobrar a confirmação');
   await page.locator('[data-note-key="delivery:40"] [data-detail-note]',{hasText:'Recebimento da entrega #40 confirmado.'}).waitFor();
   assert(await inViewport('[data-note-key="delivery:40"] [data-detail-note]'),'Aviso do recebimento precisa aparecer na tela');
   await topHidden();

@@ -7,6 +7,15 @@ const status=$('materialStatus'),pendingBox=$('materialPending'),list=$('materia
 const serviceLabel={cafe:'Café da manhã',almoco:'Almoço',lanche:'Lanche',jantar:'Jantar'};
 // Situação escrita como frase (guia de estilo, seção 6: sem maiúsculas corridas).
 const statusLabel={PENDENTE:'Pendente',EM_SEPARACAO:'Em separação',ENTREGA_PARCIAL:'Entrega parcial',ENTREGUE:'Entregue',RECEBIDA_COM_DIVERGENCIA:'Recebida com divergência',RECEBIDA:'Recebida',ENCERRADA:'Encerrada',CANCELADA:'Cancelada',ATIVA:'ativa',CONSUMIDA:'entregue por inteiro',LIBERADA:'liberada'};
+// Quem precisa agir, escrito por linha da lista (a contagem vem do servidor, princípio 3).
+function actionLines(p){
+ if(!p)return[];
+ const out=[],n=(k,one,many)=>k===1?one:many;
+ if(p.separar>0)out.push('Estoque: falta separar '+number(p.separar)+n(p.separar,' material',' materiais'));
+ if(p.receber>0)out.push('Cozinha: falta confirmar o recebimento de '+number(p.receber)+n(p.receber,' entrega',' entregas'));
+ if(p.divergencia>0)out.push('Cozinha: falta confirmar o restante de '+number(p.divergencia)+n(p.divergencia,' entrega',' entregas'));
+ return out;
+}
 const statusText=s=>statusLabel[s]||String(s||'').replaceAll('_',' ').toLowerCase();
 let draft=[],current=0,busy=false,pending=null,searchSequence=0;
 const pendingKey='material-request:pending:'+document.querySelector('meta[name="current-user-id"]')?.content;
@@ -200,6 +209,7 @@ async function loadRequestList(focusCount=false){
     el('small',(serviceLabel[r.service]||r.service)+' · '+materials),
     el('span',statusText(r.status),'material-tag')
    );
+   for(const line of actionLines(r.pending))button.append(el('span',line,'material-action'));
    button.dataset.requestId=r.id;
    button.setAttribute('aria-current',String(current===r.id));
    list.append(button);
