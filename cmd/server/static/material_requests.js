@@ -453,7 +453,7 @@ function renderDetail(r){
    const line=r.lines.find(x=>x.id===res.line_id);
    const item=line?.item||'Material',unit=line?.unit||'';
    card.append(el('strong',(line?.item||'Material')+' · '+res.brand),el('p',res.sku+' · '+res.warehouse,'material-small'),
-     el('p','Separado '+number(res.quantity)+' · Falta entregar '+number(res.remaining)+' '+(line?.unit||'')+' · '+statusText(res.status),'material-small'));
+     el('p','Separado '+number(res.quantity)+' '+(line?.unit||'')+' · Falta entregar '+number(res.remaining)+' '+(line?.unit||'')+' · '+statusText(res.status),'material-small'));
    if(canFulfill&&res.status==='ATIVA'&&Number(res.remaining)>0){
     const input=numericInput(res.remaining);
     // Item controlado por caixa (hortifruti): o estoquista marca as caixas que vão sair e a
