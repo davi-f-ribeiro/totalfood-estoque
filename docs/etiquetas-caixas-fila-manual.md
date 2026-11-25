@@ -73,6 +73,25 @@ Se mesmo assim a fila do ESP ficar parada, **Configurações → Descartar confi
 
 Reserve sempre com transação e `FOR UPDATE SKIP LOCKED`, ACK é idempotente. Lease expirado fica `UNCERTAIN`, sem reimpressão automática.
 
+### Estado da impressora no ESP
+
+O ESP consulta a Zebra com `~HS` a cada 10 s. Quando há um problema, o selo do cabeçalho mostra o estado, e um aviso abaixo dele diz o que aconteceu e o que fazer, em todas as páginas. O LED fica âmbar. A ZD220 se pausa sozinha quando falta ribbon ou etiqueta, por isso a causa aparece antes de "pausada".
+
+| `printer` | Selo | O que fazer |
+|---|---|---|
+| `cabeca_aberta` | Tampa aberta | Fechar a tampa até o clique dos dois lados |
+| `sem_ribbon` | Ribbon acabou | Trocar ou recolocar o ribbon (por baixo da cabeça até o recolhedor, esticado, tinta do lado de fora), fechar e apertar pausa |
+| `sem_papel` | Sem etiquetas | Colocar um rolo novo, fechar e apertar pausa |
+| `temperatura` | Cabeça fora da temperatura | Esperar alguns minutos sem imprimir; se continuar, desligar e ligar |
+| `memoria` | Erro de memória | Desligar, esperar 10 s e ligar |
+| `buffer_cheio` | Fila da impressora cheia | Esperar terminar; se não andar, desligar e ligar |
+| `pausada` | Impressora pausada | Botão de pausa da impressora ou **Retomar impressão** na tela |
+
+- `GET /api/status` e o tópico MQTT `zebra/<id>/status` trazem `printer`, `problema` (texto curto) e `ajuda` (o que fazer).
+- `POST /api/resume` (sem senha, como imprimir) envia `~PS`. Só age quando a impressora está apenas pausada; com tampa aberta, sem ribbon, sem etiquetas, temperatura ou memória responde `409` com a instrução.
+- `POST /api/queue/pull` também responde `409` com a instrução nesses estados, para a fila não ser buscada com a impressora parada.
+- `sem_ribbon` só é considerado com a impressora no modo transferência térmica (campo `q` do `~HS` = 1).
+
 ## Testes / aprovação
 
 - `go test ./...`
