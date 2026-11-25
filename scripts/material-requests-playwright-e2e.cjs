@@ -138,15 +138,18 @@ async function main(){
   // Criar: erro e sucesso abaixo do botão, com o material e a unidade.
   await page.locator('#materialSearch').fill('arroz');
   await page.locator('#materialMatches button').first().click();
+  assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#materialDraft input')),true,'Depois de escolher o material, o foco vai para a quantidade');
   await page.locator('#materialUnit').fill('Cozinha Central');
   await page.locator('#materialService').selectOption({label:'Lanche'});
   await page.locator('#materialCreateSubmit').click();
-  await page.locator('#materialCreateStatus',{hasText:'Informe a quantidade de Arroz branco'}).waitFor();
+  await page.locator('#materialCreateStatus',{hasText:'Digite a quantidade de Arroz branco'}).waitFor();
   assert(await inViewport('#materialCreateStatus'),'Erro da criação precisa aparecer na tela');
+  assert.equal(await page.locator('#materialDraft input').getAttribute('aria-invalid'),'true','Quantidade com erro fica marcada');
   await page.locator('#materialDraft input').fill('5');
   await page.locator('#materialCreateSubmit').click();
   await page.locator('#materialCreateStatus',{hasText:'Requisição #2 enviada ao estoque: 1 material para Cozinha Central.'}).waitFor();
   assert(await inViewport('#materialCreateStatus'),'Sucesso da criação precisa aparecer na tela');
+  assert.equal(await page.locator('#materialUnit').inputValue(),'Cozinha Central','A unidade usada fica preenchida para a próxima requisição');
   assert.equal(state.requests.find(r=>r.p==='/api/material-requests'&&r.method==='POST').body.service,'lanche');
   await topHidden();
 
@@ -182,6 +185,13 @@ async function main(){
   await page.locator('[data-note-key="delivery:40"] strong',{hasText:'Feijão carioca, 4 KG'}).waitFor();
   await page.locator('[data-note-key="delivery:40"]',{hasText:'Kicaldo, Feijão 1 kg, Câmara Fria'}).waitFor();
 
+  // Receber: o motivo só aparece quando a quantidade recebida é menor que a entregue.
+  const motive=page.locator('[data-note-key="delivery:40"] label',{hasText:'Motivo da diferença'});
+  assert.equal(await motive.isVisible(),false,'Motivo escondido no recebimento integral');
+  await page.locator('[data-note-key="delivery:40"] input').first().fill('3');
+  await motive.waitFor();
+  await page.locator('[data-note-key="delivery:40"] input').first().fill('4');
+  await motive.waitFor({state:'hidden'});
   // Receber: aviso no cartão da entrega.
   await page.locator('[data-note-key="delivery:40"] button',{hasText:'Confirmar recebimento'}).click();
   await page.locator('[data-note-key="delivery:40"] [data-detail-note]',{hasText:'Recebimento da entrega #40 confirmado.'}).waitFor();
@@ -217,7 +227,7 @@ async function main(){
   await editBox.locator('input[type=search]').fill('arroz');
   await editBox.locator('.material-matches button').first().click();
   await editBox.locator('button',{hasText:'Salvar alterações'}).click();
-  await editBox.locator('[data-detail-note]',{hasText:'Informe a quantidade de Arroz branco'}).waitFor();
+  await editBox.locator('[data-detail-note]',{hasText:'Digite a quantidade de Arroz branco'}).waitFor();
   assert(await inViewport('[data-note-key="edit"] [data-detail-note]'),'Erro da edição precisa aparecer na tela');
   await editBox.locator('.material-line input').nth(0).fill('12');
   await editBox.locator('.material-line input').nth(1).fill('3');

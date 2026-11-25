@@ -12,7 +12,7 @@
 <body>{{template "header" .}}{{template "nav" .}}
 <main class="main materials-main" id="materialsRoot" data-can-write="{{if .CanMaterialWrite}}1{{else}}0{{end}}" data-can-fulfill="{{if .CanMaterialFulfill}}1{{else}}0{{end}}" data-can-receive="{{if .CanMaterialReceive}}1{{else}}0{{end}}">
   <h1>Requisições de material</h1>
-  <p class="hint">Solicite por material. O estoque escolhe a apresentação e confirma a saída física na entrega.</p>
+  <p class="hint">Peça o material e a quantidade. O estoque escolhe o produto (marca e embalagem), separa e entrega; depois confirme aqui o que chegou.</p>
   <div id="materialPending" class="impact-warning" role="status" hidden>
     <strong>Operação sem confirmação</strong><p>Confira a conexão e reenvie o mesmo lançamento sem duplicar.</p>
     <button type="button" id="materialRetry">Enviar de novo</button>
@@ -24,7 +24,7 @@
     <h2 id="materialCreateTitle">Nova requisição</h2>
     <form id="materialCreateForm" novalidate>
       <div class="material-fields">
-        <label>Unidade solicitante<input id="materialUnit" maxlength="120" autocomplete="organization" required placeholder="Ex.: Cozinha Central"></label>
+        <label>Unidade solicitante<input id="materialUnit" maxlength="120" autocomplete="organization" list="materialUnitOptions" required placeholder="Ex.: Cozinha Central"><datalist id="materialUnitOptions"></datalist></label>
         <label>Entrega desejada<input id="materialDeliveryDate" type="date" required></label>
         <label>Produção em<input id="materialProductionDate" type="date" required></label>
         <label>Serviço<select id="materialService" required><option value="cafe">Café da manhã</option><option value="almoco">Almoço</option><option value="lanche">Lanche</option><option value="jantar">Jantar</option></select></label>
