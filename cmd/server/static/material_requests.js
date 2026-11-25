@@ -569,5 +569,13 @@ if(canWrite){
    success:x=>'Requisição'+(x.id?' #'+x.id:'')+' enviada ao estoque: '+n+(n===1?' material':' materiais')+' para '+body.unit_name+'.',failure:'Requisição recusada.'});
  });
 }
+// Abas: Nova requisição (só quem pode criar) e Requisições (lista e detalhe).
+function showTab(name){
+ document.querySelectorAll('[role="tab"]').forEach(t=>{const on=t.dataset.tab===name;t.setAttribute('aria-selected',String(on));t.tabIndex=on?0:-1});
+ const create=$('sectionCreate');if(create)create.hidden=name!=='create';
+ $('sectionList').hidden=name!=='list';
+}
+document.querySelectorAll('[role="tab"]').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
+showTab('list');
 refresh();
 })();

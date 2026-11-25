@@ -136,6 +136,8 @@ async function main(){
   await page.getByText('Filtros e ordenação',{exact:true}).click();
 
   // Criar: erro e sucesso abaixo do botão, com o material e a unidade.
+  await page.locator('#tabCreate').click();
+  await page.locator('#sectionCreate').waitFor({state:'visible'});
   await page.locator('#materialSearch').fill('arroz');
   await page.locator('#materialMatches button').first().click();
   assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#materialDraft input')),true,'Depois de escolher o material, o foco vai para a quantidade');
@@ -152,6 +154,8 @@ async function main(){
   assert.equal(await page.locator('#materialUnit').inputValue(),'Cozinha Central','A unidade usada fica preenchida para a próxima requisição');
   assert.equal(state.requests.find(r=>r.p==='/api/material-requests'&&r.method==='POST').body.service,'lanche');
   await topHidden();
+  await page.locator('#tabList').click();
+  assert.equal(await page.locator('#sectionCreate').isVisible(),false,'Nova requisição some quando a aba Requisições está aberta');
 
   // Separar: aviso no cartão do material.
   await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).click();
@@ -244,6 +248,16 @@ async function main(){
   assert.equal(await page.getByText('Operação registrada.').count(),0,'Mensagem genérica não pode voltar');
   const size=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(size[0]<=size[1],'Rolagem lateral a 390 px '+size);
+  // Computador (1280 px): a lista fica à esquerda e o pedido aberto ao lado, sem rolagem lateral.
+  await page.setViewportSize({width:1280,height:800});
+  await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).click();
+  await page.locator('#materialDetail').waitFor({state:'visible'});
+  const boxes=await page.evaluate(()=>{const b=id=>document.getElementById(id).getBoundingClientRect();return{list:b('materialRequests'),detail:b('materialDetail')}});
+  assert(boxes.detail.left>=boxes.list.right,'No computador, o detalhe fica ao lado da lista '+JSON.stringify(boxes));
+  assert(Math.abs(boxes.detail.top-boxes.list.top)<40,'Lista e detalhe começam na mesma altura');
+  const desk=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
+  assert(desk[0]<=desk[1],'Rolagem lateral a 1280 px '+desk);
+  await page.screenshot({path:process.env.SHOT_DESKTOP||'/tmp/material-desktop.png',fullPage:false});
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS',requests:state.requests.length},null,1));
  }finally{await b.close();localServer.close()}
