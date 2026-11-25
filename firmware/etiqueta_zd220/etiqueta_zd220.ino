@@ -38,7 +38,7 @@
 #include "web_pages.h"
 #include "logo_png.h"
 
-#define FW_VERSION    "1.7.1"
+#define FW_VERSION    "1.7.2"
 #define AP_NAME       "Etiqueta-Setup"
 #define AP_PASSWORD   "etiqueta"          // senha do Wi-Fi do portal cativo (mín. 8)
 #define ADMIN_USER    "admin"
@@ -58,6 +58,9 @@
 // Wi-Fi caído: tenta reconectar a cada WIFI_RETRY_MS e reinicia a placa depois de WIFI_RESTART_MS.
 #define WIFI_RETRY_MS      30000
 #define WIFI_RESTART_MS    300000
+// Na partida, tempo para entrar na rede salva antes de abrir o portal. Depois de uma
+// queda de energia o roteador pode levar mais de um minuto para voltar.
+#define WIFI_BOOT_CONNECT_MS 45000
 
 // Tempo que uma versão nova precisa rodar, com Wi-Fi conectado, para ser confirmada.
 #define OTA_CONFIRM_MS 60000
@@ -865,6 +868,8 @@ static void handleWifiReset() {
   if (!requireAuth()) return;
   sendMsg(200, true, "Wi-Fi apagado. Conecte-se à rede " AP_NAME " para configurar de novo.");
   delay(300);
+  prefs.remove("wifi_ssid");                 // cópia própria da rede (veja setupWifi)
+  prefs.remove("wifi_pass");
   WiFiManager wm;
   wm.resetSettings();
   scheduleRestart();
@@ -930,12 +935,53 @@ static void handleUpdateDone() {
 }
 
 // ------------------------------ Wi-Fi ---------------------------------------
+// Por que existe uma cópia própria da rede (NVS "etq": wifi_ssid / wifi_pass):
+// com setHostname(), o autoConnect() do WiFiManager 2.0.17 desliga o Wi-Fi
+// (WIFI_OFF) e o religa com WiFi.persistent(false). No core esp32 3.x isso deixa o
+// driver gravando só na RAM (esp_wifi_set_storage(WIFI_STORAGE_RAM)) até o próximo
+// boot. A rede digitada no portal funcionava, mas não ia para a flash: no reinício
+// seguinte a placa voltava para a rede antiga ou abria o portal de novo.
+// Agora o hostname é definido no WiFi antes de ligar (sem wm.setHostname) e a rede
+// que conectou é guardada também nas Preferences, que não dependem do driver.
 static bool portalSaved = false;
 
+static void rememberWifi() {
+  String ssid = WiFi.SSID(), pass = WiFi.psk();
+  if (!ssid.length()) return;
+  if (ssid != prefs.getString("wifi_ssid", "")) prefs.putString("wifi_ssid", ssid);   // evita gravar à toa
+  if (pass != prefs.getString("wifi_pass", "")) prefs.putString("wifi_pass", pass);
+}
+
+// Tenta a rede guardada por até timeoutMs. O LED fica roxo enquanto tenta.
+static bool connectSavedWifi(uint32_t timeoutMs) {
+  String ssid = prefs.getString("wifi_ssid", ""), pass = prefs.getString("wifi_pass", "");
+  if (!ssid.length()) return false;
+  Serial.printf("[wifi] conectando à rede salva \"%s\"\n", ssid.c_str());
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  uint32_t t0 = millis(), lastTry = t0;
+  while (millis() - t0 < timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED) return true;
+    if (millis() - lastTry > 15000) { lastTry = millis(); WiFi.reconnect(); }   // roteador voltando
+    delay(250);
+  }
+  Serial.println("[wifi] rede salva não respondeu; abrindo o portal");
+  WiFi.disconnect();
+  return false;
+}
+
 static void setupWifi() {
+  WiFi.persistent(true);
+  WiFi.setHostname(cfg.host.c_str());        // antes de ligar o Wi-Fi, para valer no DHCP
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
   ledSet(LED_WIFI);
+
+  if (connectSavedWifi(WIFI_BOOT_CONNECT_MS)) {
+    Serial.printf("[wifi] conectado: %s  ->  http://%s.local\n",
+                  WiFi.localIP().toString().c_str(), cfg.host.c_str());
+    return;
+  }
 
   WiFiManager wm;
   WiFiManagerParameter pHost("host", "Nome de acesso (http://NOME.local)", cfg.host.c_str(), 31);
@@ -943,7 +989,7 @@ static void setupWifi() {
   wm.setSaveParamsCallback([]() { portalSaved = true; });
   wm.setSaveConfigCallback([]() { portalSaved = true; });
   wm.setAPCallback([](WiFiManager*) { ledSet(LED_PORTAL); });
-  wm.setHostname(cfg.host.c_str());
+  // Sem wm.setHostname(): ele faz o autoConnect desligar o Wi-Fi e perder a gravação na flash.
   wm.setTitle("Etiquetas TotalFood");
   wm.setConfigPortalTimeout(180);           // sem configuração em 3 min: reinicia e tenta de novo
   wm.setConnectTimeout(20);
@@ -952,6 +998,7 @@ static void setupWifi() {
     Serial.println("[wifi] portal expirou sem conexão; reiniciando");
     ESP.restart();
   }
+  rememberWifi();                            // antes de qualquer reinício abaixo
 
   if (portalSaved) {
     String h = String(pHost.getValue());
@@ -1160,7 +1207,12 @@ static void handlePrinterResponses() {
 // a placa (com a impressora livre e sem atualização em andamento).
 static void watchWifi() {
   static uint32_t downSince = 0, lastRetry = 0;
-  if (WiFi.isConnected()) { downSince = 0; return; }
+  static bool remembered = false;
+  if (WiFi.isConnected()) {
+    downSince = 0;
+    if (!remembered) { remembered = true; rememberWifi(); }   // guarda a rede em uso, uma vez por boot
+    return;
+  }
   uint32_t now = millis();
   if (!downSince) { downSince = now | 1; lastRetry = now; Serial.println("[wifi] conexão perdida"); return; }
   if (now - downSince > WIFI_RESTART_MS && printerIdle() && !updating && !restartAt) {

@@ -92,6 +92,19 @@ O ESP consulta a Zebra com `~HS` a cada 10 s. Quando há um problema, o selo do 
 - `POST /api/queue/pull` também responde `409` com a instrução nesses estados, para a fila não ser buscada com a impressora parada.
 - `sem_ribbon` só é considerado com a impressora no modo transferência térmica (campo `q` do `~HS` = 1).
 
+### Wi-Fi salvo no ESP
+
+Até a 1.7.1, a rede escolhida no portal (`Etiqueta-Setup`) podia ficar só na RAM: o `wm.setHostname()` fazia o WiFiManager 2.0.17 desligar e religar o Wi-Fi com gravação desativada (core esp32 3.x). No reinício seguinte a placa voltava para a rede antiga ou abria o portal.
+
+A partir da 1.7.2:
+
+- O nome de acesso é definido com `WiFi.setHostname()` antes de ligar o Wi-Fi, sem `wm.setHostname()`.
+- A rede que conectou também fica nas Preferences (`wifi_ssid`/`wifi_pass`, namespace `etq`), gravada logo depois do portal e uma vez por boot com a rede em uso.
+- Na partida, o ESP tenta essa rede por até 45 s (o roteador pode demorar a voltar depois de falta de energia) antes de abrir o portal.
+- **Configurar outro Wi-Fi** apaga também essa cópia.
+
+Ao atualizar de uma versão anterior, se o ESP abrir o portal, configure a rede uma vez: a partir daí ela fica guardada.
+
 ## Testes / aprovação
 
 - `go test ./...`
