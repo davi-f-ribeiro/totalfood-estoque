@@ -38,7 +38,7 @@
 #include "web_pages.h"
 #include "logo_png.h"
 
-#define FW_VERSION    "1.7.0"
+#define FW_VERSION    "1.7.2"
 #define AP_NAME       "Etiqueta-Setup"
 #define AP_PASSWORD   "etiqueta"          // senha do Wi-Fi do portal cativo (mín. 8)
 #define ADMIN_USER    "admin"
@@ -58,6 +58,9 @@
 // Wi-Fi caído: tenta reconectar a cada WIFI_RETRY_MS e reinicia a placa depois de WIFI_RESTART_MS.
 #define WIFI_RETRY_MS      30000
 #define WIFI_RESTART_MS    300000
+// Na partida, tempo para entrar na rede salva antes de abrir o portal. Depois de uma
+// queda de energia o roteador pode levar mais de um minuto para voltar.
+#define WIFI_BOOT_CONNECT_MS 45000
 
 // Tempo que uma versão nova precisa rodar, com Wi-Fi conectado, para ser confirmada.
 #define OTA_CONFIRM_MS 60000
@@ -372,6 +375,7 @@ static void saveLast(const char* key, const std::map<String, String>& m) {
 // --------------------------- Status da impressora ---------------------------
 struct {
   bool     paperOut = false, paused = false, headUp = false;
+  bool     ribbonOut = false, tempOut = false, bufferFull = false, ramCorrupt = false;
   uint32_t validAt  = 0;
 } hs;
 uint32_t hsSentAt = 0;
@@ -383,22 +387,61 @@ static bool rawBusy() { return lastRawRx && millis() - lastRawRx < 3000; }
 
 static bool hsFresh() { return hs.validAt && millis() - hs.validAt < 30000; }
 
+// A impressora se pausa sozinha quando falta ribbon, etiqueta etc. Por isso a
+// ordem abaixo põe a causa física antes de "pausada": o operador precisa ver o
+// motivo e o que fazer, não só que ela parou.
 static const char* printerState() {
   if (!usbPrinterReady()) return "desconectada";
   if (hsFresh()) {
-    if (hs.headUp)   return "cabeca_aberta";
-    if (hs.paperOut) return "sem_papel";
-    if (hs.paused)   return "pausada";
+    if (hs.headUp)     return "cabeca_aberta";
+    if (hs.ribbonOut)  return "sem_ribbon";
+    if (hs.paperOut)   return "sem_papel";
+    if (hs.tempOut)    return "temperatura";
+    if (hs.ramCorrupt) return "memoria";
+    if (hs.bufferFull) return "buffer_cheio";
+    if (hs.paused)     return "pausada";
   }
   return "pronta";
 }
 
-static const char* printerStateText(const char* st) {
-  if (!strcmp(st, "cabeca_aberta")) return "a tampa da impressora está aberta";
-  if (!strcmp(st, "sem_papel"))     return "a impressora está sem etiquetas";
-  if (!strcmp(st, "pausada"))       return "a impressora está pausada";
-  return "";
+// Estados em que a impressora não imprime até alguém mexer nela (tampa, rolo...).
+static bool printerNeedsHands(const char* st) {
+  return !strcmp(st, "cabeca_aberta") || !strcmp(st, "sem_ribbon") || !strcmp(st, "sem_papel") ||
+         !strcmp(st, "temperatura")   || !strcmp(st, "memoria");
 }
+
+// Textos para o operador: o problema (curto) e o que fazer. Iguais aos da tela.
+struct PrinterMsg { const char* state; const char* problem; const char* help; };
+static const PrinterMsg PRINTER_MSGS[] = {
+  { "desconectada", "a impressora não está conectada",
+    "Confira se a impressora está ligada e se o cabo USB está bem encaixado nos dois lados." },
+  { "cabeca_aberta", "a tampa da impressora está aberta",
+    "Feche a tampa da impressora e aperte até ouvir o clique dos dois lados." },
+  { "sem_ribbon", "o ribbon acabou ou não foi detectado",
+    "Abra a tampa e veja se o ribbon acabou; se acabou, troque o rolo. Confira se a fita passa por baixo "
+    "da cabeça de impressão até o rolo recolhedor, bem esticada, sem rugas e com a tinta do lado de fora. "
+    "Feche a tampa até ouvir o clique e aperte o botão de pausa." },
+  { "sem_papel", "a impressora está sem etiquetas",
+    "Coloque um rolo novo de etiquetas, passe a ponta pelas guias, feche a tampa e aperte o botão de pausa." },
+  { "temperatura", "a cabeça de impressão está muito quente ou muito fria",
+    "Deixe a impressora ligada, sem imprimir, por alguns minutos. Se o aviso continuar, desligue e ligue a impressora." },
+  { "memoria", "a impressora indicou erro de memória",
+    "Desligue a impressora, espere 10 segundos e ligue de novo." },
+  { "buffer_cheio", "a fila de recepção da impressora está cheia",
+    "Espere as etiquetas em andamento terminarem. Se não andar, desligue e ligue a impressora." },
+  { "pausada", "a impressora está pausada",
+    "Aperte o botão de pausa da impressora uma vez, ou use Retomar impressão nesta tela." },
+};
+
+// Devolve o índice (e não um ponteiro para PrinterMsg): o Arduino gera os protótipos
+// das funções no topo do .ino, antes da struct, e o tipo ainda não existiria lá.
+static int printerMsgIndex(const char* st) {
+  for (size_t i = 0; i < sizeof(PRINTER_MSGS) / sizeof(PRINTER_MSGS[0]); i++)
+    if (!strcmp(PRINTER_MSGS[i].state, st)) return (int)i;
+  return -1;
+}
+static const char* printerStateText(const char* st) { int i = printerMsgIndex(st); return i < 0 ? "" : PRINTER_MSGS[i].problem; }
+static const char* printerStateHelp(const char* st) { int i = printerMsgIndex(st); return i < 0 ? "" : PRINTER_MSGS[i].help; }
 
 static void queryStatus() {
   static const uint8_t cmd[] = { '~', 'H', 'S', '\r', '\n' };
@@ -422,10 +465,19 @@ static void parseHS(const uint8_t* b, size_t n) {
     int end = s.indexOf(',', start);
     return s.substring(start, end < 0 ? s.length() : end);
   };
-  hs.paperOut = field(seg[0], 1) == "1";
-  hs.paused   = field(seg[0], 2) == "1";
-  hs.headUp   = field(seg[1], 2) == "1";
-  hs.validAt  = millis();
+  // Linha 1: aaa,b,c,dddd,eee,f,g,h,iii,j,k,l
+  //   b sem papel, c pausada, f buffer cheio, j RAM corrompida, k/l abaixo/acima da temperatura
+  // Linha 2: mmm,n,o,p,q,...
+  //   o cabeça/tampa aberta, p ribbon acabou, q modo transferência térmica (usa ribbon)
+  hs.paperOut   = field(seg[0], 1) == "1";
+  hs.paused     = field(seg[0], 2) == "1";
+  hs.bufferFull = field(seg[0], 5) == "1";
+  hs.ramCorrupt = field(seg[0], 9) == "1";
+  hs.tempOut    = field(seg[0], 10) == "1" || field(seg[0], 11) == "1";
+  hs.headUp     = field(seg[1], 2) == "1";
+  // No modo térmico direto o campo do ribbon não tem sentido: só vale com q = 1.
+  hs.ribbonOut  = field(seg[1], 3) == "1" && field(seg[1], 4) == "1";
+  hs.validAt    = millis();
 }
 
 // Os dados contêm um comando que gera resposta da impressora (~HS, ~HQES, ^HH...)?
@@ -474,7 +526,7 @@ static void ledSet(LedColor c) {
     case LED_NO_PRINTER: bl = b; break;                 // azul: rede ok, impressora não detectada
     case LED_READY:      g = b; break;                  // verde: pronta
     case LED_PRINTING:   g = b; bl = b; break;          // ciano: enviando etiqueta
-    case LED_ATTENTION:  r = b; g = b / 2; break;       // âmbar: sem etiquetas, pausada, tampa aberta
+    case LED_ATTENTION:  r = b; g = b / 2; break;       // âmbar: sem etiquetas/ribbon, pausada, tampa aberta, temperatura
     case LED_ERROR:      r = b; break;                  // vermelho: falha no USB
     case LED_UPDATING:   r = b; bl = b / 2; break;      // rosa: atualizando o sistema
     default: break;
@@ -606,7 +658,9 @@ static void handlePrint() {
   String msg = copies == 1 ? String("1 etiqueta enviada para a impressora.")
                            : String(copies) + " etiquetas enviadas para a impressora.";
   const char* st = printerState();
-  if (strcmp(st, "pronta") != 0) msg += String(" Atenção: ") + printerStateText(st) + ".";
+  if (strcmp(st, "pronta") != 0)
+    msg += String(" Atenção: ") + printerStateText(st) + ". " + printerStateHelp(st) +
+           " A etiqueta sai quando a impressora voltar a ficar pronta.";
   sendMsg(200, true, msg);
 }
 
@@ -628,12 +682,14 @@ static void handleRaw() {
 static void handleStatus() {
   bool idle = printerIdle();                   // antes da consulta abaixo, que ocupa o USB por um instante
   if (usbPrinterReady() && millis() - hsSentAt > 3000) queryStatus();
-  char b[640];
+  const char* st = printerState();
+  char b[1280];
   snprintf(b, sizeof(b),
-    "{\"printer\":\"%s\",\"online\":%s,\"idle\":%s,\"vidpid\":\"%04X:%04X\",\"bytes\":%lu,\"errors\":%lu,"
+    "{\"printer\":\"%s\",\"problema\":\"%s\",\"ajuda\":\"%s\",\"online\":%s,\"idle\":%s,\"vidpid\":\"%04X:%04X\",\"bytes\":%lu,\"errors\":%lu,"
     "\"rssi\":%d,\"ip\":\"%s\",\"host\":\"%s\",\"fw\":\"%s\",\"ota_pending\":%s,\"updating\":%s,\"uptime\":%lu,"
     "\"heap\":%lu,\"heap_min\":%lu,\"heap_block\":%lu,\"reset\":%d}",
-    printerState(), usbPrinterReady() ? "true" : "false", idle ? "true" : "false",
+    st, jsonEsc(printerStateText(st)).c_str(), jsonEsc(printerStateHelp(st)).c_str(),
+    usbPrinterReady() ? "true" : "false", idle ? "true" : "false",
     usbPrinterVid(), usbPrinterPid(),
     (unsigned long)usbPrinterBytes(), (unsigned long)usbPrinterErrors(),
     WiFi.RSSI(), WiFi.localIP().toString().c_str(), jsonEsc(cfg.host).c_str(), FW_VERSION,
@@ -641,6 +697,32 @@ static void handleStatus() {
     (unsigned long)ESP.getFreeHeap(), (unsigned long)ESP.getMinFreeHeap(), (unsigned long)ESP.getMaxAllocHeap(),
     (int)esp_reset_reason());
   sendJson(200, b);
+}
+
+// Tira a pausa (~PS) pela tela, sem apertar o botão da impressora. Ação de operador,
+// como imprimir: sem senha. Só age quando o último ~HS mostra a impressora apenas
+// pausada; com tampa aberta, sem ribbon etc. ela voltaria a parar na hora.
+static void handleResume() {
+  static const uint8_t cmd[] = { '~', 'P', 'S', '\r', '\n' };
+  if (updating || wmsQueueBusy() || rawBusy()) {
+    sendMsg(409, false, "A impressora está ocupada. Tente de novo em alguns segundos.");
+    return;
+  }
+  if (!usbPrinterReady()) { sendMsg(503, false, String("A impressora não está conectada. ") + printerStateHelp("desconectada")); return; }
+  if (!hsFresh()) {
+    queryStatus();
+    sendMsg(409, false, "Conferindo o estado da impressora. Tente de novo em alguns segundos.");
+    return;
+  }
+  const char* st = printerState();
+  if (printerNeedsHands(st)) {
+    sendMsg(409, false, String("Ainda não dá para retomar: ") + printerStateText(st) + ". " + printerStateHelp(st));
+    return;
+  }
+  if (!usbPrinterSend(cmd, sizeof(cmd), 2000)) { sendMsg(503, false, "Não foi possível falar com a impressora. Tente de novo."); return; }
+  hs.paused = false;                           // a próxima consulta confirma
+  Serial.println("[web] impressão retomada (~PS)");
+  sendMsg(200, true, "Impressão retomada.");
 }
 
 // --- API de configuração ---
@@ -786,6 +868,8 @@ static void handleWifiReset() {
   if (!requireAuth()) return;
   sendMsg(200, true, "Wi-Fi apagado. Conecte-se à rede " AP_NAME " para configurar de novo.");
   delay(300);
+  prefs.remove("wifi_ssid");                 // cópia própria da rede (veja setupWifi)
+  prefs.remove("wifi_pass");
   WiFiManager wm;
   wm.resetSettings();
   scheduleRestart();
@@ -851,12 +935,53 @@ static void handleUpdateDone() {
 }
 
 // ------------------------------ Wi-Fi ---------------------------------------
+// Por que existe uma cópia própria da rede (NVS "etq": wifi_ssid / wifi_pass):
+// com setHostname(), o autoConnect() do WiFiManager 2.0.17 desliga o Wi-Fi
+// (WIFI_OFF) e o religa com WiFi.persistent(false). No core esp32 3.x isso deixa o
+// driver gravando só na RAM (esp_wifi_set_storage(WIFI_STORAGE_RAM)) até o próximo
+// boot. A rede digitada no portal funcionava, mas não ia para a flash: no reinício
+// seguinte a placa voltava para a rede antiga ou abria o portal de novo.
+// Agora o hostname é definido no WiFi antes de ligar (sem wm.setHostname) e a rede
+// que conectou é guardada também nas Preferences, que não dependem do driver.
 static bool portalSaved = false;
 
+static void rememberWifi() {
+  String ssid = WiFi.SSID(), pass = WiFi.psk();
+  if (!ssid.length()) return;
+  if (ssid != prefs.getString("wifi_ssid", "")) prefs.putString("wifi_ssid", ssid);   // evita gravar à toa
+  if (pass != prefs.getString("wifi_pass", "")) prefs.putString("wifi_pass", pass);
+}
+
+// Tenta a rede guardada por até timeoutMs. O LED fica roxo enquanto tenta.
+static bool connectSavedWifi(uint32_t timeoutMs) {
+  String ssid = prefs.getString("wifi_ssid", ""), pass = prefs.getString("wifi_pass", "");
+  if (!ssid.length()) return false;
+  Serial.printf("[wifi] conectando à rede salva \"%s\"\n", ssid.c_str());
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  uint32_t t0 = millis(), lastTry = t0;
+  while (millis() - t0 < timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED) return true;
+    if (millis() - lastTry > 15000) { lastTry = millis(); WiFi.reconnect(); }   // roteador voltando
+    delay(250);
+  }
+  Serial.println("[wifi] rede salva não respondeu; abrindo o portal");
+  WiFi.disconnect();
+  return false;
+}
+
 static void setupWifi() {
+  WiFi.persistent(true);
+  WiFi.setHostname(cfg.host.c_str());        // antes de ligar o Wi-Fi, para valer no DHCP
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
   ledSet(LED_WIFI);
+
+  if (connectSavedWifi(WIFI_BOOT_CONNECT_MS)) {
+    Serial.printf("[wifi] conectado: %s  ->  http://%s.local\n",
+                  WiFi.localIP().toString().c_str(), cfg.host.c_str());
+    return;
+  }
 
   WiFiManager wm;
   WiFiManagerParameter pHost("host", "Nome de acesso (http://NOME.local)", cfg.host.c_str(), 31);
@@ -864,7 +989,7 @@ static void setupWifi() {
   wm.setSaveParamsCallback([]() { portalSaved = true; });
   wm.setSaveConfigCallback([]() { portalSaved = true; });
   wm.setAPCallback([](WiFiManager*) { ledSet(LED_PORTAL); });
-  wm.setHostname(cfg.host.c_str());
+  // Sem wm.setHostname(): ele faz o autoConnect desligar o Wi-Fi e perder a gravação na flash.
   wm.setTitle("Etiquetas TotalFood");
   wm.setConfigPortalTimeout(180);           // sem configuração em 3 min: reinicia e tenta de novo
   wm.setConnectTimeout(20);
@@ -873,6 +998,7 @@ static void setupWifi() {
     Serial.println("[wifi] portal expirou sem conexão; reiniciando");
     ESP.restart();
   }
+  rememberWifi();                            // antes de qualquer reinício abaixo
 
   if (portalSaved) {
     String h = String(pHost.getValue());
@@ -917,6 +1043,12 @@ static void handleQueueStatus() {
   sendJson(200, wmsQueueStatus());
 }
 static void handleQueuePull() {
+  const char* st = printerState();
+  if (usbPrinterReady() && printerNeedsHands(st)) {
+    sendMsg(409, false, String("Resolva a impressora antes de buscar a fila: ") + printerStateText(st) + ". " +
+                        printerStateHelp(st));
+    return;
+  }
   if (updating || rawBusy() || !wmsQueueStart(cfg.wmsUrl, cfg.wmsToken)) {
     sendMsg(409, false, "Confira Wi-Fi, impressora e pareamento em Configurações. Se a fila já estiver em andamento, aguarde.");
     return;
@@ -953,6 +1085,7 @@ static void setupWeb() {
   server.on("/api/queue/discard", HTTP_POST, handleQueueDiscard);
   server.on("/api/raw",       HTTP_POST, handleRaw);
   server.on("/api/status",    HTTP_GET,  handleStatus);
+  server.on("/api/resume",    HTTP_POST, handleResume);
   server.on("/health",        HTTP_GET,  handleStatus);
 
   server.on("/api/config",    HTTP_GET,  handleGetConfig);
@@ -981,9 +1114,12 @@ static void onMqtt(char* topic, byte* payload, unsigned int len) {
 }
 
 static void publishStatus() {
-  char b[200];
-  snprintf(b, sizeof(b), "{\"online\":true,\"printer\":\"%s\",\"bytes\":%lu,\"errors\":%lu,\"rssi\":%d}",
-           printerState(), (unsigned long)usbPrinterBytes(), (unsigned long)usbPrinterErrors(), WiFi.RSSI());
+  const char* st = printerState();
+  char b[768];
+  snprintf(b, sizeof(b),
+           "{\"online\":true,\"printer\":\"%s\",\"problema\":\"%s\",\"ajuda\":\"%s\",\"bytes\":%lu,\"errors\":%lu,\"rssi\":%d}",
+           st, jsonEsc(printerStateText(st)).c_str(), jsonEsc(printerStateHelp(st)).c_str(),
+           (unsigned long)usbPrinterBytes(), (unsigned long)usbPrinterErrors(), WiFi.RSSI());
   mqtt.publish(T_STATUS.c_str(), b, true);
 }
 
@@ -1071,7 +1207,12 @@ static void handlePrinterResponses() {
 // a placa (com a impressora livre e sem atualização em andamento).
 static void watchWifi() {
   static uint32_t downSince = 0, lastRetry = 0;
-  if (WiFi.isConnected()) { downSince = 0; return; }
+  static bool remembered = false;
+  if (WiFi.isConnected()) {
+    downSince = 0;
+    if (!remembered) { remembered = true; rememberWifi(); }   // guarda a rede em uso, uma vez por boot
+    return;
+  }
   uint32_t now = millis();
   if (!downSince) { downSince = now | 1; lastRetry = now; Serial.println("[wifi] conexão perdida"); return; }
   if (now - downSince > WIFI_RESTART_MS && printerIdle() && !updating && !restartAt) {

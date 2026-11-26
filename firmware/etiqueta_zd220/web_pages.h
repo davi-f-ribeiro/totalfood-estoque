@@ -88,6 +88,14 @@ textarea.list-edit{font:inherit;font-size:1rem;line-height:1.5;min-height:180px}
 .page-tabs{display:flex;margin:-4px 0 20px;border-bottom:1px solid var(--border)}
 .page-tabs a{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;padding:8px 12px;margin-bottom:-1px;border-bottom:3px solid transparent;color:var(--text-secondary);font-weight:400;text-decoration:none;text-align:center}
 .page-tabs a[aria-current=page]{color:var(--text-primary);border-bottom-color:var(--text-primary);font-weight:600}
+/* Aviso da impressora abaixo do cabeçalho: problema + o que fazer */
+.printer-help{max-width:688px;margin:16px auto 0;padding:12px 16px;border:1px solid var(--warning-border);border-radius:var(--radius-sm);
+background:var(--warning-soft);color:var(--warning)}
+@media(max-width:767px){.printer-help{margin:16px 16px 0}}
+.printer-help.err{border-color:var(--danger-border);background:var(--danger-soft);color:var(--danger)}
+.printer-help strong{display:block;font-size:1rem}
+.printer-help p{margin:4px 0 0;font-size:.9375rem;color:var(--text-primary)}
+.printer-help button{margin-top:12px}
 [hidden]{display:none!important}
 </style></head><body>
 <header class="top">
@@ -95,6 +103,12 @@ textarea.list-edit{font:inherit;font-size:1rem;line-height:1.5;min-height:180px}
   <span class="brand-copy"><strong>Etiquetas</strong><small>Qualidade todo dia!</small></span></a>
   <span id="st" class="status" role="status" aria-live="polite" hidden></span>
 </header>
+<div id="sthelp" class="printer-help" role="alert" hidden>
+  <strong id="sthelpTitle"></strong>
+  <p id="sthelpText"></p>
+  <button type="button" id="resume" hidden>Retomar impressão</button>
+  <p id="resumeFb" class="operation-feedback" role="status" aria-live="polite" hidden></p>
+</div>
 )HTML";
 
 // JS comum: status da impressora no cabeçalho, avisos e envio de formulários
@@ -107,12 +121,33 @@ async function post(url,data){
   }catch(e){return{ok:false,msg:'Sem conexão com o equipamento. Confira o Wi-Fi e tente de novo.'}}
 }
 const ST={pronta:['Impressora pronta','ok'],desconectada:['Impressora desconectada','err'],
-sem_papel:['Sem etiquetas','warn'],pausada:['Impressora pausada','warn'],cabeca_aberta:['Tampa aberta','warn']};
+sem_papel:['Sem etiquetas','warn'],sem_ribbon:['Ribbon acabou','warn'],pausada:['Impressora pausada','warn'],
+cabeca_aberta:['Tampa aberta','warn'],temperatura:['Cabeça fora da temperatura','warn'],
+memoria:['Erro de memória','err'],buffer_cheio:['Fila da impressora cheia','warn']};
+// Aviso abaixo do cabeçalho: o que aconteceu e o que fazer (textos vêm do firmware)
+function printerHelp(j){
+  const box=$('sthelp');
+  const show=!j.updating&&j.printer!=='pronta'&&!!j.ajuda;
+  box.hidden=!show;
+  if(!show){feedback($('resumeFb'),'','');return}
+  const p=j.problema||'';
+  $('sthelpTitle').textContent=p?p.charAt(0).toUpperCase()+p.slice(1)+'.':'Atenção';
+  $('sthelpText').textContent=j.ajuda;
+  box.className='printer-help'+((ST[j.printer]||[])[1]==='err'?' err':'');
+  $('resume').hidden=j.printer!=='pausada';
+}
+$('resume').addEventListener('click',async()=>{
+  const b=$('resume');b.disabled=true;feedback($('resumeFb'),'loading','Retomando…');
+  const j=await post('/api/resume');
+  feedback($('resumeFb'),j.ok?'success':'error',j.msg||'Não foi possível retomar. Tente de novo.');
+  b.disabled=false;setTimeout(status,1500);
+});
 async function status(){
   const el=$('st');
   try{const j=await (await fetch('/api/status')).json();
     const s=j.updating?['Atualizando o sistema','warn']:(ST[j.printer]||[j.printer,'warn']);
     el.textContent=s[0];el.className='status '+s[1];el.hidden=false;
+    printerHelp(j);
     if(window.onStatus)onStatus(j);
   }catch(e){el.textContent='Sem conexão';el.className='status err';el.hidden=false}
 }
