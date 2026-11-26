@@ -12,19 +12,22 @@
 <body>{{template "header" .}}{{template "nav" .}}
 <main class="main materials-main" id="materialsRoot" data-can-write="{{if .CanMaterialWrite}}1{{else}}0{{end}}" data-can-fulfill="{{if .CanMaterialFulfill}}1{{else}}0{{end}}" data-can-receive="{{if .CanMaterialReceive}}1{{else}}0{{end}}">
   <h1>Requisições de material</h1>
-  <p class="hint">Solicite por material. O estoque escolhe a apresentação e confirma a saída física na entrega.</p>
+  <p class="hint">Peça o material e a quantidade. O estoque escolhe o produto (marca e embalagem), separa e entrega; depois confirme aqui o que chegou.</p>
   <div id="materialPending" class="impact-warning" role="status" hidden>
     <strong>Operação sem confirmação</strong><p>Confira a conexão e reenvie o mesmo lançamento sem duplicar.</p>
     <button type="button" id="materialRetry">Enviar de novo</button>
   </div>
   <div id="materialStatus" class="operation-feedback" role="status" aria-live="polite" hidden></div>
+  <nav class="material-tabs" aria-label="Seções de requisições">
+    {{if .CanMaterialWrite}}<button type="button" role="tab" id="tabCreate" data-tab="create" aria-selected="false" aria-controls="sectionCreate">Nova requisição</button>{{end}}
+    <button type="button" role="tab" id="tabList" data-tab="list" aria-selected="true" aria-controls="sectionList">Requisições</button>
+  </nav>
   {{if .CanMaterialWrite}}
-  <p class="hint"><a href="#materialRequests">Ir para a lista de requisições</a></p>
-  <section class="panel material-create" aria-labelledby="materialCreateTitle">
+  <section class="panel material-create" id="sectionCreate" aria-labelledby="materialCreateTitle" hidden>
     <h2 id="materialCreateTitle">Nova requisição</h2>
     <form id="materialCreateForm" novalidate>
       <div class="material-fields">
-        <label>Unidade solicitante<input id="materialUnit" maxlength="120" autocomplete="organization" required placeholder="Ex.: Cozinha Central"></label>
+        <label>Unidade solicitante<input id="materialUnit" maxlength="120" autocomplete="organization" list="materialUnitOptions" required placeholder="Ex.: Cozinha Central"><datalist id="materialUnitOptions"></datalist></label>
         <label>Entrega desejada<input id="materialDeliveryDate" type="date" required></label>
         <label>Produção em<input id="materialProductionDate" type="date" required></label>
         <label>Serviço<select id="materialService" required><option value="cafe">Café da manhã</option><option value="almoco">Almoço</option><option value="lanche">Lanche</option><option value="jantar">Jantar</option></select></label>
@@ -41,6 +44,7 @@
     </form>
   </section>
   {{end}}
+  <div class="material-workspace" id="sectionList">
   <section class="panel material-list" id="materialRequests" aria-labelledby="materialListTitle">
     <div class="material-toolbar"><h2 id="materialListTitle">Requisições</h2><button class="secondary" id="materialRefresh" type="button">Atualizar</button></div>
     <p id="materialListScope" class="hint"></p>
@@ -108,6 +112,7 @@
     <div class="material-toolbar"><h2 id="materialDetailTitle">Detalhes</h2><button type="button" id="materialClose" class="secondary">Fechar</button></div>
     <div id="materialDetailContent"></div>
   </section>
+  </div>
 </main>
 <script src="/static/utils/offline-store.js" defer></script>
 <script src="/static/app.js" defer></script>

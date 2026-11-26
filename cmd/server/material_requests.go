@@ -46,6 +46,11 @@ func (a *app) matRespond(w http.ResponseWriter, err error) {
 	log.Printf("material requests: %v", err)
 	writeJSONError(w, 500, "Não foi possível concluir. Confira a operação antes de reenviar.")
 }
+
+// Saldo que ainda falta separar de uma linha: pedido menos o reservado ativo e o já entregue.
+// É a única conta desse saldo: o detalhe envia o valor por linha e a lista conta as linhas com saldo.
+const materialLineToSeparateSQL = `GREATEST(l.quantity - COALESCE((SELECT sum(res.remaining_quantity) FROM material_request_reservations res WHERE res.request_line_id = l.id AND res.status = 'ATIVA'), 0) - COALESCE((SELECT sum(d.quantity) FROM material_request_deliveries d JOIN material_request_reservations res ON res.id = d.reservation_id WHERE res.request_line_id = l.id), 0), 0)`
+
 func matHash(v any) string {
 	b, _ := json.Marshal(v)
 	h := sha256.Sum256(b)
@@ -355,20 +360,20 @@ func (a *app) handleMaterialDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lines := []map[string]any{}
-	rows, err := a.db.QueryContext(ctx, "SELECT l.id,i.id,i.name,i.unit_code,l.quantity::text,COALESCE((SELECT sum(res.remaining_quantity) FROM material_request_reservations res WHERE res.request_line_id=l.id AND res.status='ATIVA'),0)::text,COALESCE((SELECT sum(d.quantity) FROM material_request_deliveries d JOIN material_request_reservations res ON res.id=d.reservation_id WHERE res.request_line_id=l.id),0)::text FROM material_request_lines l JOIN inventory_items i ON i.id=l.item_id WHERE l.request_id=$1 ORDER BY lower(i.name),l.id", id)
+	rows, err := a.db.QueryContext(ctx, "SELECT l.id,i.id,i.name,i.unit_code,l.quantity::text,COALESCE((SELECT sum(res.remaining_quantity) FROM material_request_reservations res WHERE res.request_line_id=l.id AND res.status='ATIVA'),0)::text,COALESCE((SELECT sum(d.quantity) FROM material_request_deliveries d JOIN material_request_reservations res ON res.id=d.reservation_id WHERE res.request_line_id=l.id),0)::text,"+materialLineToSeparateSQL+"::text FROM material_request_lines l JOIN inventory_items i ON i.id=l.item_id WHERE l.request_id=$1 ORDER BY lower(i.name),l.id", id)
 	if err != nil {
 		a.matRespond(w, err)
 		return
 	}
 	for rows.Next() {
 		var lid, itemID int64
-		var name, unitCode, qty, reserved, delivered string
-		if err = rows.Scan(&lid, &itemID, &name, &unitCode, &qty, &reserved, &delivered); err != nil {
+		var name, unitCode, qty, reserved, delivered, toSeparate string
+		if err = rows.Scan(&lid, &itemID, &name, &unitCode, &qty, &reserved, &delivered, &toSeparate); err != nil {
 			rows.Close()
 			a.matRespond(w, err)
 			return
 		}
-		lines = append(lines, map[string]any{"id": lid, "item_id": itemID, "item": name, "unit": unitCode, "quantity": qty, "reserved": reserved, "delivered": delivered})
+		lines = append(lines, map[string]any{"id": lid, "item_id": itemID, "item": name, "unit": unitCode, "quantity": qty, "reserved": reserved, "delivered": delivered, "to_separate": toSeparate})
 	}
 	err = rows.Err()
 	rows.Close()

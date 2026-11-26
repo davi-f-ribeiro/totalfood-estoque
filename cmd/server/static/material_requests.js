@@ -5,7 +5,18 @@ const $=id=>document.getElementById(id);
 const canWrite=root.dataset.canWrite==='1',canFulfill=root.dataset.canFulfill==='1',canReceive=root.dataset.canReceive==='1';
 const status=$('materialStatus'),pendingBox=$('materialPending'),list=$('materialList'),detail=$('materialDetail'),detailContent=$('materialDetailContent');
 const serviceLabel={cafe:'Café da manhã',almoco:'Almoço',lanche:'Lanche',jantar:'Jantar'};
-const statusText=s=>s==='RECEBIDA_COM_DIVERGENCIA'?'RECEBIDA COM DIVERGÊNCIA':String(s||'').replaceAll('_',' ');
+// Situação escrita como frase (guia de estilo, seção 6: sem maiúsculas corridas).
+const statusLabel={PENDENTE:'Pendente',EM_SEPARACAO:'Em separação',ENTREGA_PARCIAL:'Entrega parcial',ENTREGUE:'Entregue',RECEBIDA_COM_DIVERGENCIA:'Recebida com divergência',RECEBIDA:'Recebida',ENCERRADA:'Encerrada',CANCELADA:'Cancelada',ATIVA:'ativa',CONSUMIDA:'entregue por inteiro',LIBERADA:'liberada'};
+// Quem precisa agir, escrito por linha da lista (a contagem vem do servidor, princípio 3).
+function actionLines(p){
+ if(!p)return[];
+ const out=[],n=(k,one,many)=>k===1?one:many;
+ if(p.separar>0)out.push('Estoque: falta separar '+number(p.separar)+n(p.separar,' material',' materiais'));
+ if(p.receber>0)out.push('Cozinha: falta confirmar o recebimento de '+number(p.receber)+n(p.receber,' entrega',' entregas'));
+ if(p.divergencia>0)out.push('Cozinha: falta confirmar o restante de '+number(p.divergencia)+n(p.divergencia,' entrega',' entregas'));
+ return out;
+}
+const statusText=s=>statusLabel[s]||String(s||'').replaceAll('_',' ').toLowerCase();
 let draft=[],current=0,busy=false,pending=null,searchSequence=0;
 const pendingKey='material-request:pending:'+document.querySelector('meta[name="current-user-id"]')?.content;
 const offline=window.OfflineStore?new OfflineStore():null;
@@ -102,6 +113,7 @@ async function sendPending(opts={}){
    $('materialCreateForm').reset();
    $('materialDeliveryDate').value=todayProductionDate();
    $('materialProductionDate').value=todayProductionDate();
+   rememberUnit();
   }
   const done=opts.success?opts.success(resp||{}):(what.charAt(0).toUpperCase()+what.slice(1)+' confirmada.');
   if(where&&where.kind==='detail')detailNote={request:current,key:where.successKey||where.key,type:'success',msg:done};
@@ -174,6 +186,7 @@ async function loadRequestList(focusCount=false){
   if(selected&&!units.includes(selected))units.push(selected);
   unit.replaceChildren(new Option('Todas as unidades',''),...units.map(name=>new Option(name,name)));
   unit.value=selected;
+  const known=$('materialUnitOptions');if(known)known.replaceChildren(...result.units.map(name=>new Option(name)));
   $('materialListScope').textContent=result.scope==='own'
    ?'Escopo do seu perfil: requisições criadas por você.'
    :'Escopo do seu perfil: requisições de todas as unidades.';
@@ -196,6 +209,7 @@ async function loadRequestList(focusCount=false){
     el('small',(serviceLabel[r.service]||r.service)+' · '+materials),
     el('span',statusText(r.status),'material-tag')
    );
+   for(const line of actionLines(r.pending))button.append(el('span',line,'material-action'));
    button.dataset.requestId=r.id;
    button.setAttribute('aria-current',String(current===r.id));
    list.append(button);
@@ -261,20 +275,26 @@ function actionRow(){return el('div',null,'material-actions')}
 function numericInput(value){
  const i=el('input');i.type='text';i.inputMode='decimal';i.value=String(value||'');i.placeholder='Quantidade';i.setAttribute('aria-label','Quantidade em unidade-base');return i;
 }
+// Leva o foco para a quantidade de um material da lista (depois de incluir ou de um erro).
+function focusQuantity(host,id,invalid){
+ const i=host.querySelector('[data-item-id="'+id+'"] input');if(!i)return;
+ if(invalid){i.setAttribute('aria-invalid','true');i.addEventListener('input',()=>i.removeAttribute('aria-invalid'),{once:true})}
+ i.focus();
+}
 function validQuantity(value){const x=String(value||'').trim().replace(',','.');return /^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$/.test(x)&&Number(x)>0}
 async function chooseReserve(line,wrap){
  wrap.textContent='';const box=el('div',null,'material-inline');
- const skuSelect=el('select');skuSelect.setAttribute('aria-label','Apresentação e depósito');
+ const skuSelect=el('select');skuSelect.setAttribute('aria-label','Produto e depósito');
  try{
   const options=await api('/api/material-requests/options/'+line.item_id);
   if(!options.length){wrap.append(el('p','Não há estoque disponível de '+line.item+'.','hint'));return}
-  options.forEach(o=>{const opt=el('option',o.brand+' · '+o.sku+' · '+o.warehouse+' (livre '+number(o.available)+' / físico '+number(o.stock)+' '+line.unit+')');opt.value=o.sku_id+':'+o.warehouse_id;skuSelect.append(opt)});
-  const qty=numericInput((Number(line.quantity)-Number(line.reserved)-Number(line.delivered)).toFixed(3));
-  box.append(field('Apresentação e depósito',skuSelect),field('Separar ('+line.unit+')',qty));
+  options.forEach(o=>{const opt=el('option',o.brand+' · '+o.sku+' · '+o.warehouse+' (disponível '+number(o.available)+' de '+number(o.stock)+' '+line.unit+' em estoque)');opt.value=o.sku_id+':'+o.warehouse_id;skuSelect.append(opt)});
+  const qty=numericInput(Number(line.to_separate).toFixed(3));
+  box.append(field('Produto e depósito',skuSelect),field('Separar ('+line.unit+')',qty));
   const actions=actionRow();
   actions.append(btn('Confirmar separação',async()=>{
    const where={kind:'detail',key:'line:'+line.id};
-   if(!validQuantity(qty.value)){report(where,'error','Informe a quantidade de '+line.item+' maior que zero, com até 3 casas decimais.');return}
+   if(!validQuantity(qty.value)){report(where,'error','Digite a quantidade de '+line.item+' maior que zero, com até 3 casas decimais.');return}
    const [sku_id,warehouse_id]=skuSelect.value.split(':').map(Number);
    const o=options.find(x=>x.sku_id===sku_id&&x.warehouse_id===warehouse_id)||{};
    const q=number(requestDecimal(qty.value))+' '+line.unit;
@@ -290,20 +310,28 @@ function itemPicker(search,matches,taken,pick){
  let timer=0;
  async function lookup(q){
   const seq=++searchSequence;matches.textContent='';
-  if(q.trim().length<2)return;
+  if(!q.trim())return;
+  if(q.trim().length<2){matches.append(el('p','Digite pelo menos 2 letras do material.','hint'));return}
+  matches.append(el('p','Buscando materiais…','hint'));
   try{
    const items=await api('/api/material-requests/items?q='+encodeURIComponent(q.trim()));
    if(seq!==searchSequence)return;
-   if(!items.length){matches.append(el('p','Material não encontrado.','hint'));return}
-   items.filter(item=>!taken(item.id)).forEach(item=>{
+   matches.textContent='';
+   const free=items.filter(item=>!taken(item.id));
+   if(!items.length){matches.append(el('p','Nenhum material encontrado. Tente outro nome.','hint'));return}
+   if(!free.length){matches.append(el('p','Esse material já está na lista abaixo.','hint'));return}
+   free.forEach(item=>{
     matches.append(btn(item.name+' · '+item.unit,()=>{search.value='';matches.textContent='';pick(item)}));
    });
-  }catch(e){if(seq===searchSequence)matches.append(el('p',uiErrorMessage(e,'Não foi possível buscar materiais.'),'hint'))}
+  }catch(e){if(seq===searchSequence){matches.textContent='';matches.append(el('p',uiErrorMessage(e,'Não foi possível buscar materiais.'),'hint'))}}
  }
  search.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>lookup(search.value),250)});
 }
 // Edição da requisição: o rascunho sobrevive ao redesenho do detalhe (Atualizar, outras ações).
 // O servidor decide o que pode mudar; a tela só avisa o mínimo de cada item já entregue.
+// A unidade solicitante costuma ser sempre a mesma: a tela lembra a última usada neste aparelho.
+const unitKey='material-request:unit:'+document.querySelector('meta[name="current-user-id"]')?.content;
+function rememberUnit(){const u=$('materialUnit');if(!u||u.value)return;try{u.value=localStorage.getItem(unitKey)||''}catch(e){}}
 let editing=null;
 const editable=r=>canWrite&&!r.closed_at&&!['CANCELADA','RECEBIDA','RECEBIDA_COM_DIVERGENCIA'].includes(r.status);
 function startEdit(r){
@@ -329,7 +357,7 @@ function renderEdit(r,host){
  const drawLines=()=>{
   lines.textContent='';
   e.lines.forEach(x=>{
-   const row=el('div',null,'material-line'),head=el('div',null,'material-line-header');
+   const row=el('div',null,'material-line'),head=el('div',null,'material-line-header');row.dataset.itemId=x.item_id;
    const remove=btn('Remover',()=>{e.lines=e.lines.filter(d=>d.item_id!==x.item_id);drawLines()});
    if(x.delivered>0)remove.disabled=true;
    head.append(el('strong',x.name+' · '+x.unit),remove);
@@ -344,17 +372,17 @@ function renderEdit(r,host){
  const products=el('section',null,'material-products');products.setAttribute('aria-label','Materiais da requisição');
  const search=el('input');search.type='search';search.autocomplete='off';search.placeholder='Digite o nome do material';
  const matches=el('div',null,'material-matches');matches.setAttribute('aria-live','polite');
- itemPicker(search,matches,id=>e.lines.some(x=>x.item_id===id),item=>{e.lines.push({item_id:item.id,name:item.name,unit:item.unit,quantity:'',delivered:0,reserved:0});drawLines()});
+ itemPicker(search,matches,id=>e.lines.some(x=>x.item_id===id),item=>{e.lines.push({item_id:item.id,name:item.name,unit:item.unit,quantity:'',delivered:0,reserved:0});drawLines();focusQuantity(lines,item.id)});
  products.append(field('Adicionar material',search),matches,lines);
  box.append(products);
  const notes=el('textarea');notes.rows=2;notes.maxLength=1000;notes.value=e.notes;notes.addEventListener('input',()=>{e.notes=notes.value});
  box.append(field('Observação (opcional)',notes));
  const actions=actionRow();
  actions.append(btn('Salvar alterações',async()=>{
-  if(!e.unit_name.trim()||!e.delivery_date||!e.production_date){report(where,'error','Informe unidade, entrega desejada e data de produção.');return}
+  if(!e.unit_name.trim()||!e.delivery_date||!e.production_date){report(where,'error','Digite a unidade, a entrega desejada e a data de produção.');return}
   if(!e.lines.length){report(where,'error','A requisição precisa de pelo menos um material. Para desistir do pedido, use Cancelar.');return}
   const bad=e.lines.find(x=>!validQuantity(x.quantity));
-  if(bad){report(where,'error','Informe a quantidade de '+bad.name+' maior que zero, com até 3 casas decimais.');return}
+  if(bad){report(where,'error','Digite a quantidade de '+bad.name+' maior que zero, com até 3 casas decimais.');focusQuantity(lines,bad.item_id,true);return}
   const body={version:e.version,unit_name:e.unit_name.trim(),delivery_date:e.delivery_date,production_date:e.production_date,service:e.service,notes:e.notes.trim(),
    lines:e.lines.map(x=>({item_id:x.item_id,quantity:requestDecimal(x.quantity)}))};
   await run('/api/material-requests/'+r.id+'/edit',body,{label:'a edição da requisição #'+r.id,loading:'Salvando a requisição #'+r.id+'…',
@@ -374,7 +402,7 @@ function renderDetail(r){
  [
   ['Unidade',r.unit_name],['Solicitante',r.requested_by],
   ['Produção',day(r.production_date)],['Serviço',serviceLabel[r.service]||r.service],
-  ['Entrega desejada',day(r.delivery_date)],['Status',r.status.replaceAll('_',' ')],
+  ['Entrega desejada',day(r.delivery_date)],['Situação',statusText(r.status)],
   ['Criada em',stamp(r.created_at)]
  ].forEach(([label,value])=>{const d=el('div');d.append(el('small',label),el('strong',value));facts.append(d)});
  detailContent.append(facts);
@@ -384,11 +412,12 @@ function renderDetail(r){
  if(editable(r)&&!editing)topActions.append(btn('Editar requisição',()=>startEdit(r)));
  if(canWrite&&!r.deliveries.length&&r.status!=='CANCELADA'){
   const actions=topActions;
-  actions.append(btn('Cancelar requisição',async()=>{
+  const cancel=btn('Cancelar requisição',async()=>{
    if(!window.confirm('Cancelar esta requisição e liberar as reservas?'))return;
    await run('/api/material-requests/'+r.id+'/cancel',{},{label:'o cancelamento da requisição #'+r.id,loading:'Cancelando a requisição #'+r.id+'…',
     where:{kind:'detail',key:'request'},success:()=>'Requisição #'+r.id+' cancelada e reservas liberadas.',failure:'Cancelamento da requisição #'+r.id+' recusado.'});
-  }));
+  });
+  cancel.classList.add('danger');actions.append(cancel);
  }
  if(topActions.children.length)top.append(topActions);
  // Itens sem peso padrão (hortifruti, proteína): a conta exata não fecha. Depois de
@@ -410,8 +439,8 @@ function renderDetail(r){
  detailContent.append(el('h3','Materiais'));
  r.lines.forEach(line=>{
   const card=el('article',null,'material-line-details');card.dataset.noteKey='line:'+line.id;
-  card.append(el('strong',line.item),el('p','Solicitado '+number(line.quantity)+' '+line.unit+' · Separado '+number(line.reserved)+' · Entregue '+number(line.delivered),'material-small'));
-  const available=Number(line.quantity)-Number(line.reserved)-Number(line.delivered);
+  card.append(el('strong',line.item),el('p','Solicitado '+number(line.quantity)+' '+line.unit+' · Separado '+number(line.reserved)+' '+line.unit+' · Entregue '+number(line.delivered)+' '+line.unit,'material-small'));
+  const available=Number(line.to_separate);
   if(canFulfill&&available>0.0001&&r.status!=='CANCELADA'&&r.status!=='RECEBIDA'&&r.status!=='RECEBIDA_COM_DIVERGENCIA'){
    const wrap=el('div');card.append(btn('Separar material',()=>chooseReserve(line,wrap)));card.append(wrap);
   }
@@ -424,7 +453,7 @@ function renderDetail(r){
    const line=r.lines.find(x=>x.id===res.line_id);
    const item=line?.item||'Material',unit=line?.unit||'';
    card.append(el('strong',(line?.item||'Material')+' · '+res.brand),el('p',res.sku+' · '+res.warehouse,'material-small'),
-     el('p','Reservado '+number(res.quantity)+' · Saldo separado '+number(res.remaining)+' '+(line?.unit||'')+' · '+res.status,'material-small'));
+     el('p','Separado '+number(res.quantity)+' '+(line?.unit||'')+' · Falta entregar '+number(res.remaining)+' '+(line?.unit||'')+' · '+statusText(res.status),'material-small'));
    if(canFulfill&&res.status==='ATIVA'&&Number(res.remaining)>0){
     const input=numericInput(res.remaining);
     // Item controlado por caixa (hortifruti): o estoquista marca as caixas que vão sair e a
@@ -441,7 +470,7 @@ function renderDetail(r){
     const actions=actionRow();
     actions.append(btn('Confirmar entrega',async()=>{
      const where={kind:'detail',key:'res:'+res.id,successKey:'deliveries'};
-     if(!validQuantity(input.value)){report(where,'error','Informe a quantidade de '+item+' a entregar, maior que zero e com até 3 casas decimais.');return}
+     if(!validQuantity(input.value)){report(where,'error','Digite a quantidade de '+item+' a entregar, maior que zero e com até 3 casas decimais.');return}
      if(!crateBox.hidden&&!pickedCrates().length){report(where,'error','Este produto é controlado por caixas. Marque as caixas que vão sair.');return}
      const q=number(requestDecimal(input.value))+' '+unit;
      await run('/api/material-requests/'+r.id+'/deliver',Object.assign({operation_id:newOperationID(),reservation_id:res.id,quantity:requestDecimal(input.value)},pickedCrates().length?{crate_ids:pickedCrates()}:{}),
@@ -482,13 +511,16 @@ function renderDetail(r){
     // diferença como divergência, até o restante chegar e ser confirmado aqui mesmo.
     const got=numericInput(d.quantity),why=el('input');why.maxLength=500;why.autocomplete='off';
     const where={kind:'detail',key:'delivery:'+d.id};
-    card.append(field('Quantidade recebida'+(dline?' ('+dunit+')':''),got),field('Motivo da diferença (só se recebeu menos)',why),btn('Confirmar recebimento',async()=>{
+    const whyField=field('Motivo da diferença',why);whyField.hidden=true;
+    // O motivo só aparece quando a quantidade digitada é menor que a entregue.
+    got.addEventListener('input',()=>{const x=Number(String(got.value||'').trim().replace(',','.'));whyField.hidden=!(x>=0&&x<Number(d.quantity))});
+    card.append(field('Quantidade recebida'+(dline?' ('+dunit+')':''),got),whyField,btn('Confirmar recebimento',async()=>{
      const raw=String(got.value||'').trim().replace(',','.');
-     if(!/^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$/.test(raw)){report(where,'error','Informe a quantidade recebida, com até 3 casas decimais.');return}
+     if(!/^(0|[1-9][0-9]*)(\.[0-9]{1,3})?$/.test(raw)){report(where,'error','Digite a quantidade recebida, com até 3 casas decimais.');return}
      const q=Number(raw),total=Number(d.quantity);
      if(q>total){report(where,'error','A quantidade recebida não pode ser maior que a entregue ('+number(d.quantity)+').');return}
      const partial=q<total,reason=why.value.trim();
-     if(partial&&!reason){report(where,'error','Informe o motivo da diferença entre o entregue e o recebido.');return}
+     if(partial&&!reason){whyField.hidden=false;report(where,'error','Digite o motivo da diferença entre o entregue e o recebido.');why.focus();return}
      if(!window.confirm(partial?'Confirmar o recebimento de '+number(raw)+' de '+number(d.quantity)+(dline?' '+dunit+' de '+dwhat:'')+'? A diferença fica pendente até o restante chegar.':(dwhat?'Você recebeu '+number(d.quantity)+' '+dunit+' de '+dwhat+'?':'Você recebeu o material desta entrega?')))return;
      await run('/api/material-requests/'+r.id+'/deliveries/'+d.id+'/receive',partial?{received_quantity:raw,reason}:{received_quantity:raw},{label:'o recebimento da entrega #'+d.id,loading:'Confirmando o recebimento da entrega #'+d.id+'…',
       where,success:x=>partial?'Recebimento de '+number(raw)+' de '+number(d.quantity)+' registrado. Faltam '+number(x.pending_divergence)+'; confirme aqui quando o restante chegar.':'Recebimento da entrega #'+d.id+' confirmado.',failure:'Recebimento da entrega #'+d.id+' recusado.'});
@@ -498,7 +530,7 @@ function renderDetail(r){
     const more=numericInput(d.pending_divergence),obs=el('input');obs.maxLength=500;obs.autocomplete='off';
     const where={kind:'detail',key:'delivery:'+d.id};
     card.append(field('Quantidade recebida depois'+(dline?' ('+dunit+')':''),more),field('Observação',obs),btn('Confirmar recebimento do restante',async()=>{
-     if(!validQuantity(more.value)){report(where,'error','Informe a quantidade recebida depois, maior que zero e com até 3 casas decimais.');return}
+     if(!validQuantity(more.value)){report(where,'error','Digite a quantidade recebida depois, maior que zero e com até 3 casas decimais.');return}
      const q=requestDecimal(more.value);
      if(Number(q)>pendingDiv){report(where,'error','Só faltam '+number(d.pending_divergence)+' para receber nesta entrega.');return}
      await run('/api/material-requests/'+r.id+'/deliveries/'+d.id+'/reconcile',{operation_id:newOperationID(),quantity:q,notes:obs.value.trim()},{label:'o recebimento do restante da entrega #'+d.id,loading:'Registrando o recebimento do restante da entrega #'+d.id+'…',
@@ -518,32 +550,42 @@ function renderDetail(r){
 if(canWrite){
  const form=$('materialCreateForm'),search=$('materialSearch'),matches=$('materialMatches'),draftHost=$('materialDraft');
  $('materialDeliveryDate').value=todayProductionDate();$('materialProductionDate').value=todayProductionDate();
+ rememberUnit();
  function renderDraft(){
   draftHost.textContent='';
   draft.forEach(x=>{
-   const row=el('div',null,'material-line'),head=el('div',null,'material-line-header');
+   const row=el('div',null,'material-line'),head=el('div',null,'material-line-header');row.dataset.itemId=x.id;
    head.append(el('strong',x.name+' · '+x.unit),btn('Remover',()=>{draft=draft.filter(d=>d.id!==x.id);renderDraft()}));
    const inp=numericInput(x.quantity);inp.value=x.quantity;
    inp.addEventListener('input',()=>{x.quantity=inp.value});
    row.append(head,field('Quantidade ('+x.unit+')',inp));draftHost.append(row);
   });
  }
- itemPicker(search,matches,id=>draft.some(x=>x.id===id),item=>{draft.push({...item,quantity:''});renderDraft()});
+ itemPicker(search,matches,id=>draft.some(x=>x.id===id),item=>{draft.push({...item,quantity:''});renderDraft();focusQuantity(draftHost,item.id)});
  form.addEventListener('submit',async e=>{
   e.preventDefault();
   const where={kind:'create'};
   if(!form.checkValidity()){form.reportValidity();return}
   if(!draft.length){report(where,'error','Adicione pelo menos um material à requisição.');return}
   const bad=draft.find(x=>!validQuantity(x.quantity));
-  if(bad){report(where,'error','Informe a quantidade de '+bad.name+' maior que zero, com até 3 casas decimais.');return}
+  if(bad){report(where,'error','Digite a quantidade de '+bad.name+' maior que zero, com até 3 casas decimais.');focusQuantity(draftHost,bad.id,true);return}
   const body={operation_id:newOperationID(),unit_name:$('materialUnit').value.trim(),
    delivery_date:$('materialDeliveryDate').value,production_date:$('materialProductionDate').value,
    service:$('materialService').value,notes:$('materialNotes').value.trim(),
    lines:draft.map(x=>({item_id:x.id,quantity:requestDecimal(x.quantity)}))};
   const n=draft.length;
+  try{localStorage.setItem(unitKey,body.unit_name)}catch(err){}
   await run('/api/material-requests',body,{label:'a requisição de '+body.unit_name,loading:'Enviando a requisição de '+body.unit_name+'…',where,
    success:x=>'Requisição'+(x.id?' #'+x.id:'')+' enviada ao estoque: '+n+(n===1?' material':' materiais')+' para '+body.unit_name+'.',failure:'Requisição recusada.'});
  });
 }
+// Abas: Nova requisição (só quem pode criar) e Requisições (lista e detalhe).
+function showTab(name){
+ document.querySelectorAll('[role="tab"]').forEach(t=>{const on=t.dataset.tab===name;t.setAttribute('aria-selected',String(on));t.tabIndex=on?0:-1});
+ const create=$('sectionCreate');if(create)create.hidden=name!=='create';
+ $('sectionList').hidden=name!=='list';
+}
+document.querySelectorAll('[role="tab"]').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.tab)));
+showTab('list');
 refresh();
 })();

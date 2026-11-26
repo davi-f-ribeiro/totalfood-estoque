@@ -140,7 +140,12 @@ SELECT jsonb_build_object(
 		SELECT jsonb_agg(jsonb_build_object(
 			'id', id, 'unit_name', unit_name, 'delivery_date', delivery_date,
 			'production_date', production_date, 'service', service, 'status', list_status,
-			'items', (SELECT count(*) FROM material_request_lines WHERE request_id = page.id)
+			'items', (SELECT count(*) FROM material_request_lines WHERE request_id = page.id),
+			'pending', CASE WHEN page.list_status IN ('CANCELADA', 'ENCERRADA', 'RECEBIDA') THEN jsonb_build_object('separar', 0, 'receber', 0, 'divergencia', 0) ELSE jsonb_build_object(
+				'separar', (SELECT count(*) FROM material_request_lines l WHERE l.request_id = page.id AND ` + materialLineToSeparateSQL + ` > 0),
+				'receber', (SELECT count(*) FROM material_request_deliveries d WHERE d.request_id = page.id AND d.received_at IS NULL),
+				'divergencia', (SELECT count(*) FROM material_request_deliveries d WHERE d.request_id = page.id AND d.received_at IS NOT NULL AND d.received_quantity < d.quantity)
+			) END
 		) ORDER BY %s)
 		FROM page
 	), '[]'::jsonb)

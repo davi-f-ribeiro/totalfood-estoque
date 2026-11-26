@@ -16,7 +16,7 @@ const state={scope:'all',requests:[],created:new Map(),reservations:[],deliverie
 const respond=(route,status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const request1=()=>({id:1,unit_name:'Cozinha Central',requested_by:'Ana',production_date:'2026-11-16',service:'lanche',delivery_date:'2026-11-16',
  status:state.deliveries.length?'ENTREGA_PARCIAL':'PENDENTE',created_at:'2026-11-15T10:00:00Z',notes:'',version:state.version,
- lines:[{id:1,item_id:20,item:'Feijão carioca',unit:'KG',quantity:state.qty,reserved:String(state.reservations.reduce((s,r)=>s+Number(r.remaining),0)),delivered:String(state.deliveries.reduce((s,d)=>s+Number(d.quantity),0))},...state.extra],
+ lines:[{id:1,item_id:20,item:'Feijão carioca',unit:'KG',quantity:state.qty,reserved:String(state.reservations.reduce((s,r)=>s+Number(r.remaining),0)),delivered:String(state.deliveries.reduce((s,d)=>s+Number(d.quantity),0)),to_separate:(()=>{const v=Number(state.qty)-state.reservations.reduce((s,r)=>s+Number(r.remaining),0)-state.deliveries.reduce((s,d)=>s+Number(d.quantity),0);return Math.max(0,v).toFixed(3)})()},...state.extra],
  reservations:state.reservations,
  deliveries:state.deliveries.map(d=>({...d,received:state.received.has(d.id),received_by:state.received.has(d.id)?'Ana':''})),
  events:[]});
@@ -45,8 +45,8 @@ async function main(){
    state.requests.push({p,method:req.method(),body,params:Object.fromEntries(u.searchParams)});
    if(p==='/api/material-requests/search'){
     const rows=[
-     {id:1,unit_name:'Cozinha Central',production_date:'2026-11-16',delivery_date:'2026-11-15',service:'lanche',items:1,status:request1().status},
-     {id:2,unit_name:'Nutrição',production_date:'2026-11-17',delivery_date:'2026-11-16',service:'cafe',items:2,status:'PENDENTE'}
+     {id:1,unit_name:'Cozinha Central',production_date:'2026-11-16',delivery_date:'2026-11-15',service:'lanche',items:1,status:request1().status,pending:{separar:0,receber:state.deliveries.filter(d=>!state.received.has(d.id)).length,divergencia:0}},
+     {id:2,unit_name:'Nutrição',production_date:'2026-11-17',delivery_date:'2026-11-16',service:'cafe',items:2,status:'PENDENTE',pending:{separar:1,receber:0,divergencia:0}}
     ];
     const own=state.scope==='own';
     const visible=own?rows.slice(0,1):rows;
@@ -96,6 +96,7 @@ async function main(){
   await page.getByRole('button',{name:'Próxima',exact:true}).click();
   await page.locator('#materialPageLabel',{hasText:'Página 2 de 2'}).waitFor();
   await page.locator('#materialList button',{hasText:'#2 · Nutrição'}).waitFor();
+  await page.locator('#materialList button[data-request-id="2"]',{hasText:'Estoque: falta separar 1 material'}).waitFor();
   await page.getByRole('button',{name:'Anterior',exact:true}).click();
   await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).waitFor();
 
@@ -136,19 +137,26 @@ async function main(){
   await page.getByText('Filtros e ordenação',{exact:true}).click();
 
   // Criar: erro e sucesso abaixo do botão, com o material e a unidade.
+  await page.locator('#tabCreate').click();
+  await page.locator('#sectionCreate').waitFor({state:'visible'});
   await page.locator('#materialSearch').fill('arroz');
   await page.locator('#materialMatches button').first().click();
+  assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#materialDraft input')),true,'Depois de escolher o material, o foco vai para a quantidade');
   await page.locator('#materialUnit').fill('Cozinha Central');
   await page.locator('#materialService').selectOption({label:'Lanche'});
   await page.locator('#materialCreateSubmit').click();
-  await page.locator('#materialCreateStatus',{hasText:'Informe a quantidade de Arroz branco'}).waitFor();
+  await page.locator('#materialCreateStatus',{hasText:'Digite a quantidade de Arroz branco'}).waitFor();
   assert(await inViewport('#materialCreateStatus'),'Erro da criação precisa aparecer na tela');
+  assert.equal(await page.locator('#materialDraft input').getAttribute('aria-invalid'),'true','Quantidade com erro fica marcada');
   await page.locator('#materialDraft input').fill('5');
   await page.locator('#materialCreateSubmit').click();
   await page.locator('#materialCreateStatus',{hasText:'Requisição #2 enviada ao estoque: 1 material para Cozinha Central.'}).waitFor();
   assert(await inViewport('#materialCreateStatus'),'Sucesso da criação precisa aparecer na tela');
+  assert.equal(await page.locator('#materialUnit').inputValue(),'Cozinha Central','A unidade usada fica preenchida para a próxima requisição');
   assert.equal(state.requests.find(r=>r.p==='/api/material-requests'&&r.method==='POST').body.service,'lanche');
   await topHidden();
+  await page.locator('#tabList').click();
+  assert.equal(await page.locator('#sectionCreate').isVisible(),false,'Nova requisição some quando a aba Requisições está aberta');
 
   // Separar: aviso no cartão do material.
   await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).click();
@@ -171,6 +179,7 @@ async function main(){
   assert(await inViewport('[data-note-key="res:30"] [data-detail-note]'),'Aviso de entrega sem confirmação precisa aparecer na tela');
   await uncertain.locator('button',{hasText:'Enviar de novo'}).click();
   await page.locator('[data-note-key="deliveries"] [data-detail-note]',{hasText:'Entrega de 4 KG de Feijão carioca registrada (saída #900).'}).waitFor();
+  await page.locator('#materialList button[data-request-id="1"]',{hasText:'Cozinha: falta confirmar o recebimento de 1 entrega'}).waitFor();
   assert(await inViewport('[data-note-key="deliveries"] [data-detail-note]'),'Sucesso da entrega precisa aparecer na tela');
   const delivers=state.requests.filter(r=>r.p==='/api/material-requests/1/deliver');
   assert.equal(delivers.length,2);
@@ -182,8 +191,17 @@ async function main(){
   await page.locator('[data-note-key="delivery:40"] strong',{hasText:'Feijão carioca, 4 KG'}).waitFor();
   await page.locator('[data-note-key="delivery:40"]',{hasText:'Kicaldo, Feijão 1 kg, Câmara Fria'}).waitFor();
 
+  // Receber: o motivo só aparece quando a quantidade recebida é menor que a entregue.
+  const motive=page.locator('[data-note-key="delivery:40"] label',{hasText:'Motivo da diferença'});
+  assert.equal(await motive.isVisible(),false,'Motivo escondido no recebimento integral');
+  await page.locator('[data-note-key="delivery:40"] input').first().fill('3');
+  await motive.waitFor();
+  await page.locator('[data-note-key="delivery:40"] input').first().fill('4');
+  await motive.waitFor({state:'hidden'});
   // Receber: aviso no cartão da entrega.
   await page.locator('[data-note-key="delivery:40"] button',{hasText:'Confirmar recebimento'}).click();
+  await page.locator('[data-note-key="delivery:40"] [data-detail-note]',{hasText:'Recebimento da entrega #40 confirmado.'}).waitFor();
+  assert.equal(await page.locator('#materialList button[data-request-id="1"]').textContent().then(t=>t.includes('falta confirmar o recebimento')),false,'Depois de receber, a lista deixa de cobrar a confirmação');
   await page.locator('[data-note-key="delivery:40"] [data-detail-note]',{hasText:'Recebimento da entrega #40 confirmado.'}).waitFor();
   assert(await inViewport('[data-note-key="delivery:40"] [data-detail-note]'),'Aviso do recebimento precisa aparecer na tela');
   await topHidden();
@@ -217,7 +235,7 @@ async function main(){
   await editBox.locator('input[type=search]').fill('arroz');
   await editBox.locator('.material-matches button').first().click();
   await editBox.locator('button',{hasText:'Salvar alterações'}).click();
-  await editBox.locator('[data-detail-note]',{hasText:'Informe a quantidade de Arroz branco'}).waitFor();
+  await editBox.locator('[data-detail-note]',{hasText:'Digite a quantidade de Arroz branco'}).waitFor();
   assert(await inViewport('[data-note-key="edit"] [data-detail-note]'),'Erro da edição precisa aparecer na tela');
   await editBox.locator('.material-line input').nth(0).fill('12');
   await editBox.locator('.material-line input').nth(1).fill('3');
@@ -234,6 +252,16 @@ async function main(){
   assert.equal(await page.getByText('Operação registrada.').count(),0,'Mensagem genérica não pode voltar');
   const size=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
   assert(size[0]<=size[1],'Rolagem lateral a 390 px '+size);
+  // Computador (1280 px): a lista fica à esquerda e o pedido aberto ao lado, sem rolagem lateral.
+  await page.setViewportSize({width:1280,height:800});
+  await page.locator('#materialList button',{hasText:'#1 · Cozinha Central'}).click();
+  await page.locator('#materialDetail').waitFor({state:'visible'});
+  const boxes=await page.evaluate(()=>{const b=id=>document.getElementById(id).getBoundingClientRect();return{list:b('materialRequests'),detail:b('materialDetail')}});
+  assert(boxes.detail.left>=boxes.list.right,'No computador, o detalhe fica ao lado da lista '+JSON.stringify(boxes));
+  assert(Math.abs(boxes.detail.top-boxes.list.top)<40,'Lista e detalhe começam na mesma altura');
+  const desk=await page.evaluate(()=>[document.documentElement.scrollWidth,innerWidth]);
+  assert(desk[0]<=desk[1],'Rolagem lateral a 1280 px '+desk);
+  await page.screenshot({path:process.env.SHOT_DESKTOP||'/tmp/material-desktop.png',fullPage:false});
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({status:'PASS',requests:state.requests.length},null,1));
  }finally{await b.close();localServer.close()}
