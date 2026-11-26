@@ -54,6 +54,15 @@ func TestMaterialRequestListPendingCounts(t *testing.T) {
 		if want := [3]int{wantSeparar, wantReceber, wantDivergencia}; got != want {
 			t.Fatalf("%s: separar/receber/divergencia=%v, want %v", step, got, want)
 		}
+		// Fonte única: o saldo por linha do detalhe e a contagem da lista saem da mesma conta.
+		dl := materialTestJSON(t, authReq(a, http.MethodGet, base, nil, cozinha, "").Body.Bytes())["lines"].([]any)[0].(map[string]any)
+		toSeparate, err := strconv.ParseFloat(dl["to_separate"].(string), 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (toSeparate > 0) != (wantSeparar > 0) {
+			t.Fatalf("%s: detalhe to_separate=%v, mas a lista conta separar=%d", step, toSeparate, wantSeparar)
+		}
 	}
 	mustOK := func(step string, rr *httptest.ResponseRecorder, code int) {
 		t.Helper()

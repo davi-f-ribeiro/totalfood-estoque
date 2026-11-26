@@ -289,7 +289,7 @@ async function chooseReserve(line,wrap){
   const options=await api('/api/material-requests/options/'+line.item_id);
   if(!options.length){wrap.append(el('p','Não há estoque disponível de '+line.item+'.','hint'));return}
   options.forEach(o=>{const opt=el('option',o.brand+' · '+o.sku+' · '+o.warehouse+' (disponível '+number(o.available)+' de '+number(o.stock)+' '+line.unit+' em estoque)');opt.value=o.sku_id+':'+o.warehouse_id;skuSelect.append(opt)});
-  const qty=numericInput((Number(line.quantity)-Number(line.reserved)-Number(line.delivered)).toFixed(3));
+  const qty=numericInput(Number(line.to_separate).toFixed(3));
   box.append(field('Produto e depósito',skuSelect),field('Separar ('+line.unit+')',qty));
   const actions=actionRow();
   actions.append(btn('Confirmar separação',async()=>{
@@ -440,7 +440,7 @@ function renderDetail(r){
  r.lines.forEach(line=>{
   const card=el('article',null,'material-line-details');card.dataset.noteKey='line:'+line.id;
   card.append(el('strong',line.item),el('p','Solicitado '+number(line.quantity)+' '+line.unit+' · Separado '+number(line.reserved)+' '+line.unit+' · Entregue '+number(line.delivered)+' '+line.unit,'material-small'));
-  const available=Number(line.quantity)-Number(line.reserved)-Number(line.delivered);
+  const available=Number(line.to_separate);
   if(canFulfill&&available>0.0001&&r.status!=='CANCELADA'&&r.status!=='RECEBIDA'&&r.status!=='RECEBIDA_COM_DIVERGENCIA'){
    const wrap=el('div');card.append(btn('Separar material',()=>chooseReserve(line,wrap)));card.append(wrap);
   }

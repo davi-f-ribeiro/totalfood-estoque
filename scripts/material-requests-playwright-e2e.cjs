@@ -16,7 +16,7 @@ const state={scope:'all',requests:[],created:new Map(),reservations:[],deliverie
 const respond=(route,status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const request1=()=>({id:1,unit_name:'Cozinha Central',requested_by:'Ana',production_date:'2026-11-16',service:'lanche',delivery_date:'2026-11-16',
  status:state.deliveries.length?'ENTREGA_PARCIAL':'PENDENTE',created_at:'2026-11-15T10:00:00Z',notes:'',version:state.version,
- lines:[{id:1,item_id:20,item:'Feijão carioca',unit:'KG',quantity:state.qty,reserved:String(state.reservations.reduce((s,r)=>s+Number(r.remaining),0)),delivered:String(state.deliveries.reduce((s,d)=>s+Number(d.quantity),0))},...state.extra],
+ lines:[{id:1,item_id:20,item:'Feijão carioca',unit:'KG',quantity:state.qty,reserved:String(state.reservations.reduce((s,r)=>s+Number(r.remaining),0)),delivered:String(state.deliveries.reduce((s,d)=>s+Number(d.quantity),0)),to_separate:(()=>{const v=Number(state.qty)-state.reservations.reduce((s,r)=>s+Number(r.remaining),0)-state.deliveries.reduce((s,d)=>s+Number(d.quantity),0);return Math.max(0,v).toFixed(3)})()},...state.extra],
  reservations:state.reservations,
  deliveries:state.deliveries.map(d=>({...d,received:state.received.has(d.id),received_by:state.received.has(d.id)?'Ana':''})),
  events:[]});

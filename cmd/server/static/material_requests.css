@@ -86,3 +86,5 @@ fieldset.material-filter-fields{min-width:0;padding:0;border:0}
 }
 /* Quem precisa agir, na linha da lista: texto em peso 600 (sem cor de alerta, guia seção 2). */
 .material-action{font-weight:600;color:var(--text-primary)}
+/* Celular: a barra inferior fica por cima da página; ações rolagem até ela ficam visíveis. */
+@media(max-width:899px){html{scroll-padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}}

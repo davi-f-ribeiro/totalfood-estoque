@@ -142,9 +142,7 @@ SELECT jsonb_build_object(
 			'production_date', production_date, 'service', service, 'status', list_status,
 			'items', (SELECT count(*) FROM material_request_lines WHERE request_id = page.id),
 			'pending', CASE WHEN page.list_status IN ('CANCELADA', 'ENCERRADA', 'RECEBIDA') THEN jsonb_build_object('separar', 0, 'receber', 0, 'divergencia', 0) ELSE jsonb_build_object(
-				'separar', (SELECT count(*) FROM material_request_lines l WHERE l.request_id = page.id AND l.quantity
-					- COALESCE((SELECT sum(res.remaining_quantity) FROM material_request_reservations res WHERE res.request_line_id = l.id AND res.status = 'ATIVA'), 0)
-					- COALESCE((SELECT sum(d.quantity) FROM material_request_deliveries d JOIN material_request_reservations res ON res.id = d.reservation_id WHERE res.request_line_id = l.id), 0) > 0),
+				'separar', (SELECT count(*) FROM material_request_lines l WHERE l.request_id = page.id AND ` + materialLineToSeparateSQL + ` > 0),
 				'receber', (SELECT count(*) FROM material_request_deliveries d WHERE d.request_id = page.id AND d.received_at IS NULL),
 				'divergencia', (SELECT count(*) FROM material_request_deliveries d WHERE d.request_id = page.id AND d.received_at IS NOT NULL AND d.received_quantity < d.quantity)
 			) END
